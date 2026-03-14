@@ -1,5 +1,3 @@
-"use client";
-
 interface BatchActionsProps {
   totalCount: number;
   selectedCount: number;
@@ -33,10 +31,16 @@ export function BatchActions({
         >
           Select all standard ({unflaggedCount})
         </button>
-        <button onClick={onSelectAll} className="text-sm text-blue-600 hover:text-blue-700">
+        <button
+          onClick={onSelectAll}
+          className="text-sm text-blue-600 hover:text-blue-700"
+        >
           Select all
         </button>
-        <button onClick={onDeselectAll} className="text-sm text-gray-500 hover:text-gray-600">
+        <button
+          onClick={onDeselectAll}
+          className="text-sm text-gray-500 hover:text-gray-600"
+        >
           Clear
         </button>
       </div>

@@ -1,10 +1,27 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const API_BASE = ""; // Vite proxy handles /api routes
+
+interface ApiError {
+  status: number;
+  message: string;
+}
 
 class ApiClient {
   private token: string | null = null;
 
   setToken(token: string | null) {
     this.token = token;
+    if (token) {
+      localStorage.setItem("token", token);
+    } else {
+      localStorage.removeItem("token");
+    }
+  }
+
+  getToken(): string | null {
+    if (!this.token) {
+      this.token = localStorage.getItem("token");
+    }
+    return this.token;
   }
 
   async fetch<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -13,8 +30,9 @@ class ApiClient {
       ...((options.headers as Record<string, string>) || {}),
     };
 
-    if (this.token) {
-      headers["Authorization"] = `Bearer ${this.token}`;
+    const token = this.getToken();
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
     }
 
     const res = await fetch(`${API_BASE}${path}`, {
@@ -23,17 +41,15 @@ class ApiClient {
     });
 
     if (res.status === 401) {
-      this.token = null;
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("token");
-        window.location.href = "/login";
-      }
+      this.setToken(null);
+      window.location.href = "/login";
       throw new Error("Unauthorized");
     }
 
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(`API error ${res.status}: ${text}`);
+      const err: ApiError = { status: res.status, message: text };
+      throw err;
     }
 
     return res.json();

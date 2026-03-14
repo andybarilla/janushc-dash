@@ -20,7 +20,7 @@ until pg_isready -h postgres -U "${POSTGRES_USER:-emrai}" -q; do
 done
 
 # Install frontend dependencies
-cd web && npm install && cd ..
+cd frontend && npm install && cd ..
 
 # Run migrations
 make migrate-up

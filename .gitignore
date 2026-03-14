@@ -2,6 +2,6 @@ bin/
 tmp/
 .env
 *.exe
-web/node_modules/
-web/.next/
+frontend/node_modules/
+frontend/dist/
 .devcontainer/.env

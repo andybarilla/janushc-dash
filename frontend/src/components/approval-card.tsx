@@ -1,16 +1,4 @@
-"use client";
-
-interface ApprovalItem {
-  id: string;
-  patient_name: string;
-  procedure_name: string;
-  dosage?: string;
-  staff_name?: string;
-  order_date: string;
-  flagged: boolean;
-  flag_reasons?: string[];
-  status: string;
-}
+import type { ApprovalItem } from "@/lib/queries";
 
 interface ApprovalCardProps {
   item: ApprovalItem;
@@ -22,7 +10,9 @@ export function ApprovalCard({ item, selected, onToggle }: ApprovalCardProps) {
   return (
     <div
       className={`border rounded-lg p-4 ${
-        item.flagged ? "border-amber-300 bg-amber-50" : "border-gray-200 bg-white"
+        item.flagged
+          ? "border-amber-300 bg-amber-50"
+          : "border-gray-200 bg-white"
       }`}
     >
       <div className="flex items-start gap-3">
@@ -34,7 +24,11 @@ export function ApprovalCard({ item, selected, onToggle }: ApprovalCardProps) {
         />
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            {item.flagged && <span className="text-amber-600 text-sm font-medium">Needs Review</span>}
+            {item.flagged && (
+              <span className="text-amber-600 text-sm font-medium">
+                Needs Review
+              </span>
+            )}
             <span className="font-medium">{item.patient_name}</span>
           </div>
           <div className="text-sm text-gray-600 mt-1">
@@ -57,5 +51,3 @@ export function ApprovalCard({ item, selected, onToggle }: ApprovalCardProps) {
     </div>
   );
 }
-
-export type { ApprovalItem };

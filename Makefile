@@ -4,12 +4,12 @@
 setup:
 	@cp -n .env.example .env || true
 
-# Run Go backend with hot-reload + Next.js frontend
+# Run Go backend with hot-reload + Vite frontend
 dev-servers:
 	@echo "Starting Go backend (air)..."
 	@cd /workspaces/emrai && air &
-	@echo "Starting Next.js frontend..."
-	@cd web && PORT=$${NEXT_PORT:-3000} npm run dev &
+	@echo "Starting Vite frontend..."
+	@cd frontend && VITE_PORT=$${NEXT_PORT:-3000} npm run dev -- --host &
 	@wait
 
 # Database migrations

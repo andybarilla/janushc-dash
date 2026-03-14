@@ -14,7 +14,7 @@ Physician workflow automation platform for independent practices. Integrates wit
 ## Tech Stack
 
 - **Backend:** Go (chi router, SQLC, pgx/v5)
-- **Frontend:** Next.js (React, Tailwind CSS)
+- **Frontend:** Vite + React (TypeScript, TanStack Query, Tailwind CSS)
 - **Database:** PostgreSQL 16
 - **AI:** AWS Bedrock (Claude) for smart flagging and summarization
 - **EMR:** athenahealth API (behind abstraction layer)
@@ -40,7 +40,7 @@ The easiest way to develop — no port conflicts, everything pre-configured.
    - Starts PostgreSQL
    - Runs database migrations
    - Installs frontend dependencies
-   - Starts the Go backend (with hot-reload via air) and Next.js dev server
+   - Starts the Go backend (with hot-reload via air) and Vite dev server
 
 4. Seed dev data:
    ```bash
@@ -65,7 +65,7 @@ The easiest way to develop — no port conflicts, everything pre-configured.
 
 3. In another terminal, start the frontend:
    ```bash
-   cd web && npm install && npm run dev
+   cd frontend && npm install && npm run dev
    ```
 
 4. Seed dev data:
@@ -78,12 +78,12 @@ The easiest way to develop — no port conflicts, everything pre-configured.
 After running `make seed`:
 - **Email:** doctor@example.com
 - **Password:** password123
-- **Tenant ID:** printed by the seed script — set as `NEXT_PUBLIC_TENANT_ID` in `web/.env.local`
+- **Tenant ID:** printed by the seed script — set as `VITE_TENANT_ID` in `frontend/.env.local`
 
 ## Development
 
 ```bash
-make dev-servers    # Start Go (air) + Next.js
+make dev-servers    # Start Go (air) + Vite
 make migrate-up     # Run database migrations
 make migrate-down   # Rollback migrations
 make sqlc           # Regenerate SQLC query code
@@ -106,8 +106,8 @@ internal/
 migrations/             # PostgreSQL migrations (golang-migrate)
 queries/                # SQLC query definitions
 scripts/                # Seed script
-web/                    # Next.js frontend
-  src/app/              # Pages (login, approvals)
+frontend/               # Vite + React frontend
+  src/pages/            # Pages (login, approvals)
   src/components/       # UI components
-  src/lib/              # API client, auth context
+  src/lib/              # API client, auth context, query hooks
 ```

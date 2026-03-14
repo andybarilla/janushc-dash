@@ -1,8 +1,8 @@
-"use client";
-
-import { useState, FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
+
+const TENANT_ID = import.meta.env.VITE_TENANT_ID || "";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -10,9 +10,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
-  const router = useRouter();
-
-  const tenantId = process.env.NEXT_PUBLIC_TENANT_ID || "";
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -20,8 +18,8 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await login(email, password, tenantId);
-      router.push("/approvals");
+      await login(email, password, TENANT_ID);
+      navigate("/approvals");
     } catch {
       setError("Invalid email or password");
     } finally {
@@ -33,12 +31,20 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="w-full max-w-sm">
         <h1 className="text-2xl font-bold text-center mb-8">emrai</h1>
-        <form onSubmit={handleSubmit} className="bg-white shadow rounded-lg p-6 space-y-4">
+        <form
+          onSubmit={handleSubmit}
+          className="bg-white shadow rounded-lg p-6 space-y-4"
+        >
           {error && (
-            <div className="bg-red-50 text-red-700 p-3 rounded text-sm">{error}</div>
+            <div className="bg-red-50 text-red-700 p-3 rounded text-sm">
+              {error}
+            </div>
           )}
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+            <label
+              htmlFor="email"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
               Email
             </label>
             <input
@@ -51,7 +57,10 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
               Password
             </label>
             <input
