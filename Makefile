@@ -1,4 +1,4 @@
-.PHONY: setup dev dev-all dev-up dev-down dev-nuke dev-servers frontend-dev build up down migrate-up migrate-down sqlc seed lint test
+.PHONY: setup dev dev-all dev-up dev-down dev-nuke dev-servers frontend-dev build up down dc-ps dc-logs dc-exec migrate-up migrate-down sqlc seed lint test
 
 # Load .env if present
 -include .env
@@ -58,6 +58,27 @@ dev:
 # Run Vite dev server
 frontend-dev:
 	cd frontend && npm run dev
+
+# ---------- Devcontainer helpers ----------
+
+DC_PROJECT = emrai_devcontainer
+DC_COMPOSE = $(COMPOSE) --project-name $(DC_PROJECT) -f .devcontainer/docker-compose.yml
+
+# Show devcontainer service status
+dc-ps:
+	$(DC_COMPOSE) ps
+
+# Tail devcontainer logs (usage: make dc-logs or make dc-logs SVC=postgres)
+dc-logs:
+	$(DC_COMPOSE) logs -f $(SVC)
+
+# Shell into devcontainer app (or other service: make dc-exec SVC=postgres)
+dc-exec:
+	$(DC_COMPOSE) exec $(or $(SVC),app) bash
+
+# Interactive psql shell
+dc-psql:
+	$(DC_COMPOSE) exec postgres psql -U $${POSTGRES_USER:-emrai} -d $${POSTGRES_DB:-emrai}
 
 # ---------- Docker (production-like) ----------
 
