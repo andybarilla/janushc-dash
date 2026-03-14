@@ -86,6 +86,13 @@ func main() {
 	}
 
 	fmt.Println("Sample approval items created")
-	fmt.Printf("\nSet this in your .env or frontend:\n")
-	fmt.Printf("  NEXT_PUBLIC_TENANT_ID=%s\n", tenantID)
+
+	// Write VITE_TENANT_ID to frontend/.env.local so the login page works
+	envLocal := fmt.Sprintf("VITE_TENANT_ID=%s\n", tenantID)
+	if err := os.WriteFile("frontend/.env.local", []byte(envLocal), 0644); err != nil {
+		fmt.Printf("Warning: could not write frontend/.env.local: %v\n", err)
+		fmt.Printf("Manually set: VITE_TENANT_ID=%s\n", tenantID)
+	} else {
+		fmt.Println("Wrote VITE_TENANT_ID to frontend/.env.local")
+	}
 }
