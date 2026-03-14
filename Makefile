@@ -62,7 +62,8 @@ frontend-dev:
 # ---------- Devcontainer helpers ----------
 
 DC_PROJECT = emrai_devcontainer
-DC_COMPOSE = $(COMPOSE) --project-name $(DC_PROJECT) -f .devcontainer/docker-compose.yml
+# Always use docker compose for devcontainer targets (devcontainer CLI uses docker, not podman)
+DC_COMPOSE = docker compose --project-name $(DC_PROJECT) -f .devcontainer/docker-compose.yml
 
 # Show devcontainer service status
 dc-ps:
