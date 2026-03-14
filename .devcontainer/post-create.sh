@@ -10,6 +10,9 @@ sed -i 's|@localhost:|@postgres:|g' .env
 # Normalize postgres port to container-internal default
 sed -i 's|@postgres:[0-9]*|@postgres:5432|g' .env
 
+# Re-export patched DATABASE_URL so migrate picks it up
+export $(grep -v '^#' .env | grep DATABASE_URL | xargs)
+
 # Wait for postgres to be ready
 echo "Waiting for Postgres..."
 until pg_isready -h postgres -U "${POSTGRES_USER:-emrai}" -q; do
