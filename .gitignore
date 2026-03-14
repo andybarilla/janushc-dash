@@ -4,3 +4,4 @@ tmp/
 *.exe
 web/node_modules/
 web/.next/
+.devcontainer/.env
