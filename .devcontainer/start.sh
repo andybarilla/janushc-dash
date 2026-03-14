@@ -1,8 +1,4 @@
 #!/bin/bash
-# Override ports to standard defaults — the host .env may have non-standard
-# ports (via env_file) that don't match the compose port mappings.
-export PORT=8080
-
 cd /workspaces/emrai
 
 # Wait for post-create.sh to finish (it creates this marker file)

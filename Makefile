@@ -9,7 +9,7 @@ dev-servers:
 	@echo "Starting Go backend (air)..."
 	@cd /workspaces/emrai && air &
 	@echo "Starting Next.js frontend..."
-	@cd web && npm run dev &
+	@cd web && PORT=$${NEXT_PORT:-3000} npm run dev &
 	@wait
 
 # Database migrations

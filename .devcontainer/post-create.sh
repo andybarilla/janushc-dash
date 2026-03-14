@@ -7,9 +7,8 @@ make setup
 # Patch .env for devcontainer hostnames (service names instead of localhost)
 sed -i 's|@localhost:|@postgres:|g' .env
 
-# Normalize ports to container-internal defaults (regardless of host-mapped ports in .env)
+# Normalize postgres port to container-internal default
 sed -i 's|@postgres:[0-9]*|@postgres:5432|g' .env
-sed -i 's|^PORT=.*|PORT=8080|' .env
 
 # Wait for postgres to be ready
 echo "Waiting for Postgres..."
