@@ -48,7 +48,7 @@ dev-servers: migrate-up
 	@echo "Starting Go API server and frontend..."
 	@trap 'kill 0' EXIT; \
 		go run github.com/air-verse/air@latest & \
-		cd frontend && VITE_PORT=$${NEXT_PORT:-3000} npm run dev -- --host & \
+		cd frontend && VITE_PORT=$${VITE_PORT:-3000} npm run dev -- --host & \
 		wait
 
 # Run Go API locally with live reload

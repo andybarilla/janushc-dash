@@ -11,7 +11,7 @@ services:
       DEVCONTAINER: "true"
     ports:
       - "${PORT:-8080}:${PORT:-8080}"
-      - "${NEXT_PORT:-3000}:${NEXT_PORT:-3000}"
+      - "${VITE_PORT:-3000}:${VITE_PORT:-3000}"
 
   postgres:
     image: postgres:16-alpine
