@@ -25,5 +25,8 @@ cd frontend && npm install && cd ..
 # Run migrations
 make migrate-up
 
+# Seed dev data
+make seed
+
 # Signal to start.sh that setup is complete
 touch /tmp/.devcontainer-ready

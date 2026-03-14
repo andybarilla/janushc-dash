@@ -81,6 +81,10 @@ dc-exec:
 dc-psql:
 	$(DC_COMPOSE) exec postgres psql -U $${POSTGRES_USER:-emrai} -d $${POSTGRES_DB:-emrai}
 
+# Seed dev data inside devcontainer
+dc-seed:
+	$(DC_COMPOSE) exec -w /workspaces/emrai app go run scripts/seed.go
+
 # ---------- Docker (production-like) ----------
 
 # Build Docker image
