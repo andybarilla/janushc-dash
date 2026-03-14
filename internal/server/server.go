@@ -12,20 +12,29 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/andybarilla/emrai/internal/approval"
+	"github.com/andybarilla/emrai/internal/auth"
 	"github.com/andybarilla/emrai/internal/config"
+	"github.com/andybarilla/emrai/internal/database"
 )
 
 type Server struct {
-	cfg    *config.Config
-	db     *pgxpool.Pool
-	router chi.Router
+	cfg             *config.Config
+	db              *pgxpool.Pool
+	router          chi.Router
+	queries         *database.Queries
+	authHandler     *auth.Handler
+	approvalHandler *approval.Handler
 }
 
-func New(cfg *config.Config, db *pgxpool.Pool) *Server {
+func New(cfg *config.Config, db *pgxpool.Pool, queries *database.Queries, authHandler *auth.Handler, approvalHandler *approval.Handler) *Server {
 	s := &Server{
-		cfg:    cfg,
-		db:     db,
-		router: chi.NewRouter(),
+		cfg:             cfg,
+		db:              db,
+		router:          chi.NewRouter(),
+		queries:         queries,
+		authHandler:     authHandler,
+		approvalHandler: approvalHandler,
 	}
 	s.setupMiddleware()
 	s.routes()
@@ -48,6 +57,17 @@ func (s *Server) setupMiddleware() {
 
 func (s *Server) routes() {
 	s.router.Get("/api/health", s.handleHealth)
+
+	// Public routes
+	s.router.Post("/api/auth/login", s.authHandler.HandleLogin)
+
+	// Protected routes
+	s.router.Group(func(r chi.Router) {
+		r.Use(auth.Middleware(s.cfg.JWTSecret))
+
+		r.Get("/api/approvals", s.approvalHandler.HandleListPending)
+		r.Post("/api/approvals/batch-approve", s.approvalHandler.HandleBatchApprove)
+	})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

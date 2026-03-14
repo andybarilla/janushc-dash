@@ -8,6 +8,34 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ApprovalBatch struct {
+	ID           pgtype.UUID        `json:"id"`
+	TenantID     pgtype.UUID        `json:"tenant_id"`
+	ApprovedBy   pgtype.UUID        `json:"approved_by"`
+	ApprovedAt   pgtype.Timestamptz `json:"approved_at"`
+	OrderCount   int32              `json:"order_count"`
+	FlaggedCount int32              `json:"flagged_count"`
+}
+
+type ApprovalItem struct {
+	ID            pgtype.UUID        `json:"id"`
+	BatchID       pgtype.UUID        `json:"batch_id"`
+	TenantID      pgtype.UUID        `json:"tenant_id"`
+	EmrOrderID    string             `json:"emr_order_id"`
+	PatientID     string             `json:"patient_id"`
+	PatientName   string             `json:"patient_name"`
+	ProcedureName string             `json:"procedure_name"`
+	Dosage        pgtype.Text        `json:"dosage"`
+	StaffName     pgtype.Text        `json:"staff_name"`
+	OrderDate     pgtype.Date        `json:"order_date"`
+	Flagged       bool               `json:"flagged"`
+	FlagReasons   []byte             `json:"flag_reasons"`
+	Status        string             `json:"status"`
+	ReviewedAt    pgtype.Timestamptz `json:"reviewed_at"`
+	ReviewedBy    pgtype.UUID        `json:"reviewed_by"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
 type AuditLog struct {
 	ID           pgtype.UUID        `json:"id"`
 	TenantID     pgtype.UUID        `json:"tenant_id"`
@@ -17,6 +45,19 @@ type AuditLog struct {
 	ResourceID   pgtype.Text        `json:"resource_id"`
 	Details      []byte             `json:"details"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+type Protocol struct {
+	ID                         pgtype.UUID        `json:"id"`
+	TenantID                   pgtype.UUID        `json:"tenant_id"`
+	Name                       string             `json:"name"`
+	ProcedureName              string             `json:"procedure_name"`
+	StandardDosage             pgtype.Text        `json:"standard_dosage"`
+	MaxLabAgeDays              int32              `json:"max_lab_age_days"`
+	RequiresEstablishedPatient bool               `json:"requires_established_patient"`
+	Active                     bool               `json:"active"`
+	CreatedAt                  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                  pgtype.Timestamptz `json:"updated_at"`
 }
 
 type RefreshToken struct {

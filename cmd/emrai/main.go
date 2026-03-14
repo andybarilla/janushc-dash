@@ -10,7 +10,10 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/andybarilla/emrai/internal/approval"
+	"github.com/andybarilla/emrai/internal/auth"
 	"github.com/andybarilla/emrai/internal/config"
+	"github.com/andybarilla/emrai/internal/database"
 	"github.com/andybarilla/emrai/internal/server"
 )
 
@@ -41,7 +44,12 @@ func main() {
 	}
 	defer pool.Close()
 
+	// Create dependencies
+	queries := database.New(pool)
+	authHandler := auth.NewHandler(queries, cfg.JWTSecret, cfg.JWTExpiry)
+	approvalHandler := approval.NewHandler(queries)
+
 	// Start server
-	srv := server.New(cfg, pool)
+	srv := server.New(cfg, pool, queries, authHandler, approvalHandler)
 	log.Fatal(srv.Start())
 }
