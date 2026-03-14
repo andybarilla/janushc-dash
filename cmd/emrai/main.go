@@ -20,7 +20,7 @@ func main() {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
-	// Run migrations (migrate/postgres driver expects postgres:// scheme)
+	// Run migrations
 	migrateURL := cfg.DatabaseURL
 	if strings.HasPrefix(migrateURL, "pgx://") {
 		migrateURL = strings.Replace(migrateURL, "pgx://", "postgres://", 1)
