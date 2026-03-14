@@ -1,4 +1,5 @@
 bin/
+tmp/
 .env
 *.exe
 web/node_modules/

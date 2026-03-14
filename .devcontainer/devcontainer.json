@@ -1,0 +1,24 @@
+{
+  "name": "emrai",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/emrai",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "22" }
+  },
+  "initializeCommand": "cp -n .env.example .env || true",
+  "forwardPorts": [8080, 3000],
+  "updateRemoteUserUID": false,
+  "remoteUser": "root",
+  "overrideCommand": false,
+  "postCreateCommand": ".devcontainer/post-create.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "dbaeumer.vscode-eslint",
+        "bradlc.vscode-tailwindcss"
+      ]
+    }
+  }
+}
