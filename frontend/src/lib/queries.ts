@@ -20,6 +20,23 @@ export function useApprovals() {
   });
 }
 
+interface SyncResponse {
+  synced_count: number;
+}
+
+export function useSync() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.fetch<SyncResponse>("/api/approvals/sync", {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["approvals"] });
+    },
+  });
+}
+
 export function useBatchApprove() {
   const queryClient = useQueryClient();
   return useMutation({
