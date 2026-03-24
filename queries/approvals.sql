@@ -1,21 +1,25 @@
 -- name: ListPendingApprovalItems :many
 SELECT id, batch_id, tenant_id, emr_order_id, patient_id, patient_name,
        procedure_name, dosage, staff_name, order_date, flagged, flag_reasons,
-       status, reviewed_at, reviewed_by, created_at
+       status, reviewed_at, reviewed_by, created_at,
+       encounter_id, department_id, order_type
 FROM approval_items
 WHERE tenant_id = $1 AND status IN ('pending', 'needs_review')
 ORDER BY flagged DESC, order_date ASC;
 
 -- name: UpsertApprovalItem :exec
-INSERT INTO approval_items (tenant_id, emr_order_id, patient_id, patient_name, procedure_name, dosage, staff_name, order_date, flagged, flag_reasons, status)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+INSERT INTO approval_items (tenant_id, emr_order_id, patient_id, patient_name, procedure_name, dosage, staff_name, order_date, flagged, flag_reasons, status, encounter_id, department_id, order_type)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 ON CONFLICT (tenant_id, emr_order_id) DO UPDATE SET
   patient_name = EXCLUDED.patient_name,
   dosage = EXCLUDED.dosage,
   staff_name = EXCLUDED.staff_name,
   flagged = EXCLUDED.flagged,
   flag_reasons = EXCLUDED.flag_reasons,
-  status = EXCLUDED.status;
+  status = EXCLUDED.status,
+  encounter_id = EXCLUDED.encounter_id,
+  department_id = EXCLUDED.department_id,
+  order_type = EXCLUDED.order_type;
 
 -- name: CreateApprovalBatch :one
 INSERT INTO approval_batches (tenant_id, approved_by, order_count, flagged_count)

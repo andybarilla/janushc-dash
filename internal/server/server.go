@@ -67,6 +67,7 @@ func (s *Server) routes() {
 
 		r.Get("/api/approvals", s.approvalHandler.HandleListPending)
 		r.Post("/api/approvals/batch-approve", s.approvalHandler.HandleBatchApprove)
+		r.Post("/api/approvals/sync", s.approvalHandler.HandleSync)
 	})
 }
 

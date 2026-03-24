@@ -3,20 +3,27 @@ package approval
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/andybarilla/emrai/internal/auth"
+	"github.com/andybarilla/emrai/internal/config"
 	"github.com/andybarilla/emrai/internal/database"
+	"github.com/andybarilla/emrai/internal/emr"
 )
 
 type Handler struct {
 	queries *database.Queries
+	emr     emr.EMR
+	cfg     *config.Config
 }
 
-func NewHandler(queries *database.Queries) *Handler {
-	return &Handler{queries: queries}
+func NewHandler(queries *database.Queries, emrClient emr.EMR, cfg *config.Config) *Handler {
+	return &Handler{queries: queries, emr: emrClient, cfg: cfg}
 }
 
 type approvalItemResponse struct {
@@ -87,9 +94,9 @@ type batchApproveRequest struct {
 }
 
 type batchApproveResponse struct {
-	BatchID      string `json:"batch_id"`
-	ApprovedCount int   `json:"approved_count"`
-	FlaggedCount  int   `json:"flagged_count"`
+	BatchID       string `json:"batch_id"`
+	ApprovedCount int    `json:"approved_count"`
+	FlaggedCount  int    `json:"flagged_count"`
 }
 
 func (h *Handler) HandleBatchApprove(w http.ResponseWriter, r *http.Request) {
@@ -170,6 +177,125 @@ func (h *Handler) HandleBatchApprove(w http.ResponseWriter, r *http.Request) {
 		ApprovedCount: len(req.ItemIDs),
 		FlaggedCount:  int(flaggedCount),
 	})
+}
+
+func (h *Handler) HandleSync(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	tenantUUID := pgtype.UUID{}
+	if err := tenantUUID.Scan(claims.TenantID); err != nil {
+		http.Error(w, "invalid tenant context", http.StatusBadRequest)
+		return
+	}
+
+	practiceID := h.cfg.AthenaPracticeID
+
+	// List clinical departments
+	departments, err := h.emr.ListDepartments(r.Context(), practiceID)
+	if err != nil {
+		log.Printf("sync: list departments error: %v", err)
+		http.Error(w, "failed to list departments", http.StatusInternalServerError)
+		return
+	}
+
+	// Load protocols for flagging
+	protocols, err := h.queries.ListProtocols(r.Context(), tenantUUID)
+	if err != nil {
+		log.Printf("sync: list protocols error: %v", err)
+		http.Error(w, "failed to list protocols", http.StatusInternalServerError)
+		return
+	}
+
+	nameCache := make(map[string]string)
+	syncedCount := 0
+
+	for _, dept := range departments {
+		for patientNum := 1; patientNum <= 10; patientNum++ {
+			patientID := strconv.Itoa(patientNum)
+
+			orders, err := h.emr.ListPatientOrders(r.Context(), practiceID, patientID, dept.ID, []string{"PROCEDURE"})
+			if err != nil {
+				log.Printf("sync: list orders for patient %s dept %s: %v", patientID, dept.ID, err)
+				continue
+			}
+
+			if len(orders) == 0 {
+				continue
+			}
+
+			// Get patient name (cached)
+			patientName, ok := nameCache[patientID]
+			if !ok {
+				patientName, err = h.emr.GetPatientName(r.Context(), practiceID, patientID)
+				if err != nil {
+					log.Printf("sync: get patient name %s: %v", patientID, err)
+					patientName = "Unknown"
+				}
+				nameCache[patientID] = patientName
+			}
+
+			for _, order := range orders {
+				// Build a temporary ApprovalItem for flagging
+				item := database.ApprovalItem{
+					ProcedureName: order.ProcedureName,
+				}
+				if order.Dosage != "" {
+					item.Dosage = pgtype.Text{String: order.Dosage, Valid: true}
+				}
+
+				reasons := CheckProtocols(item, protocols)
+				flagged := len(reasons) > 0
+
+				status := "pending"
+				if flagged {
+					status = "needs_review"
+				}
+
+				var flagReasonsJSON []byte
+				if len(reasons) > 0 {
+					flagReasonsJSON, _ = json.Marshal(reasons)
+				}
+
+				// Parse order date from MM/DD/YYYY
+				var orderDate pgtype.Date
+				if order.OrderDate != "" {
+					t, err := time.Parse("01/02/2006", order.OrderDate)
+					if err == nil {
+						orderDate = pgtype.Date{Time: t, Valid: true}
+					}
+				}
+
+				err := h.queries.UpsertApprovalItem(r.Context(), database.UpsertApprovalItemParams{
+					TenantID:      tenantUUID,
+					EmrOrderID:    order.ID,
+					PatientID:     order.PatientID,
+					PatientName:   patientName,
+					ProcedureName: order.ProcedureName,
+					Dosage:        pgtype.Text{String: order.Dosage, Valid: order.Dosage != ""},
+					StaffName:     pgtype.Text{String: order.StaffName, Valid: order.StaffName != ""},
+					OrderDate:     orderDate,
+					Flagged:       flagged,
+					FlagReasons:   flagReasonsJSON,
+					Status:        status,
+					EncounterID:   pgtype.Text{String: order.EncounterID, Valid: order.EncounterID != ""},
+					DepartmentID:  pgtype.Text{String: order.DepartmentID, Valid: order.DepartmentID != ""},
+					OrderType:     pgtype.Text{String: order.OrderType, Valid: order.OrderType != ""},
+				})
+				if err != nil {
+					log.Printf("sync: upsert order %s: %v", order.ID, err)
+					continue
+				}
+				syncedCount++
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{"synced_count": syncedCount})
 }
 
 func uuidToString(u pgtype.UUID) string {

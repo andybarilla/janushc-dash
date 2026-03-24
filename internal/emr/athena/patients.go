@@ -5,31 +5,31 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-
-	"github.com/andybarilla/emrai/internal/emr"
 )
 
-func (c *Client) GetPatientContext(ctx context.Context, practiceID, patientID string) (*emr.PatientContext, error) {
+func (c *Client) GetPatientName(ctx context.Context, practiceID, patientID string) (string, error) {
 	path := fmt.Sprintf("/v1/%s/patients/%s", practiceID, patientID)
 	resp, err := c.doRequest(ctx, "GET", path, nil)
 	if err != nil {
-		return nil, fmt.Errorf("get patient: %w", err)
+		return "", fmt.Errorf("get patient: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("get patient failed (%d): %s", resp.StatusCode, body)
+		return "", fmt.Errorf("get patient failed (%d): %s", resp.StatusCode, body)
 	}
 
-	var result struct {
-		PatientID string `json:"patientid"`
+	var patients []struct {
+		FirstName string `json:"firstname"`
+		LastName  string `json:"lastname"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode patient: %w", err)
+	if err := json.NewDecoder(resp.Body).Decode(&patients); err != nil {
+		return "", fmt.Errorf("decode patient: %w", err)
+	}
+	if len(patients) == 0 {
+		return "", fmt.Errorf("no patient data returned")
 	}
 
-	return &emr.PatientContext{
-		PatientID: result.PatientID,
-	}, nil
+	return patients[0].FirstName + " " + patients[0].LastName, nil
 }
