@@ -34,6 +34,9 @@ type ApprovalItem struct {
 	ReviewedAt    pgtype.Timestamptz `json:"reviewed_at"`
 	ReviewedBy    pgtype.UUID        `json:"reviewed_by"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	EncounterID   pgtype.Text        `json:"encounter_id"`
+	DepartmentID  pgtype.Text        `json:"department_id"`
+	OrderType     pgtype.Text        `json:"order_type"`
 }
 
 type AuditLog struct {

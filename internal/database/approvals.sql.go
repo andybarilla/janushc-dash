@@ -126,7 +126,8 @@ func (q *Queries) CreateProtocol(ctx context.Context, arg CreateProtocolParams) 
 const listPendingApprovalItems = `-- name: ListPendingApprovalItems :many
 SELECT id, batch_id, tenant_id, emr_order_id, patient_id, patient_name,
        procedure_name, dosage, staff_name, order_date, flagged, flag_reasons,
-       status, reviewed_at, reviewed_by, created_at
+       status, reviewed_at, reviewed_by, created_at,
+       encounter_id, department_id, order_type
 FROM approval_items
 WHERE tenant_id = $1 AND status IN ('pending', 'needs_review')
 ORDER BY flagged DESC, order_date ASC
@@ -158,6 +159,9 @@ func (q *Queries) ListPendingApprovalItems(ctx context.Context, tenantID pgtype.
 			&i.ReviewedAt,
 			&i.ReviewedBy,
 			&i.CreatedAt,
+			&i.EncounterID,
+			&i.DepartmentID,
+			&i.OrderType,
 		); err != nil {
 			return nil, err
 		}
@@ -208,15 +212,18 @@ func (q *Queries) ListProtocols(ctx context.Context, tenantID pgtype.UUID) ([]Pr
 }
 
 const upsertApprovalItem = `-- name: UpsertApprovalItem :exec
-INSERT INTO approval_items (tenant_id, emr_order_id, patient_id, patient_name, procedure_name, dosage, staff_name, order_date, flagged, flag_reasons, status)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+INSERT INTO approval_items (tenant_id, emr_order_id, patient_id, patient_name, procedure_name, dosage, staff_name, order_date, flagged, flag_reasons, status, encounter_id, department_id, order_type)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 ON CONFLICT (tenant_id, emr_order_id) DO UPDATE SET
   patient_name = EXCLUDED.patient_name,
   dosage = EXCLUDED.dosage,
   staff_name = EXCLUDED.staff_name,
   flagged = EXCLUDED.flagged,
   flag_reasons = EXCLUDED.flag_reasons,
-  status = EXCLUDED.status
+  status = EXCLUDED.status,
+  encounter_id = EXCLUDED.encounter_id,
+  department_id = EXCLUDED.department_id,
+  order_type = EXCLUDED.order_type
 `
 
 type UpsertApprovalItemParams struct {
@@ -231,6 +238,9 @@ type UpsertApprovalItemParams struct {
 	Flagged       bool        `json:"flagged"`
 	FlagReasons   []byte      `json:"flag_reasons"`
 	Status        string      `json:"status"`
+	EncounterID   pgtype.Text `json:"encounter_id"`
+	DepartmentID  pgtype.Text `json:"department_id"`
+	OrderType     pgtype.Text `json:"order_type"`
 }
 
 func (q *Queries) UpsertApprovalItem(ctx context.Context, arg UpsertApprovalItemParams) error {
@@ -246,6 +256,9 @@ func (q *Queries) UpsertApprovalItem(ctx context.Context, arg UpsertApprovalItem
 		arg.Flagged,
 		arg.FlagReasons,
 		arg.Status,
+		arg.EncounterID,
+		arg.DepartmentID,
+		arg.OrderType,
 	)
 	return err
 }
