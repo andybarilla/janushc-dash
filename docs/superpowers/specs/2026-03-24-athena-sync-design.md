@@ -94,7 +94,7 @@ Filter client-side: only return orders where `ordertype` matches the requested t
 GET /v1/{practiceId}/patients/{patientId}
 ```
 
-Returns array with one element. Extract `firstname` + `lastname`.
+**Note:** Returns a JSON **array** with one element (not an object). Decode as `[]struct{...}` and take index 0. Extract `firstname` + `lastname`.
 
 **`departments.go`** (new file) — Implement `ListDepartments`:
 
@@ -129,8 +129,9 @@ Flow:
 4. For each patient+department, call `ListPatientOrders` filtered to PROCEDURE type
 5. For each order, get patient name via `GetPatientName` (with caching — don't re-fetch for same patient)
 6. Run flagging logic against configured protocols
-7. Upsert into `approval_items` table
-8. Return count of synced items
+7. Parse `createddate` from Athena's `MM/DD/YYYY` format to `YYYY-MM-DD` for the `order_date DATE` column. If missing, use today's date.
+8. Upsert into `approval_items` table (include new `encounter_id`, `department_id`, `order_type` columns in upsert)
+9. Return count of synced items
 
 ### 5. Wire Athena Client into Approval Handler
 
@@ -172,7 +173,7 @@ Practice ID comes from `cfg.AthenaPracticeID` for the POC (single-tenant). In pr
 - `queries/approvals.sql` — update upsert and list queries for new columns
 - `internal/database/` — regenerate with `sqlc generate`
 - `internal/approval/handler.go` — add sync handler, accept EMR client + config
-- `internal/approval/flagger.go` — adapt to new Order/interface types if needed
+- `internal/approval/flagger.go` — for POC, stub out `PatientContext`-dependent checks (new patient, lab age). Only flag on "no matching protocol" and dosage mismatch. Re-enable clinical checks when we have richer patient data from Athena.
 - `internal/server/server.go` — add sync route
 - `cmd/emrai/main.go` — wire Athena client into approval handler
 - `frontend/src/lib/queries.ts` — add sync mutation
