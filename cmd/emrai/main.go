@@ -14,6 +14,7 @@ import (
 	"github.com/andybarilla/emrai/internal/auth"
 	"github.com/andybarilla/emrai/internal/config"
 	"github.com/andybarilla/emrai/internal/database"
+	"github.com/andybarilla/emrai/internal/emr/athena"
 	"github.com/andybarilla/emrai/internal/server"
 )
 
@@ -47,7 +48,8 @@ func main() {
 	// Create dependencies
 	queries := database.New(pool)
 	authHandler := auth.NewHandler(queries, cfg.JWTSecret, cfg.JWTExpiry)
-	approvalHandler := approval.NewHandler(queries)
+	athenaClient := athena.NewClient(cfg.AthenaBaseURL, cfg.AthenaClientID, cfg.AthenaClientSecret)
+	approvalHandler := approval.NewHandler(queries, athenaClient, cfg)
 
 	// Start server
 	srv := server.New(cfg, pool, queries, authHandler, approvalHandler)
