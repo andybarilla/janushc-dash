@@ -5,7 +5,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/andybarilla/emrai/internal/database"
+	"github.com/andybarilla/janushc-dash/internal/database"
 )
 
 func makeProtocol(procedureName, stdDosage string) database.Protocol {

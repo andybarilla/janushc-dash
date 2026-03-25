@@ -61,7 +61,7 @@ frontend-dev:
 
 # ---------- Devcontainer helpers ----------
 
-DC_PROJECT = emrai_devcontainer
+DC_PROJECT = janushc-dash_devcontainer
 # Always use docker compose for devcontainer targets (devcontainer CLI uses docker, not podman)
 DC_COMPOSE = docker compose --project-name $(DC_PROJECT) -f .devcontainer/docker-compose.yml
 
@@ -87,7 +87,7 @@ dc-nuke:
 
 # Seed dev data inside devcontainer
 dc-seed:
-	$(DC_COMPOSE) exec -w /workspaces/emrai app go run scripts/seed.go
+	$(DC_COMPOSE) exec -w /workspaces/janushc-dash app go run scripts/seed.go
 
 # ---------- Docker (production-like) ----------
 

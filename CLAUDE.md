@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-emrai is a physician workflow automation platform for independent practices. This monorepo contains a Go API backend, a Vite + React SPA frontend, and Docker Compose infrastructure.
+janushc-dash is a physician workflow automation platform for independent practices. This monorepo contains a Go API backend, a Vite + React SPA frontend, and Docker Compose infrastructure.
 
 ## Architecture Overview
 
@@ -31,7 +31,7 @@ emrai is a physician workflow automation platform for independent practices. Thi
 ## Project Structure
 
 ```
-cmd/emrai/          — Go entrypoint
+cmd/janushc-dash/   — Go entrypoint
 internal/           — Go packages (approval, auth, bedrock, config, database, emr, server)
 migrations/         — PostgreSQL migrations (golang-migrate)
 queries/            — sqlc SQL query files
@@ -45,20 +45,20 @@ scripts/            — Seed script
 <!-- rook -->
 ## Rook Workspace
 
-This project is managed by [Rook](https://github.com/andybarilla/rook), workspace name: `emrai`.
+This project is managed by [Rook](https://github.com/andybarilla/rook), workspace name: `janushc-dash`.
 
 ### Services
 
-- `api` — Go backend (air + migrations)
-- `frontend` — Vite dev server (Node 22)
+- `api` — build (.)
+- `frontend` — build (.)
 - `postgres` — postgres:16-alpine
 
 ### Commands
 
 ```bash
-rook up emrai              # Start all services
-rook down emrai            # Stop all services
-rook status emrai          # Show service status
-rook logs emrai <service>  # Tail service logs
+rook up janushc-dash              # Start all services
+rook down janushc-dash            # Stop all services
+rook status janushc-dash          # Show service status
+rook logs janushc-dash <service>  # Tail service logs
 ```
 <!-- /rook -->

@@ -1,4 +1,4 @@
-# emrai
+# janushc-dash
 
 Physician workflow automation platform for independent practices. Integrates with athenahealth (athenaOne) EMR to automate repetitive clinical and administrative tasks.
 
@@ -60,7 +60,7 @@ The easiest way to develop — no port conflicts, everything pre-configured.
 2. Run migrations and start the backend:
    ```bash
    make migrate-up
-   go run ./cmd/emrai
+   go run ./cmd/janushc-dash
    ```
 
 3. In another terminal, start the frontend:
@@ -93,7 +93,7 @@ make seed           # Seed dev data
 ## Project Structure
 
 ```
-cmd/emrai/              # Application entrypoint
+cmd/janushc-dash/       # Application entrypoint
 internal/
   approval/             # Batch approvals: flagging logic, HTTP handlers
   auth/                 # JWT, password hashing, middleware, context helpers

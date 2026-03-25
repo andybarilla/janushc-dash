@@ -7,7 +7,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/andybarilla/emrai/internal/emr"
+	"github.com/andybarilla/janushc-dash/internal/emr"
 )
 
 func (c *Client) ListDepartmentPatients(ctx context.Context, practiceID, departmentID string) ([]emr.Patient, error) {

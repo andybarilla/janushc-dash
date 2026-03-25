@@ -1,8 +1,8 @@
 {
-  "name": "emrai",
+  "name": "janushc-dash",
   "dockerComposeFile": "docker-compose.yml",
   "service": "app",
-  "workspaceFolder": "/workspaces/emrai",
+  "workspaceFolder": "/workspaces/janushc-dash",
   "features": {
     "ghcr.io/devcontainers/features/node:1": { "version": "22" }
   },

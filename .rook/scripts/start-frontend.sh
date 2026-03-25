@@ -1,5 +1,5 @@
 #!/bin/sh
-cd /workspaces/emrai/frontend
+cd /workspaces/janushc-dash/frontend
 
 npm install
 npm run dev -- --host

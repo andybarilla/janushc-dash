@@ -1,4 +1,4 @@
-module github.com/andybarilla/emrai
+module github.com/andybarilla/janushc-dash
 
 go 1.25.0
 
