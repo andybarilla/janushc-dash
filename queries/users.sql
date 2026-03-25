@@ -12,3 +12,8 @@ WHERE id = $1;
 INSERT INTO users (tenant_id, email, password_hash, role, name)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING id, tenant_id, email, password_hash, role, name, created_at, updated_at;
+
+-- name: GetUserByEmailOnly :one
+SELECT id, tenant_id, email, password_hash, role, name, created_at, updated_at
+FROM users
+WHERE email = $1;

@@ -96,6 +96,39 @@ func (q *Queries) GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) 
 	return i, err
 }
 
+const getUserByEmailOnly = `-- name: GetUserByEmailOnly :one
+SELECT id, tenant_id, email, password_hash, role, name, created_at, updated_at
+FROM users
+WHERE email = $1
+`
+
+type GetUserByEmailOnlyRow struct {
+	ID           pgtype.UUID        `json:"id"`
+	TenantID     pgtype.UUID        `json:"tenant_id"`
+	Email        string             `json:"email"`
+	PasswordHash string             `json:"password_hash"`
+	Role         string             `json:"role"`
+	Name         string             `json:"name"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) GetUserByEmailOnly(ctx context.Context, email string) (GetUserByEmailOnlyRow, error) {
+	row := q.db.QueryRow(ctx, getUserByEmailOnly, email)
+	var i GetUserByEmailOnlyRow
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Role,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getUserByID = `-- name: GetUserByID :one
 SELECT id, tenant_id, email, password_hash, role, name, created_at, updated_at
 FROM users
