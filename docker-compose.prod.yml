@@ -2,8 +2,10 @@ services:
   api:
     build: .
     ports:
-      - "127.0.0.1:${PORT:-8080}:8080"
+      - "127.0.0.1:${EXTERNAL_PORT:-8080}:8080"
     env_file: .env
+    environment:
+      PORT: "8080"
     depends_on:
       postgres:
         condition: service_healthy
