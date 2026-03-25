@@ -21,5 +21,6 @@ COPY --from=builder /janushc-dash /janushc-dash
 COPY --from=builder /go/bin/migrate /usr/local/bin/migrate
 COPY --from=frontend /build/dist /app/frontend/dist
 COPY migrations /app/migrations
+WORKDIR /app
 EXPOSE 8080
 CMD ["/janushc-dash"]
