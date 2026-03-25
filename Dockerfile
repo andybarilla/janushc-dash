@@ -9,6 +9,7 @@ RUN CGO_ENABLED=0 go build -o /janushc-dash ./cmd/janushc-dash
 RUN go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.18.1
 
 FROM node:22-alpine AS frontend
+ARG VITE_GOOGLE_CLIENT_ID
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
