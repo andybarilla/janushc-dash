@@ -8,12 +8,13 @@ export interface NavItem {
 }
 
 export const navItems: NavItem[] = [
-  { path: "/approvals", label: "Approvals", icon: CheckCircle, roles: ["physician"] },
-  { path: "/scribe", label: "Scribe", icon: Mic, roles: ["physician"] },
-  { path: "/docs", label: "Docs", icon: FileText, roles: ["physician", "staff"] },
-  { path: "/settings", label: "Settings", icon: Settings, roles: ["physician", "staff"] },
+  { path: "/approvals", label: "Approvals", icon: CheckCircle, roles: ["physician", "admin"] },
+  { path: "/scribe", label: "Scribe", icon: Mic, roles: ["physician", "admin"] },
+  { path: "/docs", label: "Docs", icon: FileText, roles: ["physician", "staff", "admin"] },
+  { path: "/settings", label: "Settings", icon: Settings, roles: ["physician", "staff", "admin"] },
 ];
 
 export function getNavForRole(role: string): NavItem[] {
+  if (role === "admin") return navItems; // admin sees everything
   return navItems.filter((item) => item.roles.includes(role));
 }
