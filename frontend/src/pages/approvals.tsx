@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useApprovals, useBatchApprove, useSync } from "@/lib/queries";
 import { ApprovalCard } from "@/components/approval-card";
 import { BatchActions } from "@/components/batch-actions";
@@ -8,9 +8,15 @@ import { RefreshCw } from "lucide-react";
 export default function ApprovalsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [syncMessage, setSyncMessage] = useState("");
+  const [patientFilter, _setPatientFilter] = useState("");
+  const [procedureFilter, _setProcedureFilter] = useState("");
   const { data: items = [], isLoading, error } = useApprovals();
   const batchApprove = useBatchApprove();
   const sync = useSync();
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [patientFilter, procedureFilter]);
 
   const toggleItem = (id: string) => {
     setSelectedIds((prev) => {
@@ -35,7 +41,17 @@ export default function ApprovalsPage() {
     });
   };
 
-  const unflaggedItems = items.filter((i) => !i.flagged);
+  const filteredItems = items.filter((item) => {
+    const matchesPatient =
+      !patientFilter ||
+      item.patient_name.toLowerCase().includes(patientFilter.toLowerCase());
+    const matchesProcedure =
+      !procedureFilter ||
+      item.procedure_name.toLowerCase().includes(procedureFilter.toLowerCase());
+    return matchesPatient && matchesProcedure;
+  });
+
+  const unflaggedItems = filteredItems.filter((i) => !i.flagged);
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
@@ -66,17 +82,17 @@ export default function ApprovalsPage() {
       ) : (
         <>
           <BatchActions
-            totalCount={items.length}
+            totalCount={filteredItems.length}
             selectedCount={selectedIds.size}
             unflaggedCount={unflaggedItems.length}
             onSelectAllUnflagged={() => setSelectedIds(new Set(unflaggedItems.map((i) => i.id)))}
-            onSelectAll={() => setSelectedIds(new Set(items.map((i) => i.id)))}
+            onSelectAll={() => setSelectedIds(new Set(filteredItems.map((i) => i.id)))}
             onDeselectAll={() => setSelectedIds(new Set())}
             onApprove={handleApprove}
             approving={batchApprove.isPending}
           />
           <div className="space-y-3">
-            {items.map((item) => (
+            {filteredItems.map((item) => (
               <ApprovalCard key={item.id} item={item} selected={selectedIds.has(item.id)} onToggle={toggleItem} />
             ))}
           </div>
