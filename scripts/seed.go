@@ -10,8 +10,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
-
-	"github.com/andybarilla/emrai/internal/auth"
 )
 
 func main() {
@@ -30,11 +28,10 @@ func main() {
 
 	ctx := context.Background()
 
-	// Create tenant
 	var tenantID string
 	err = pool.QueryRow(ctx,
 		`INSERT INTO tenants (name, athena_practice_id)
-		 VALUES ('Dev Practice', '195900')
+		 VALUES ('Janus Healthcare', '195900')
 		 ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
 		 RETURNING id`,
 	).Scan(&tenantID)
@@ -43,20 +40,30 @@ func main() {
 	}
 	fmt.Printf("Tenant ID: %s\n", tenantID)
 
-	// Create physician user
-	hash, _ := auth.HashPassword("password123")
-	_, err = pool.Exec(ctx,
-		`INSERT INTO users (tenant_id, email, password_hash, role, name)
-		 VALUES ($1, 'doctor@example.com', $2, 'physician', 'Dr. Example')
-		 ON CONFLICT (tenant_id, email) DO NOTHING`,
-		tenantID, hash,
-	)
-	if err != nil {
-		log.Fatalf("create user: %v", err)
+	users := []struct {
+		email string
+		role  string
+		name  string
+	}{
+		{"doctor@janushc.com", "physician", "Dr. Jane Barilla"},
+		{"sarah@janushc.com", "staff", "Sarah Thompson"},
+		{"kim@janushc.com", "staff", "Kim Rodriguez"},
+		{"alex@janushc.com", "staff", "Alex Chen"},
 	}
-	fmt.Println("User: doctor@example.com / password123")
 
-	// Create protocols
+	for _, u := range users {
+		_, err = pool.Exec(ctx,
+			`INSERT INTO users (tenant_id, email, password_hash, role, name)
+			 VALUES ($1, $2, '', $3, $4)
+			 ON CONFLICT (tenant_id, email) DO UPDATE SET name = EXCLUDED.name, role = EXCLUDED.role`,
+			tenantID, u.email, u.role, u.name,
+		)
+		if err != nil {
+			log.Fatalf("create user %s: %v", u.email, err)
+		}
+		fmt.Printf("User: %s (%s) — %s\n", u.name, u.role, u.email)
+	}
+
 	_, err = pool.Exec(ctx,
 		`INSERT INTO protocols (tenant_id, name, procedure_name, standard_dosage, max_lab_age_days, requires_established_patient)
 		 VALUES
@@ -69,30 +76,5 @@ func main() {
 		log.Fatalf("create protocols: %v", err)
 	}
 	fmt.Println("Protocols created")
-
-	// Create sample approval items
-	_, err = pool.Exec(ctx,
-		`INSERT INTO approval_items (tenant_id, emr_order_id, patient_id, patient_name, procedure_name, dosage, staff_name, order_date, flagged, flag_reasons, status)
-		 VALUES
-		   ($1, 'ORD-001', 'PAT-001', 'Jane Doe', 'Testosterone Pellet', '200mg', 'Sarah', '2026-03-13', false, null, 'pending'),
-		   ($1, 'ORD-002', 'PAT-002', 'Alex Martinez', 'Estradiol Injection', '20mg', 'Sarah', '2026-03-13', false, null, 'pending'),
-		   ($1, 'ORD-003', 'PAT-003', 'Pat Robinson', 'Testosterone Pellet', '250mg', 'Kim', '2026-03-13', true, '["dosage differs from standard (250mg vs 200mg)"]', 'needs_review'),
-		   ($1, 'ORD-004', 'PAT-004', 'Maria Santos', 'Estradiol Injection', '20mg', 'Sarah', '2026-03-13', false, null, 'pending')
-		 ON CONFLICT (tenant_id, emr_order_id) DO NOTHING`,
-		tenantID,
-	)
-	if err != nil {
-		log.Fatalf("create sample items: %v", err)
-	}
-
-	fmt.Println("Sample approval items created")
-
-	// Write VITE_TENANT_ID to frontend/.env.local so the login page works
-	envLocal := fmt.Sprintf("VITE_TENANT_ID=%s\n", tenantID)
-	if err := os.WriteFile("frontend/.env.local", []byte(envLocal), 0644); err != nil {
-		fmt.Printf("Warning: could not write frontend/.env.local: %v\n", err)
-		fmt.Printf("Manually set: VITE_TENANT_ID=%s\n", tenantID)
-	} else {
-		fmt.Println("Wrote VITE_TENANT_ID to frontend/.env.local")
-	}
+	fmt.Println("\nDone. Users can sign in with their @janushc.com Google accounts.")
 }

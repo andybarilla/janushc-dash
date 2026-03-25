@@ -47,7 +47,8 @@ func main() {
 
 	// Create dependencies
 	queries := database.New(pool)
-	authHandler := auth.NewHandler(queries, cfg.JWTSecret, cfg.JWTExpiry)
+	googleVerifier := auth.NewGoogleVerifier(cfg.GoogleClientID, cfg.GoogleAllowedDomain)
+	authHandler := auth.NewHandler(queries, googleVerifier, cfg.JWTSecret, cfg.JWTExpiry)
 	athenaClient := athena.NewClient(cfg.AthenaBaseURL, cfg.AthenaClientID, cfg.AthenaClientSecret)
 	approvalHandler := approval.NewHandler(queries, athenaClient, cfg)
 

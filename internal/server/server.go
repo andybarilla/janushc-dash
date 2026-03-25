@@ -59,12 +59,13 @@ func (s *Server) routes() {
 	s.router.Get("/api/health", s.handleHealth)
 
 	// Public routes
-	s.router.Post("/api/auth/login", s.authHandler.HandleLogin)
+	s.router.Post("/api/auth/google", s.authHandler.HandleGoogleLogin)
 
 	// Protected routes
 	s.router.Group(func(r chi.Router) {
 		r.Use(auth.Middleware(s.cfg.JWTSecret))
 
+		r.Get("/api/auth/me", s.authHandler.HandleMe)
 		r.Get("/api/approvals", s.approvalHandler.HandleListPending)
 		r.Post("/api/approvals/batch-approve", s.approvalHandler.HandleBatchApprove)
 		r.Post("/api/approvals/sync", s.approvalHandler.HandleSync)

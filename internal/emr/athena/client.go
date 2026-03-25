@@ -48,12 +48,18 @@ func (c *Client) getToken() (string, error) {
 	// NOTE: Uses client_credentials for sandbox/dev access.
 	// Production requires authorization_code flow with per-physician tokens.
 	data := url.Values{
-		"grant_type":    {"client_credentials"},
-		"client_id":     {c.clientID},
-		"client_secret": {c.clientSecret},
+		"grant_type": {"client_credentials"},
+		"scope":      {"athena/service/Athenanet.MDP.*"},
 	}
 
-	resp, err := c.httpClient.PostForm(c.baseURL+"/oauth2/v1/token", data)
+	req, err := http.NewRequest("POST", c.baseURL+"/oauth2/v1/token", strings.NewReader(data.Encode()))
+	if err != nil {
+		return "", fmt.Errorf("token request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(c.clientID, c.clientSecret)
+
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("token request: %w", err)
 	}

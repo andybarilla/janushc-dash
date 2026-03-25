@@ -21,9 +21,15 @@ type Department struct {
 	Name string `json:"name"`
 }
 
+type Patient struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 type EMR interface {
 	ListPatientOrders(ctx context.Context, practiceID, patientID, departmentID string, orderTypes []string) ([]Order, error)
 	ListDepartments(ctx context.Context, practiceID string) ([]Department, error)
+	ListDepartmentPatients(ctx context.Context, practiceID, departmentID string) ([]Patient, error)
 	GetPatientName(ctx context.Context, practiceID, patientID string) (string, error)
 	ApproveOrders(ctx context.Context, practiceID string, orderIDs []string) ([]string, error)
 }
