@@ -15,7 +15,7 @@ export $(grep -v '^#' .env | grep DATABASE_URL | xargs)
 
 # Wait for postgres to be ready
 echo "Waiting for Postgres..."
-until pg_isready -h postgres -U "${POSTGRES_USER:-emrai}" -q; do
+until pg_isready -h postgres -U "${POSTGRES_USER:-janushc-dash}" -q; do
   sleep 1
 done
 

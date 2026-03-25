@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/andybarilla/emrai/internal/emr"
+	"github.com/andybarilla/janushc-dash/internal/emr"
 )
 
 func (c *Client) ListPatientOrders(ctx context.Context, practiceID, patientID, departmentID string, orderTypes []string) ([]emr.Order, error) {

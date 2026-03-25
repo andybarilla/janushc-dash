@@ -10,12 +10,12 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/andybarilla/emrai/internal/approval"
-	"github.com/andybarilla/emrai/internal/auth"
-	"github.com/andybarilla/emrai/internal/config"
-	"github.com/andybarilla/emrai/internal/database"
-	"github.com/andybarilla/emrai/internal/emr/athena"
-	"github.com/andybarilla/emrai/internal/server"
+	"github.com/andybarilla/janushc-dash/internal/approval"
+	"github.com/andybarilla/janushc-dash/internal/auth"
+	"github.com/andybarilla/janushc-dash/internal/config"
+	"github.com/andybarilla/janushc-dash/internal/database"
+	"github.com/andybarilla/janushc-dash/internal/emr/athena"
+	"github.com/andybarilla/janushc-dash/internal/server"
 )
 
 func main() {

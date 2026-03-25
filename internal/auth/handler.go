@@ -8,7 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/andybarilla/emrai/internal/database"
+	"github.com/andybarilla/janushc-dash/internal/database"
 )
 
 type Handler struct {

@@ -4,8 +4,8 @@ services:
       context: ..
       dockerfile: .devcontainer/Dockerfile
     volumes:
-      - ..:/workspaces/emrai:cached
-    command: /workspaces/emrai/.devcontainer/start.sh
+      - ..:/workspaces/janushc-dash:cached
+    command: /workspaces/janushc-dash/.devcontainer/start.sh
     env_file: ../.env
     environment:
       DEVCONTAINER: "true"

@@ -1,5 +1,5 @@
 #!/bin/bash
-cd /workspaces/emrai
+cd /workspaces/janushc-dash
 
 # Wait for postgres to accept connections
 echo "Waiting for postgres..."

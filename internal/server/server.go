@@ -12,10 +12,10 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/andybarilla/emrai/internal/approval"
-	"github.com/andybarilla/emrai/internal/auth"
-	"github.com/andybarilla/emrai/internal/config"
-	"github.com/andybarilla/emrai/internal/database"
+	"github.com/andybarilla/janushc-dash/internal/approval"
+	"github.com/andybarilla/janushc-dash/internal/auth"
+	"github.com/andybarilla/janushc-dash/internal/config"
+	"github.com/andybarilla/janushc-dash/internal/database"
 )
 
 type Server struct {

@@ -9,10 +9,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/andybarilla/emrai/internal/auth"
-	"github.com/andybarilla/emrai/internal/config"
-	"github.com/andybarilla/emrai/internal/database"
-	"github.com/andybarilla/emrai/internal/emr"
+	"github.com/andybarilla/janushc-dash/internal/auth"
+	"github.com/andybarilla/janushc-dash/internal/config"
+	"github.com/andybarilla/janushc-dash/internal/database"
+	"github.com/andybarilla/janushc-dash/internal/emr"
 )
 
 type Handler struct {

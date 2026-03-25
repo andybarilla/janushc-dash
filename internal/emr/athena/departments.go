@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/andybarilla/emrai/internal/emr"
+	"github.com/andybarilla/janushc-dash/internal/emr"
 )
 
 func (c *Client) ListDepartments(ctx context.Context, practiceID string) ([]emr.Department, error) {

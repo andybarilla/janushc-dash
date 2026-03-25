@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/andybarilla/emrai/internal/database"
+	"github.com/andybarilla/janushc-dash/internal/database"
 )
 
 func CheckProtocols(item database.ApprovalItem, protocols []database.Protocol) []string {

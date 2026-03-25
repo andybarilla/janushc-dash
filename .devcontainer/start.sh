@@ -1,5 +1,5 @@
 #!/bin/bash
-cd /workspaces/emrai
+cd /workspaces/janushc-dash
 
 # Wait for post-create.sh to finish (it creates this marker file)
 echo "Waiting for post-create to finish..."
