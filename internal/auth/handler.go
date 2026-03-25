@@ -13,22 +13,22 @@ import (
 
 type Handler struct {
 	queries   *database.Queries
+	google    *GoogleVerifier
 	jwtSecret string
 	jwtExpiry time.Duration
 }
 
-func NewHandler(queries *database.Queries, jwtSecret string, jwtExpiry time.Duration) *Handler {
+func NewHandler(queries *database.Queries, google *GoogleVerifier, jwtSecret string, jwtExpiry time.Duration) *Handler {
 	return &Handler{
 		queries:   queries,
+		google:    google,
 		jwtSecret: jwtSecret,
 		jwtExpiry: jwtExpiry,
 	}
 }
 
-type loginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	TenantID string `json:"tenant_id"`
+type googleLoginRequest struct {
+	IDToken string `json:"id_token"`
 }
 
 type loginResponse struct {
@@ -36,30 +36,22 @@ type loginResponse struct {
 	ExpiresIn   int    `json:"expires_in"`
 }
 
-func (h *Handler) HandleLogin(w http.ResponseWriter, r *http.Request) {
-	var req loginRequest
+func (h *Handler) HandleGoogleLogin(w http.ResponseWriter, r *http.Request) {
+	var req googleLoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	tenantUUID := pgtype.UUID{}
-	if err := tenantUUID.Scan(req.TenantID); err != nil {
-		http.Error(w, "invalid tenant_id", http.StatusBadRequest)
-		return
-	}
-
-	user, err := h.queries.GetUserByEmail(r.Context(), database.GetUserByEmailParams{
-		TenantID: tenantUUID,
-		Email:    req.Email,
-	})
+	info, err := h.google.Verify(req.IDToken)
 	if err != nil {
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		http.Error(w, "invalid google token: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	if !CheckPassword(req.Password, user.PasswordHash) {
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+	user, err := h.queries.GetUserByEmailOnly(r.Context(), info.Email)
+	if err != nil {
+		http.Error(w, "not registered", http.StatusForbidden)
 		return
 	}
 
@@ -76,6 +68,41 @@ func (h *Handler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(loginResponse{
 		AccessToken: token,
 		ExpiresIn:   int(h.jwtExpiry.Seconds()),
+	})
+}
+
+type meResponse struct {
+	ID    string `json:"id"`
+	Email string `json:"email"`
+	Name  string `json:"name"`
+	Role  string `json:"role"`
+}
+
+func (h *Handler) HandleMe(w http.ResponseWriter, r *http.Request) {
+	claims := ClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userUUID := pgtype.UUID{}
+	if err := userUUID.Scan(claims.UserID); err != nil {
+		http.Error(w, "invalid user context", http.StatusBadRequest)
+		return
+	}
+
+	user, err := h.queries.GetUserByID(r.Context(), userUUID)
+	if err != nil {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(meResponse{
+		ID:    uuidToString(user.ID),
+		Email: user.Email,
+		Name:  user.Name,
+		Role:  user.Role,
 	})
 }
 

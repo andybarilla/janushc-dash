@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -210,16 +209,19 @@ func (h *Handler) HandleSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	nameCache := make(map[string]string)
 	syncedCount := 0
 
 	for _, dept := range departments {
-		for patientNum := 1; patientNum <= 10; patientNum++ {
-			patientID := strconv.Itoa(patientNum)
+		patients, err := h.emr.ListDepartmentPatients(r.Context(), practiceID, dept.ID)
+		if err != nil {
+			log.Printf("sync: list patients for dept %s: %v", dept.ID, err)
+			continue
+		}
 
-			orders, err := h.emr.ListPatientOrders(r.Context(), practiceID, patientID, dept.ID, []string{"PROCEDURE"})
+		for _, patient := range patients {
+			orders, err := h.emr.ListPatientOrders(r.Context(), practiceID, patient.ID, dept.ID, []string{"PROCEDURE"})
 			if err != nil {
-				log.Printf("sync: list orders for patient %s dept %s: %v", patientID, dept.ID, err)
+				log.Printf("sync: list orders for patient %s dept %s: %v", patient.ID, dept.ID, err)
 				continue
 			}
 
@@ -227,16 +229,7 @@ func (h *Handler) HandleSync(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			// Get patient name (cached)
-			patientName, ok := nameCache[patientID]
-			if !ok {
-				patientName, err = h.emr.GetPatientName(r.Context(), practiceID, patientID)
-				if err != nil {
-					log.Printf("sync: get patient name %s: %v", patientID, err)
-					patientName = "Unknown"
-				}
-				nameCache[patientID] = patientName
-			}
+			patientName := patient.Name
 
 			for _, order := range orders {
 				// Build a temporary ApprovalItem for flagging

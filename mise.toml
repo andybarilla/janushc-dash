@@ -1,0 +1,3 @@
+[tools]
+devcontainer-cli = "latest"
+go = "1.25"

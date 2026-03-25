@@ -41,3 +41,24 @@ frontend/           — Vite + React + TypeScript SPA
   src/pages/        — Page components (login, approvals)
 scripts/            — Seed script
 ```
+
+<!-- rook -->
+## Rook Workspace
+
+This project is managed by [Rook](https://github.com/andybarilla/rook), workspace name: `emrai`.
+
+### Services
+
+- `api` — Go backend (air + migrations)
+- `frontend` — Vite dev server (Node 22)
+- `postgres` — postgres:16-alpine
+
+### Commands
+
+```bash
+rook up emrai              # Start all services
+rook down emrai            # Stop all services
+rook status emrai          # Show service status
+rook logs emrai <service>  # Tail service logs
+```
+<!-- /rook -->

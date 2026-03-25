@@ -1,0 +1,41 @@
+name: emrai
+type: single
+services:
+    api:
+        command: /workspaces/emrai/.rook/scripts/start-api.sh
+        ports:
+            - 8080
+        environment:
+            CORS_ORIGIN: http://{{.Host.frontend}}:{{.Port.frontend}}
+            DATABASE_URL: postgres://emrai:emrai@{{.Host.postgres}}:{{.Port.postgres}}/emrai?sslmode=disable
+            DEVCONTAINER: "true"
+        depends_on:
+            - postgres
+        volumes:
+            - ./.:/workspaces/emrai:cached
+        env_file: .env
+        build: .
+        dockerfile: .rook/Dockerfile.api
+    frontend:
+        command: /workspaces/emrai/.rook/scripts/start-frontend.sh
+        ports:
+            - 3000
+        environment:
+            API_URL: http://{{.Host.api}}:{{.Port.api}}
+            VITE_PORT: "3000"
+        depends_on:
+            - api
+        volumes:
+            - ./.:/workspaces/emrai:cached
+        build: .
+        dockerfile: .rook/Dockerfile.frontend
+    postgres:
+        image: postgres:16-alpine
+        ports:
+            - 5432
+        environment:
+            POSTGRES_DB: emrai
+            POSTGRES_PASSWORD: emrai
+            POSTGRES_USER: emrai
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
