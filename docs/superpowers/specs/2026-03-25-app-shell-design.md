@@ -22,28 +22,30 @@ Pre-created accounts — no self-registration.
 4. Backend verifies the token:
    - Validate signature via Google's `oauth2/v3/tokeninfo` or `google.golang.org/api/idtoken`
    - Check `hd` (hosted domain) claim is `janushc.com`
-   - Look up user by email in the database
+   - Look up user by email alone (add `GetUserByEmailOnly` SQLC query — single-tenant, no tenant_id needed for lookup)
    - If no user found → reject (403 — not registered)
+   - Derive tenant_id from the matched user record for the JWT claims
 5. Backend returns an emrai JWT (same format as current — userID, tenantID, role in claims)
 6. Frontend stores token in localStorage (same as current)
 
 ### Endpoints
 
 - `POST /api/auth/google` — accepts `{id_token}`, returns `{access_token, expires_in}`
-- `GET /api/auth/me` — returns current user's `{id, email, name, role}` from JWT claims
+- `GET /api/auth/me` — returns current user's `{id, email, name, role}` by looking up user ID from JWT claims in the database (JWT only has uid/tid/role — need DB for email/name)
 - **Remove:** `POST /api/auth/login` (email/password)
 
 ### User Management
 
-Users are pre-created via seed script with `@janushc.com` emails and assigned roles. No passwords stored. The `password_hash` column becomes unused (keep the column, just don't populate).
+Users are pre-created via seed script with `@janushc.com` emails, real names, and assigned roles. No passwords stored. The `password_hash` column becomes unused (keep the column, just don't populate).
+
+Seed data must populate the `name` field (e.g., "Dr. Jane Doe") — the user menu and avatar display it. Role strings must be exactly `"physician"` or `"staff"` to match the nav config filtering.
 
 ### Google OAuth Config
 
 New env vars:
 - `GOOGLE_CLIENT_ID` — from Google Cloud Console (OAuth 2.0 client, Web application type)
 - `GOOGLE_ALLOWED_DOMAIN` — `janushc.com`
-
-The Google Client ID is also needed on the frontend (it's public — safe to embed).
+- `VITE_GOOGLE_CLIENT_ID` — same value as `GOOGLE_CLIENT_ID`, exposed to the frontend at build time (Vite convention for client-side env vars)
 
 ## App Shell Layout
 
@@ -121,6 +123,10 @@ Install **shadcn/ui** for consistent components:
 - `frontend/src/components/layout/theme-toggle.tsx` — dark/light toggle with localStorage
 - `frontend/src/components/layout/user-menu.tsx` — avatar dropdown with sign out
 - `internal/auth/google.go` — Google ID token verification
+
+## SQLC Queries to Add
+
+- `GetUserByEmailOnly` — `SELECT ... FROM users WHERE email = $1` (no tenant_id filter — single-tenant lookup for Google auth)
 
 ## Files to Modify
 
