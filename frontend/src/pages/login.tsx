@@ -13,9 +13,9 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="w-full max-w-sm text-center">
-        <h1 className="text-2xl font-bold mb-2">Janus Healthcare</h1>
+        <h1 className="text-2xl font-bold mb-2 text-foreground">Janus Healthcare</h1>
         <p className="text-muted-foreground text-sm mb-8">Sign in to continue</p>
-        <div className="bg-card shadow rounded-lg p-6 flex flex-col items-center gap-4">
+        <div className="bg-card border border-border shadow rounded-lg p-6 flex flex-col items-center gap-4">
           {error && (
             <div className="bg-destructive/10 text-destructive p-3 rounded text-sm w-full">
               {error}
