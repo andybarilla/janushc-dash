@@ -8,8 +8,8 @@ import { RefreshCw } from "lucide-react";
 export default function ApprovalsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [syncMessage, setSyncMessage] = useState("");
-  const [patientFilter, _setPatientFilter] = useState("");
-  const [procedureFilter, _setProcedureFilter] = useState("");
+  const [patientFilter, setPatientFilter] = useState("");
+  const [procedureFilter, setProcedureFilter] = useState("");
   const { data: items = [], isLoading, error } = useApprovals();
   const batchApprove = useBatchApprove();
   const sync = useSync();
@@ -81,6 +81,22 @@ export default function ApprovalsPage() {
         </div>
       ) : (
         <>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              placeholder="Filter by patient name..."
+              value={patientFilter}
+              onChange={(e) => setPatientFilter(e.target.value)}
+              className="flex-1 bg-card border border-border rounded-lg px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <input
+              type="text"
+              placeholder="Filter by procedure..."
+              value={procedureFilter}
+              onChange={(e) => setProcedureFilter(e.target.value)}
+              className="flex-1 bg-card border border-border rounded-lg px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
           <BatchActions
             totalCount={filteredItems.length}
             selectedCount={selectedIds.size}
@@ -91,11 +107,17 @@ export default function ApprovalsPage() {
             onApprove={handleApprove}
             approving={batchApprove.isPending}
           />
-          <div className="space-y-3">
-            {filteredItems.map((item) => (
-              <ApprovalCard key={item.id} item={item} selected={selectedIds.has(item.id)} onToggle={toggleItem} />
-            ))}
-          </div>
+          {filteredItems.length === 0 ? (
+            <div className="text-center text-muted-foreground py-8 text-sm">
+              No items match your filters.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredItems.map((item) => (
+                <ApprovalCard key={item.id} item={item} selected={selectedIds.has(item.id)} onToggle={toggleItem} />
+              ))}
+            </div>
+          )}
         </>
       )}
     </div>
