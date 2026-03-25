@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -229,7 +230,15 @@ func (h *Handler) HandleSync(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			patientName := patient.Name
+			patientName := strings.TrimSpace(patient.Name)
+			if patientName == "" {
+				name, err := h.emr.GetPatientName(r.Context(), practiceID, patient.ID)
+				if err != nil {
+					log.Printf("sync: get patient name for %s: %v", patient.ID, err)
+				} else {
+					patientName = strings.TrimSpace(name)
+				}
+			}
 
 			for _, order := range orders {
 				// Build a temporary ApprovalItem for flagging
