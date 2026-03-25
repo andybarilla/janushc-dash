@@ -2,15 +2,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-emrai}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-emrai}
-      POSTGRES_DB: ${POSTGRES_DB:-emrai}
+      POSTGRES_USER: ${POSTGRES_USER:-janushc-dash}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-janushc-dash}
+      POSTGRES_DB: ${POSTGRES_DB:-janushc-dash}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-emrai}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-janushc-dash}"]
       interval: 5s
       timeout: 5s
       retries: 5

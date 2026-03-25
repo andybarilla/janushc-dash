@@ -35,7 +35,7 @@ dev-nuke:
 # Run everything: infra, migrations, Go API, and Vite dev server
 dev-all: dev-up
 	@echo "Waiting for postgres..."
-	@until $(COMPOSE) -f docker-compose.dev.yml exec -T postgres pg_isready -U emrai > /dev/null 2>&1; do sleep 0.5; done
+	@until $(COMPOSE) -f docker-compose.dev.yml exec -T postgres pg_isready -U janushc-dash > /dev/null 2>&1; do sleep 0.5; done
 	@$(MAKE) migrate-up
 	@echo "Starting API server and frontend dev server..."
 	@trap 'kill 0' EXIT; \
@@ -79,7 +79,7 @@ dc-exec:
 
 # Interactive psql shell
 dc-psql:
-	$(DC_COMPOSE) exec postgres psql -U $${POSTGRES_USER:-emrai} -d $${POSTGRES_DB:-emrai}
+	$(DC_COMPOSE) exec postgres psql -U $${POSTGRES_USER:-janushc-dash} -d $${POSTGRES_DB:-janushc-dash}
 
 # Tear down devcontainer and remove volumes (full reset)
 dc-nuke:

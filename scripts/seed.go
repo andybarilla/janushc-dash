@@ -17,7 +17,7 @@ func main() {
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://emrai:emrai@localhost:5432/emrai?sslmode=disable"
+		dbURL = "postgres://janushc-dash:janushc-dash@localhost:5432/janushc-dash?sslmode=disable"
 	}
 
 	pool, err := pgxpool.New(context.Background(), dbURL)

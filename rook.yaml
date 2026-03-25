@@ -7,7 +7,7 @@ services:
             - 8080
         environment:
             CORS_ORIGIN: http://{{.Host.frontend}}:{{.Port.frontend}}
-            DATABASE_URL: postgres://janushc-dash:emrai@{{.Host.postgres}}:{{.Port.postgres}}/emrai?sslmode=disable
+            DATABASE_URL: postgres://janushc-dash:janushc-dash@{{.Host.postgres}}:{{.Port.postgres}}/janushc-dash?sslmode=disable
             DEVCONTAINER: "true"
         depends_on:
             - postgres
@@ -23,6 +23,7 @@ services:
         environment:
             API_URL: http://{{.Host.api}}:{{.Port.api}}
             VITE_PORT: "3000"
+        env_file: .env
         depends_on:
             - api
         volumes:
