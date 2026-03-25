@@ -20,26 +20,26 @@ export function BatchActions({
   approving,
 }: BatchActionsProps) {
   return (
-    <div className="flex items-center justify-between bg-white border rounded-lg p-4">
+    <div className="flex items-center justify-between bg-card border border-border rounded-lg p-4">
       <div className="flex items-center gap-3">
-        <span className="text-sm text-gray-600">
+        <span className="text-sm text-muted-foreground">
           {selectedCount} of {totalCount} selected
         </span>
         <button
           onClick={onSelectAllUnflagged}
-          className="text-sm text-blue-600 hover:text-blue-700"
+          className="text-sm text-primary hover:text-primary/80"
         >
           Select all standard ({unflaggedCount})
         </button>
         <button
           onClick={onSelectAll}
-          className="text-sm text-blue-600 hover:text-blue-700"
+          className="text-sm text-primary hover:text-primary/80"
         >
           Select all
         </button>
         <button
           onClick={onDeselectAll}
-          className="text-sm text-gray-500 hover:text-gray-600"
+          className="text-sm text-muted-foreground hover:text-foreground"
         >
           Clear
         </button>

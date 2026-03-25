@@ -1,6 +1,21 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 
+interface UserProfile {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+}
+
+export function useCurrentUser(enabled = true) {
+  return useQuery({
+    queryKey: ["currentUser"],
+    queryFn: () => api.fetch<UserProfile>("/api/auth/me"),
+    enabled,
+  });
+}
+
 export interface ApprovalItem {
   id: string;
   patient_name: string;

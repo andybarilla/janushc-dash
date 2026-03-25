@@ -1,85 +1,45 @@
-import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { useNavigate, Navigate } from "react-router-dom";
+import { GoogleLogin } from "@react-oauth/google";
 import { useAuth } from "@/lib/auth";
 
-const TENANT_ID = import.meta.env.VITE_TENANT_ID || "";
-
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { loginWithGoogle, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-
-    try {
-      await login(email, password, TENANT_ID);
-      navigate("/approvals");
-    } catch {
-      setError("Invalid email or password");
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (isAuthenticated) return <Navigate to="/approvals" replace />;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="w-full max-w-sm">
-        <h1 className="text-2xl font-bold text-center mb-8">emrai</h1>
-        <form
-          onSubmit={handleSubmit}
-          className="bg-white shadow rounded-lg p-6 space-y-4"
-        >
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="w-full max-w-sm text-center">
+        <h1 className="text-2xl font-bold mb-2">Janus Healthcare</h1>
+        <p className="text-muted-foreground text-sm mb-8">Sign in to continue</p>
+        <div className="bg-card shadow rounded-lg p-6 flex flex-col items-center gap-4">
           {error && (
-            <div className="bg-red-50 text-red-700 p-3 rounded text-sm">
+            <div className="bg-destructive/10 text-destructive p-3 rounded text-sm w-full">
               {error}
             </div>
           )}
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full border rounded px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full border rounded px-3 py-2 text-sm"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 text-white py-2 rounded text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? "Signing in..." : "Sign in"}
-          </button>
-        </form>
+          <GoogleLogin
+            onSuccess={async (response) => {
+              if (!response.credential) {
+                setError("No credential received from Google");
+                return;
+              }
+              try {
+                await loginWithGoogle(response.credential);
+                navigate("/approvals");
+              } catch {
+                setError("Sign in failed. Make sure your @janushc.com account is registered.");
+              }
+            }}
+            onError={() => setError("Google sign in failed")}
+            theme="filled_black"
+            size="large"
+            width="280"
+          />
+        </div>
       </div>
     </div>
   );
