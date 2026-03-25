@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -70,6 +73,9 @@ func (s *Server) routes() {
 		r.Post("/api/approvals/batch-approve", s.approvalHandler.HandleBatchApprove)
 		r.Post("/api/approvals/sync", s.approvalHandler.HandleSync)
 	})
+
+	// SPA static file serving
+	s.router.NotFound(s.spaHandler("frontend/dist"))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -82,6 +88,32 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "ok")
+}
+
+func (s *Server) spaHandler(distDir string) http.HandlerFunc {
+	fs := http.FileServer(http.Dir(distDir))
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Only serve GET/HEAD for static files
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		path := filepath.Clean(r.URL.Path)
+		if strings.HasPrefix(path, "/api/") {
+			http.NotFound(w, r)
+			return
+		}
+
+		// Check if the file exists on disk; if not, serve index.html for SPA routing
+		fullPath := filepath.Join(distDir, path)
+		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+			http.ServeFile(w, r, filepath.Join(distDir, "index.html"))
+			return
+		}
+
+		fs.ServeHTTP(w, r)
+	}
 }
 
 func (s *Server) Router() chi.Router {
