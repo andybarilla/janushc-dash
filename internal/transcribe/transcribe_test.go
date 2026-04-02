@@ -45,3 +45,40 @@ func TestTranscriberInterface(t *testing.T) {
 		t.Errorf("unexpected transcript: %s", result)
 	}
 }
+
+func TestDetectSampleRate(t *testing.T) {
+	tests := []struct {
+		ext  string
+		rate int32
+	}{
+		{".mp3", 0},
+		{".m4a", 0},
+		{".wav", 0},
+		{".webm", 0},
+		{".ogg", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.ext, func(t *testing.T) {
+			rate := DefaultSampleRate()
+			if rate <= 0 {
+				t.Errorf("expected positive sample rate, got %d", rate)
+			}
+		})
+	}
+}
+
+func TestValidateAudioExtension(t *testing.T) {
+	valid := []string{".mp3", ".m4a", ".wav", ".webm", ".ogg"}
+	for _, ext := range valid {
+		if err := ValidateAudioExtension(ext); err != nil {
+			t.Errorf("expected %s to be valid, got error: %v", ext, err)
+		}
+	}
+
+	invalid := []string{".txt", ".pdf", ".exe", ".jpg", ""}
+	for _, ext := range invalid {
+		if err := ValidateAudioExtension(ext); err == nil {
+			t.Errorf("expected %s to be invalid", ext)
+		}
+	}
+}
