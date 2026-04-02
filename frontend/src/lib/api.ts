@@ -54,6 +54,36 @@ class ApiClient {
 
     return res.json();
   }
+
+  async upload<T>(path: string, formData: FormData): Promise<T> {
+    const headers: Record<string, string> = {};
+
+    const token = this.getToken();
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    // Do NOT set Content-Type — the browser sets it with the multipart boundary
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+
+    if (res.status === 401) {
+      this.setToken(null);
+      window.location.href = "/login";
+      throw new Error("Unauthorized");
+    }
+
+    if (!res.ok) {
+      const text = await res.text();
+      const err: ApiError = { status: res.status, message: text };
+      throw err;
+    }
+
+    return res.json();
+  }
 }
 
 export const api = new ApiClient();
