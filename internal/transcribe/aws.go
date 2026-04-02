@@ -44,9 +44,9 @@ func (c *Client) Transcribe(ctx context.Context, audio *AudioInput) (string, err
 	}
 
 	stream := resp.GetStream()
-	defer stream.Close()
 
-	// Send audio chunks in a goroutine
+	// Send audio chunks in a goroutine. The goroutine owns closing the stream
+	// to signal end-of-audio to the server.
 	sendErr := make(chan error, 1)
 	go func() {
 		defer stream.Close()

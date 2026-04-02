@@ -28,10 +28,6 @@ interface CreateSessionRequest {
   department_id: string;
 }
 
-interface ProcessRequest {
-  transcript: string;
-}
-
 export function useScribeSessions() {
   return useQuery({
     queryKey: ["scribeSessions"],
@@ -54,20 +50,6 @@ export function useCreateScribeSession() {
       api.fetch<ScribeSession>("/api/scribe/sessions", {
         method: "POST",
         body: JSON.stringify(req),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["scribeSessions"] });
-    },
-  });
-}
-
-export function useProcessScribeSession() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, transcript }: { id: string; transcript: string }) =>
-      api.fetch<ScribeSession>(`/api/scribe/sessions/${id}/process`, {
-        method: "POST",
-        body: JSON.stringify({ transcript } as ProcessRequest),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["scribeSessions"] });

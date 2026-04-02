@@ -108,6 +108,11 @@ export default function ScribePage() {
                 {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(1)} MB)
               </p>
             )}
+            {uploadAudio.isError && (
+              <p className="text-xs text-red-500">
+                Upload failed: {uploadAudio.error instanceof Error ? uploadAudio.error.message : "Unknown error"}
+              </p>
+            )}
             <div className="flex gap-2">
               <Button
                 onClick={handleUpload}

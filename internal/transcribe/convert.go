@@ -1,6 +1,8 @@
 package transcribe
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os/exec"
@@ -31,9 +33,11 @@ func ValidateAudioExtension(ext string) error {
 
 // ConvertToFLAC converts audio from any supported format to FLAC via ffmpeg.
 // Reads from src and returns a reader of FLAC-encoded audio at 16kHz mono.
+// The context is used to kill the ffmpeg process on cancellation/timeout.
 // The caller must call the returned cleanup function when done reading.
-func ConvertToFLAC(src io.Reader) (io.ReadCloser, func(), error) {
-	cmd := exec.Command("ffmpeg",
+func ConvertToFLAC(ctx context.Context, src io.Reader) (io.ReadCloser, func(), error) {
+	var stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, "ffmpeg",
 		"-i", "pipe:0",
 		"-f", "flac",
 		"-ar", "16000",
@@ -41,6 +45,7 @@ func ConvertToFLAC(src io.Reader) (io.ReadCloser, func(), error) {
 		"pipe:1",
 	)
 	cmd.Stdin = src
+	cmd.Stderr = &stderr
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -53,7 +58,9 @@ func ConvertToFLAC(src io.Reader) (io.ReadCloser, func(), error) {
 
 	cleanup := func() {
 		stdout.Close()
-		cmd.Wait()
+		if err := cmd.Wait(); err != nil {
+			fmt.Fprintf(&stderr, "ffmpeg exit: %v", err)
+		}
 	}
 
 	return stdout, cleanup, nil

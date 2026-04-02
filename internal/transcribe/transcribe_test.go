@@ -46,24 +46,10 @@ func TestTranscriberInterface(t *testing.T) {
 	}
 }
 
-func TestDetectSampleRate(t *testing.T) {
-	tests := []struct {
-		ext  string
-		rate int32
-	}{
-		{".mp3", 0},
-		{".m4a", 0},
-		{".wav", 0},
-		{".webm", 0},
-		{".ogg", 0},
-	}
-	for _, tt := range tests {
-		t.Run(tt.ext, func(t *testing.T) {
-			rate := DefaultSampleRate()
-			if rate <= 0 {
-				t.Errorf("expected positive sample rate, got %d", rate)
-			}
-		})
+func TestDefaultSampleRate(t *testing.T) {
+	rate := DefaultSampleRate()
+	if rate != 16000 {
+		t.Errorf("expected 16000, got %d", rate)
 	}
 }
 

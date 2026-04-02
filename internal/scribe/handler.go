@@ -350,7 +350,7 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	// Convert to FLAC via ffmpeg
-	flacReader, cleanup, err := transcribe.ConvertToFLAC(file)
+	flacReader, cleanup, err := transcribe.ConvertToFLAC(r.Context(), file)
 	if err != nil {
 		http.Error(w, "failed to convert audio", http.StatusInternalServerError)
 		return
