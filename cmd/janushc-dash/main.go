@@ -18,6 +18,7 @@ import (
 	"github.com/andybarilla/janushc-dash/internal/emr/athena"
 	"github.com/andybarilla/janushc-dash/internal/scribe"
 	"github.com/andybarilla/janushc-dash/internal/server"
+	"github.com/andybarilla/janushc-dash/internal/transcribe"
 )
 
 func main() {
@@ -60,9 +61,15 @@ func main() {
 		log.Fatalf("failed to create bedrock client: %v", err)
 	}
 
+	// Create transcribe client
+	transcribeClient, err := transcribe.NewClient(context.Background(), cfg.AWSRegion)
+	if err != nil {
+		log.Fatalf("failed to create transcribe client: %v", err)
+	}
+
 	// Create scribe dependencies
 	scribeProcessor := scribe.NewProcessor(bedrockClient, athenaClient)
-	scribeHandler := scribe.NewHandler(queries, scribeProcessor, cfg)
+	scribeHandler := scribe.NewHandler(queries, scribeProcessor, cfg, transcribeClient)
 
 	// Start server
 	srv := server.New(cfg, pool, queries, authHandler, approvalHandler, scribeHandler)
