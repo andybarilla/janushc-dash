@@ -12,9 +12,11 @@ import (
 
 	"github.com/andybarilla/janushc-dash/internal/approval"
 	"github.com/andybarilla/janushc-dash/internal/auth"
+	"github.com/andybarilla/janushc-dash/internal/bedrock"
 	"github.com/andybarilla/janushc-dash/internal/config"
 	"github.com/andybarilla/janushc-dash/internal/database"
 	"github.com/andybarilla/janushc-dash/internal/emr/athena"
+	"github.com/andybarilla/janushc-dash/internal/scribe"
 	"github.com/andybarilla/janushc-dash/internal/server"
 )
 
@@ -52,7 +54,17 @@ func main() {
 	athenaClient := athena.NewClient(cfg.AthenaBaseURL, cfg.AthenaClientID, cfg.AthenaClientSecret)
 	approvalHandler := approval.NewHandler(queries, athenaClient, cfg)
 
+	// Create bedrock client
+	bedrockClient, err := bedrock.NewClient(context.Background(), cfg.AWSRegion, cfg.BedrockModelID)
+	if err != nil {
+		log.Fatalf("failed to create bedrock client: %v", err)
+	}
+
+	// Create scribe dependencies
+	scribeProcessor := scribe.NewProcessor(bedrockClient, athenaClient)
+	scribeHandler := scribe.NewHandler(queries, scribeProcessor, cfg)
+
 	// Start server
-	srv := server.New(cfg, pool, queries, authHandler, approvalHandler)
+	srv := server.New(cfg, pool, queries, authHandler, approvalHandler, scribeHandler)
 	log.Fatal(srv.Start())
 }
