@@ -19,6 +19,17 @@ func (m *mockStream) Transcribe(ctx context.Context, audio *AudioInput) (string,
 	return m.transcript, nil
 }
 
+func TestNewClient(t *testing.T) {
+	client, err := NewClient(context.Background(), "us-east-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if client == nil {
+		t.Fatal("expected non-nil client")
+	}
+	var _ Transcriber = client // compile-time interface check
+}
+
 func TestTranscriberInterface(t *testing.T) {
 	mock := &mockStream{transcript: "Provider: Hello. Patient: Hi."}
 	var _ Transcriber = mock // compile-time interface check
