@@ -1,21 +1,24 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   useScribeSessions,
   useCreateScribeSession,
-  useProcessScribeSession,
+  useUploadScribeAudio,
 } from "@/lib/scribe-queries";
 import { Button } from "@/components/ui/button";
+
+const ACCEPTED_FORMATS = ".mp3,.m4a,.wav,.webm,.ogg";
 
 export default function ScribePage() {
   const [patientId, setPatientId] = useState("");
   const [encounterId, setEncounterId] = useState("");
   const [departmentId, setDepartmentId] = useState("");
-  const [transcript, setTranscript] = useState("");
   const [activeSessionId, setActiveSessionId] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: sessions = [], isLoading } = useScribeSessions();
   const createSession = useCreateScribeSession();
-  const processSession = useProcessScribeSession();
+  const uploadAudio = useUploadScribeAudio();
 
   const handleCreate = async () => {
     const session = await createSession.mutateAsync({
@@ -26,14 +29,15 @@ export default function ScribePage() {
     setActiveSessionId(session.id);
   };
 
-  const handleProcess = async () => {
-    if (!activeSessionId || !transcript) return;
-    await processSession.mutateAsync({
+  const handleUpload = async () => {
+    if (!activeSessionId || !selectedFile) return;
+    await uploadAudio.mutateAsync({
       id: activeSessionId,
-      transcript,
+      file: selectedFile,
     });
-    setTranscript("");
+    setSelectedFile(null);
     setActiveSessionId("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const statusColor: Record<string, string> = {
@@ -47,10 +51,9 @@ export default function ScribePage() {
     <div className="max-w-3xl mx-auto space-y-6">
       <h2 className="text-lg font-semibold">Scribe</h2>
 
-      {/* Create session + submit transcript */}
       <div className="space-y-3 bg-card border border-border rounded-lg p-4">
         <h3 className="text-sm font-medium text-muted-foreground">
-          {activeSessionId ? "Submit Transcript" : "New Session"}
+          {activeSessionId ? "Upload Audio" : "New Session"}
         </h3>
 
         {!activeSessionId ? (
@@ -80,7 +83,12 @@ export default function ScribePage() {
             </div>
             <Button
               onClick={handleCreate}
-              disabled={!patientId || !encounterId || !departmentId || createSession.isPending}
+              disabled={
+                !patientId ||
+                !encounterId ||
+                !departmentId ||
+                createSession.isPending
+              }
               size="sm"
             >
               {createSession.isPending ? "Creating..." : "Create Session"}
@@ -88,23 +96,39 @@ export default function ScribePage() {
           </>
         ) : (
           <>
-            <textarea
-              placeholder="Paste transcript here..."
-              value={transcript}
-              onChange={(e) => setTranscript(e.target.value)}
-              rows={8}
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-y"
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ACCEPTED_FORMATS}
+              onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+              className="block w-full text-sm text-foreground file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border file:border-border file:text-sm file:font-medium file:bg-background file:text-foreground hover:file:bg-muted"
             />
+            {selectedFile && (
+              <p className="text-xs text-muted-foreground">
+                {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(1)} MB)
+              </p>
+            )}
+            {uploadAudio.isError && (
+              <p className="text-xs text-red-500">
+                Upload failed: {uploadAudio.error instanceof Error ? uploadAudio.error.message : "Unknown error"}
+              </p>
+            )}
             <div className="flex gap-2">
               <Button
-                onClick={handleProcess}
-                disabled={!transcript || processSession.isPending}
+                onClick={handleUpload}
+                disabled={!selectedFile || uploadAudio.isPending}
                 size="sm"
               >
-                {processSession.isPending ? "Processing..." : "Process Transcript"}
+                {uploadAudio.isPending
+                  ? "Transcribing & Processing..."
+                  : "Upload & Process"}
               </Button>
               <Button
-                onClick={() => setActiveSessionId("")}
+                onClick={() => {
+                  setActiveSessionId("");
+                  setSelectedFile(null);
+                  if (fileInputRef.current) fileInputRef.current.value = "";
+                }}
                 variant="outline"
                 size="sm"
               >
@@ -115,13 +139,18 @@ export default function ScribePage() {
         )}
       </div>
 
-      {/* Session history */}
       <div className="space-y-3">
-        <h3 className="text-sm font-medium text-muted-foreground">Session History</h3>
+        <h3 className="text-sm font-medium text-muted-foreground">
+          Session History
+        </h3>
         {isLoading ? (
-          <div className="text-center text-muted-foreground py-8">Loading...</div>
+          <div className="text-center text-muted-foreground py-8">
+            Loading...
+          </div>
         ) : sessions.length === 0 ? (
-          <div className="text-center text-muted-foreground py-8">No sessions yet.</div>
+          <div className="text-center text-muted-foreground py-8">
+            No sessions yet.
+          </div>
         ) : (
           <div className="space-y-2">
             {sessions.map((session) => (
@@ -131,13 +160,16 @@ export default function ScribePage() {
               >
                 <div className="space-y-1">
                   <div className="text-sm">
-                    Patient {session.patient_id} — Encounter {session.encounter_id}
+                    Patient {session.patient_id} — Encounter{" "}
+                    {session.encounter_id}
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {new Date(session.created_at).toLocaleString()}
                   </div>
                 </div>
-                <span className={`text-xs font-medium ${statusColor[session.status] || ""}`}>
+                <span
+                  className={`text-xs font-medium ${statusColor[session.status] || ""}`}
+                >
                   {session.status}
                 </span>
               </div>

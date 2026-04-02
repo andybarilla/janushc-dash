@@ -80,6 +80,7 @@ func (s *Server) routes() {
 		r.Get("/api/scribe/sessions", s.scribeHandler.HandleList)
 		r.Get("/api/scribe/sessions/{id}", s.scribeHandler.HandleGet)
 		r.Post("/api/scribe/sessions/{id}/process", s.scribeHandler.HandleProcess)
+		r.With(middleware.Timeout(5 * time.Minute)).Post("/api/scribe/sessions/{id}/upload", s.scribeHandler.HandleUpload)
 	})
 
 	// SPA static file serving
