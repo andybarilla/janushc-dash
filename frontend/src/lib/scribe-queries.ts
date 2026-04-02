@@ -74,3 +74,20 @@ export function useProcessScribeSession() {
     },
   });
 }
+
+export function useUploadScribeAudio() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, file }: { id: string; file: File }) => {
+      const formData = new FormData();
+      formData.append("audio", file);
+      return api.upload<ScribeSession>(
+        `/api/scribe/sessions/${id}/upload`,
+        formData
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["scribeSessions"] });
+    },
+  });
+}
