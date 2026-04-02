@@ -19,6 +19,7 @@ import (
 	"github.com/andybarilla/janushc-dash/internal/auth"
 	"github.com/andybarilla/janushc-dash/internal/config"
 	"github.com/andybarilla/janushc-dash/internal/database"
+	"github.com/andybarilla/janushc-dash/internal/scribe"
 )
 
 type Server struct {
@@ -28,9 +29,10 @@ type Server struct {
 	queries         *database.Queries
 	authHandler     *auth.Handler
 	approvalHandler *approval.Handler
+	scribeHandler   *scribe.Handler
 }
 
-func New(cfg *config.Config, db *pgxpool.Pool, queries *database.Queries, authHandler *auth.Handler, approvalHandler *approval.Handler) *Server {
+func New(cfg *config.Config, db *pgxpool.Pool, queries *database.Queries, authHandler *auth.Handler, approvalHandler *approval.Handler, scribeHandler *scribe.Handler) *Server {
 	s := &Server{
 		cfg:             cfg,
 		db:              db,
@@ -38,6 +40,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, queries *database.Queries, authHa
 		queries:         queries,
 		authHandler:     authHandler,
 		approvalHandler: approvalHandler,
+		scribeHandler:   scribeHandler,
 	}
 	s.setupMiddleware()
 	s.routes()
@@ -72,6 +75,11 @@ func (s *Server) routes() {
 		r.Get("/api/approvals", s.approvalHandler.HandleListPending)
 		r.Post("/api/approvals/batch-approve", s.approvalHandler.HandleBatchApprove)
 		r.Post("/api/approvals/sync", s.approvalHandler.HandleSync)
+
+		r.Post("/api/scribe/sessions", s.scribeHandler.HandleCreate)
+		r.Get("/api/scribe/sessions", s.scribeHandler.HandleList)
+		r.Get("/api/scribe/sessions/{id}", s.scribeHandler.HandleGet)
+		r.Post("/api/scribe/sessions/{id}/process", s.scribeHandler.HandleProcess)
 	})
 
 	// SPA static file serving

@@ -71,6 +71,23 @@ type RefreshToken struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+type ScribeSession struct {
+	ID           pgtype.UUID        `json:"id"`
+	TenantID     pgtype.UUID        `json:"tenant_id"`
+	UserID       pgtype.UUID        `json:"user_id"`
+	PatientID    string             `json:"patient_id"`
+	EncounterID  string             `json:"encounter_id"`
+	DepartmentID string             `json:"department_id"`
+	Status       string             `json:"status"`
+	Transcript   pgtype.Text        `json:"transcript"`
+	AiOutput     []byte             `json:"ai_output"`
+	ErrorMessage pgtype.Text        `json:"error_message"`
+	StartedAt    pgtype.Timestamptz `json:"started_at"`
+	StoppedAt    pgtype.Timestamptz `json:"stopped_at"`
+	CompletedAt  pgtype.Timestamptz `json:"completed_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
 type Tenant struct {
 	ID                    pgtype.UUID        `json:"id"`
 	Name                  string             `json:"name"`

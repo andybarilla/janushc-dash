@@ -6,6 +6,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { getNavForRole } from "@/components/layout/nav-config";
 import LoginPage from "@/pages/login";
 import ApprovalsPage from "@/pages/approvals";
+import ScribePage from "@/pages/scribe";
 
 function AuthenticatedLayout() {
   const { isAuthenticated, setUser } = useAuth();
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route element={<AuthenticatedLayout />}>
           <Route path="/approvals" element={<ApprovalsPage />} />
+          <Route path="/scribe" element={<ScribePage />} />
           <Route path="*" element={<DefaultRedirect />} />
         </Route>
       </Routes>
