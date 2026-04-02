@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"mime/multipart"
 	"net/http"
+	"path/filepath"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -12,16 +15,38 @@ import (
 	"github.com/andybarilla/janushc-dash/internal/auth"
 	"github.com/andybarilla/janushc-dash/internal/config"
 	"github.com/andybarilla/janushc-dash/internal/database"
+	"github.com/andybarilla/janushc-dash/internal/transcribe"
 )
 
 type Handler struct {
-	queries   *database.Queries
-	processor *Processor
-	cfg       *config.Config
+	queries     *database.Queries
+	processor   *Processor
+	cfg         *config.Config
+	transcriber transcribe.Transcriber
 }
 
-func NewHandler(queries *database.Queries, processor *Processor, cfg *config.Config) *Handler {
-	return &Handler{queries: queries, processor: processor, cfg: cfg}
+func NewHandler(queries *database.Queries, processor *Processor, cfg *config.Config, transcriber transcribe.Transcriber) *Handler {
+	return &Handler{queries: queries, processor: processor, cfg: cfg, transcriber: transcriber}
+}
+
+const maxUploadSize = 100 << 20 // 100 MB
+
+// parseAudioUpload extracts and validates the audio file from a multipart request.
+func parseAudioUpload(r *http.Request, maxSize int64) (multipart.File, string, error) {
+	r.Body = http.MaxBytesReader(nil, r.Body, maxSize)
+
+	file, header, err := r.FormFile("audio")
+	if err != nil {
+		return nil, "", fmt.Errorf("missing or invalid audio file: %w", err)
+	}
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	if err := transcribe.ValidateAudioExtension(ext); err != nil {
+		file.Close()
+		return nil, "", err
+	}
+
+	return file, ext, nil
 }
 
 type createSessionRequest struct {
@@ -265,6 +290,136 @@ func (h *Handler) HandleProcess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Write to athena (non-blocking — if it fails, session is still complete with output cached)
+	if writeErr := h.processor.WriteToAthena(r.Context(), h.cfg.AthenaPracticeID, session.EncounterID, output); writeErr != nil {
+		log.Printf("scribe athena write error for session %s: %v", sessionID, writeErr)
+	}
+
+	// Re-fetch session to return updated state
+	updated, err := h.queries.GetScribeSession(r.Context(), database.GetScribeSessionParams{
+		ID:       sessionUUID,
+		TenantID: tenantUUID,
+	})
+	if err != nil {
+		http.Error(w, "failed to fetch updated session", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(toSessionResponse(updated))
+}
+
+func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	sessionID := chi.URLParam(r, "id")
+	sessionUUID := pgtype.UUID{}
+	if err := sessionUUID.Scan(sessionID); err != nil {
+		http.Error(w, "invalid session ID", http.StatusBadRequest)
+		return
+	}
+	tenantUUID := pgtype.UUID{}
+	if err := tenantUUID.Scan(claims.TenantID); err != nil {
+		http.Error(w, "invalid tenant context", http.StatusBadRequest)
+		return
+	}
+
+	// Verify session exists and belongs to tenant
+	session, err := h.queries.GetScribeSession(r.Context(), database.GetScribeSessionParams{
+		ID:       sessionUUID,
+		TenantID: tenantUUID,
+	})
+	if err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if session.Status == "complete" {
+		http.Error(w, "session already complete", http.StatusBadRequest)
+		return
+	}
+
+	// Parse and validate the uploaded audio file
+	file, _, err := parseAudioUpload(r, maxUploadSize)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Convert to FLAC via ffmpeg
+	flacReader, cleanup, err := transcribe.ConvertToFLAC(file)
+	if err != nil {
+		http.Error(w, "failed to convert audio", http.StatusInternalServerError)
+		return
+	}
+	defer cleanup()
+
+	// Transcribe the audio
+	transcript, err := h.transcriber.Transcribe(r.Context(), &transcribe.AudioInput{
+		Reader:     flacReader,
+		SampleRate: transcribe.DefaultSampleRate(),
+	})
+	if err != nil {
+		log.Printf("scribe transcription error for session %s: %v", sessionID, err)
+		_ = h.queries.UpdateScribeSessionError(r.Context(), database.UpdateScribeSessionErrorParams{
+			ID:           sessionUUID,
+			TenantID:     tenantUUID,
+			ErrorMessage: pgtype.Text{String: fmt.Sprintf("transcription failed: %v", err), Valid: true},
+		})
+		http.Error(w, "transcription failed", http.StatusInternalServerError)
+		return
+	}
+
+	if transcript == "" {
+		_ = h.queries.UpdateScribeSessionError(r.Context(), database.UpdateScribeSessionErrorParams{
+			ID:           sessionUUID,
+			TenantID:     tenantUUID,
+			ErrorMessage: pgtype.Text{String: "transcription returned empty result", Valid: true},
+		})
+		http.Error(w, "transcription returned empty result", http.StatusInternalServerError)
+		return
+	}
+
+	// Store transcript and mark processing
+	err = h.queries.UpdateScribeSessionProcessing(r.Context(), database.UpdateScribeSessionProcessingParams{
+		ID:         sessionUUID,
+		TenantID:   tenantUUID,
+		Transcript: pgtype.Text{String: transcript, Valid: true},
+	})
+	if err != nil {
+		http.Error(w, "failed to update session", http.StatusInternalServerError)
+		return
+	}
+
+	// Run the AI pipeline
+	output, err := h.processor.Process(r.Context(), h.cfg.AthenaPracticeID, session.PatientID, transcript)
+	if err != nil {
+		log.Printf("scribe process error for session %s: %v", sessionID, err)
+		_ = h.queries.UpdateScribeSessionError(r.Context(), database.UpdateScribeSessionErrorParams{
+			ID:           sessionUUID,
+			TenantID:     tenantUUID,
+			ErrorMessage: pgtype.Text{String: err.Error(), Valid: true},
+		})
+		http.Error(w, "processing failed", http.StatusInternalServerError)
+		return
+	}
+
+	// Store AI output
+	outputJSON, _ := json.Marshal(output)
+	err = h.queries.UpdateScribeSessionComplete(r.Context(), database.UpdateScribeSessionCompleteParams{
+		ID:       sessionUUID,
+		TenantID: tenantUUID,
+		AiOutput: outputJSON,
+	})
+	if err != nil {
+		http.Error(w, "failed to save results", http.StatusInternalServerError)
+		return
+	}
+
+	// Write to athena (non-blocking)
 	if writeErr := h.processor.WriteToAthena(r.Context(), h.cfg.AthenaPracticeID, session.EncounterID, output); writeErr != nil {
 		log.Printf("scribe athena write error for session %s: %v", sessionID, writeErr)
 	}
