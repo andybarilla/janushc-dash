@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -45,12 +46,14 @@ func (h *Handler) HandleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 
 	info, err := h.google.Verify(req.IDToken)
 	if err != nil {
+		log.Printf("google login token verification failed: %v", err)
 		http.Error(w, "invalid google token: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	user, err := h.queries.GetUserByEmailOnly(r.Context(), info.Email)
 	if err != nil {
+		log.Printf("google login email not registered: %s", info.Email)
 		http.Error(w, "not registered", http.StatusForbidden)
 		return
 	}

@@ -1,0 +1,10 @@
+[Unit]
+Description=JanusHC recording ingest from shared Google Drive
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/janushc-dash
+EnvironmentFile=-/srv/janushc-dash/.env
+ExecStart=/srv/janushc-dash/scripts/sync-sample-recordings.sh

@@ -90,6 +90,49 @@ make sqlc           # Regenerate SQLC query code
 make seed           # Seed dev data
 ```
 
+### Hosted Postgres
+
+For a shared dev/demo database on Supabase, Neon, or another hosted Postgres provider:
+
+```bash
+# 1. Put the hosted connection string in HOSTED_DATABASE_URL with sslmode=require.
+# 2. Create schema:
+make migrate-hosted
+
+# 3a. For a fresh demo database:
+make seed-hosted
+
+# 3b. Or copy current local data into a freshly migrated hosted database:
+make db-copy-to-hosted
+```
+
+After migration, set `DATABASE_URL` to the hosted connection string locally and in deployment.
+
+To import generated transcript text files into the Scribe session table and run Bedrock processing:
+
+```bash
+make import-transcripts
+```
+
+### Batch transcription
+
+Batch transcription uses AWS Transcribe Medical with a temporary private S3 bucket.
+Set `AWS_TRANSCRIBE_BUCKET`, then run:
+
+```bash
+make transcribe-batch
+# or:
+go run ./cmd/batch-transcribe-recordings -input recordings -out tmp/transcripts
+```
+
+The command uploads each recording, starts a medical conversation transcription job with speaker labels, writes `.txt` transcripts, deletes uploaded source audio by default, and relies on the bucket lifecycle rule to expire transcript JSON artifacts.
+
+For deployed ingestion from the shared Google Drive `Sample Recordings` folder, see [`docs/recording-ingest.md`](docs/recording-ingest.md) or run:
+
+```bash
+make sync-sample-recordings
+```
+
 ## Project Structure
 
 ```

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -57,9 +58,20 @@ func (v *GoogleVerifier) Verify(idToken string) (*GoogleTokenInfo, error) {
 	if claims.EmailVerified != "true" {
 		return nil, fmt.Errorf("email not verified")
 	}
-	if v.allowedDomain != "" && claims.HD != v.allowedDomain {
-		return nil, fmt.Errorf("domain not allowed: got %q, want %q", claims.HD, v.allowedDomain)
+	if v.allowedDomain != "" && !isAllowedGoogleDomain(claims.Email, claims.HD, v.allowedDomain) {
+		return nil, fmt.Errorf("domain not allowed: got hd %q/email %q, want %q", claims.HD, claims.Email, v.allowedDomain)
 	}
 
-	return &GoogleTokenInfo{Email: claims.Email}, nil
+	return &GoogleTokenInfo{Email: strings.ToLower(claims.Email)}, nil
+}
+
+func isAllowedGoogleDomain(email, hostedDomain, allowedDomain string) bool {
+	allowedDomain = strings.ToLower(strings.TrimSpace(allowedDomain))
+	if allowedDomain == "" {
+		return true
+	}
+	if strings.ToLower(hostedDomain) == allowedDomain {
+		return true
+	}
+	return strings.HasSuffix(strings.ToLower(email), "@"+allowedDomain)
 }

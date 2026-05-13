@@ -30,8 +30,8 @@ export default function LoginPage() {
               try {
                 await loginWithGoogle(response.credential);
                 navigate("/approvals");
-              } catch {
-                setError("Sign in failed. Make sure your @janushc.com account is registered.");
+              } catch (err) {
+                setError(formatLoginError(err));
               }
             }}
             onError={() => setError("Google sign in failed")}
@@ -43,4 +43,24 @@ export default function LoginPage() {
       </div>
     </div>
   );
+}
+
+function formatLoginError(err: unknown) {
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    "status" in err &&
+    "message" in err
+  ) {
+    const { status, message } = err as { status: number; message: string };
+    const cleanMessage = message.trim();
+    if (status === 403) {
+      return "Sign in failed. Your Google account is not registered for this app.";
+    }
+    if (status === 401) {
+      return `Google sign in failed: ${cleanMessage || "token verification failed"}`;
+    }
+    return `Sign in failed: ${cleanMessage || `HTTP ${status}`}`;
+  }
+  return "Sign in failed. Please try again.";
 }

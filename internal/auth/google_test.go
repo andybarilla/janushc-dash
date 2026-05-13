@@ -26,6 +26,25 @@ func TestVerifyGoogleToken_Valid(t *testing.T) {
 	}
 }
 
+func TestVerifyGoogleToken_ValidWithoutHostedDomainClaim(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{
+			"aud": "test-client-id", "email": "Doctor@janushc.com",
+			"email_verified": "true", "hd": "",
+		})
+	}))
+	defer srv.Close()
+
+	v := &GoogleVerifier{clientID: "test-client-id", allowedDomain: "janushc.com", tokenInfoURL: srv.URL, httpClient: srv.Client()}
+	info, err := v.Verify("fake-token")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.Email != "doctor@janushc.com" {
+		t.Errorf("expected normalized email doctor@janushc.com, got %s", info.Email)
+	}
+}
+
 func TestVerifyGoogleToken_WrongDomain(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{

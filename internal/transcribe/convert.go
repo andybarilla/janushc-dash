@@ -15,6 +15,7 @@ var allowedExtensions = map[string]bool{
 	".wav":  true,
 	".webm": true,
 	".ogg":  true,
+	".flac": true,
 }
 
 // DefaultSampleRate returns the sample rate used for transcription output.
@@ -26,7 +27,7 @@ func DefaultSampleRate() int32 {
 // ValidateAudioExtension checks if the file extension is an accepted audio format.
 func ValidateAudioExtension(ext string) error {
 	if !allowedExtensions[strings.ToLower(ext)] {
-		return fmt.Errorf("unsupported audio format %q: accepted formats are .mp3, .m4a, .wav, .webm, .ogg", ext)
+		return fmt.Errorf("unsupported audio format %q: accepted formats are .mp3, .m4a, .wav, .webm, .ogg, .flac", ext)
 	}
 	return nil
 }

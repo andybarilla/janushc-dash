@@ -1,4 +1,4 @@
-.PHONY: setup dev dev-all dev-up dev-down dev-nuke dev-servers frontend-dev build up down dc-ps dc-logs dc-exec migrate-up migrate-down sqlc seed lint test
+.PHONY: setup dev dev-all dev-up dev-down dev-nuke dev-servers frontend-dev build up down dc-ps dc-logs dc-exec migrate-up migrate-down migrate-hosted sqlc seed seed-hosted db-copy-to-hosted import-transcripts lint test transcribe-batch transcribe-batch-ensure sync-sample-recordings
 
 # Load .env if present
 -include .env
@@ -115,6 +115,12 @@ migrate-down:
 	go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest \
 		-path migrations -database "$${DATABASE_URL}" down 1
 
+# Run migrations against HOSTED_DATABASE_URL (Supabase/Neon/etc.)
+migrate-hosted:
+	@test -n "$${HOSTED_DATABASE_URL}" || (echo "Set HOSTED_DATABASE_URL first" && exit 1)
+	go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest \
+		-path migrations -database "$${HOSTED_DATABASE_URL}" up
+
 # ---------- Code generation ----------
 
 # Regenerate sqlc code
@@ -136,3 +142,31 @@ test:
 # Seed dev data
 seed:
 	go run scripts/seed.go
+
+# Seed hosted database using HOSTED_DATABASE_URL
+seed-hosted:
+	@test -n "$${HOSTED_DATABASE_URL}" || (echo "Set HOSTED_DATABASE_URL first" && exit 1)
+	DATABASE_URL="$${HOSTED_DATABASE_URL}" go run scripts/seed.go
+
+# Copy local database data into a freshly migrated hosted database.
+# Usage: HOSTED_DATABASE_URL='postgres://...' make db-copy-to-hosted
+db-copy-to-hosted:
+	@test -n "$${DATABASE_URL}" || (echo "Set DATABASE_URL first" && exit 1)
+	@test -n "$${HOSTED_DATABASE_URL}" || (echo "Set HOSTED_DATABASE_URL first" && exit 1)
+	pg_dump --data-only --no-owner --no-acl --exclude-table=schema_migrations "$${DATABASE_URL}" | psql "$${HOSTED_DATABASE_URL}"
+
+# Import tmp/transcripts/*.txt into scribe_sessions and process with Bedrock
+import-transcripts:
+	go run ./cmd/import-transcripts $(ARGS)
+
+# Batch transcribe local recordings via AWS Transcribe Medical + S3
+transcribe-batch:
+	go run ./cmd/batch-transcribe-recordings
+
+# Create/configure the S3 bucket, then batch transcribe. Requires bucket admin permissions.
+transcribe-batch-ensure:
+	go run ./cmd/batch-transcribe-recordings -ensure-bucket
+
+# Pull shared Google Drive sample recordings, then transcribe/import via the prod image.
+sync-sample-recordings:
+	scripts/sync-sample-recordings.sh

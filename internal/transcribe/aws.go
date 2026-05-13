@@ -37,7 +37,8 @@ func (c *Client) Transcribe(ctx context.Context, audio *AudioInput) (string, err
 		MediaEncoding:        types.MediaEncodingFlac,
 		MediaSampleRateHertz: aws.Int32(audio.SampleRate),
 		Specialty:            types.SpecialtyPrimarycare,
-		Type:                 types.TypeDictation,
+		Type:                 types.TypeConversation,
+		ShowSpeakerLabel:     true,
 	})
 	if err != nil {
 		return "", fmt.Errorf("start medical stream transcription: %w", err)
@@ -70,7 +71,9 @@ func (c *Client) Transcribe(ctx context.Context, audio *AudioInput) (string, err
 		sendErr <- nil
 	}()
 
-	// Collect transcript from results
+	// Collect transcript from final results. With speaker labeling enabled,
+	// alternatives include word-level speaker labels; preserve those as readable
+	// line breaks instead of returning one long paragraph.
 	var transcript strings.Builder
 	for event := range stream.Events() {
 		switch v := event.(type) {
@@ -80,10 +83,7 @@ func (c *Client) Transcribe(ctx context.Context, audio *AudioInput) (string, err
 					continue
 				}
 				for _, alt := range result.Alternatives {
-					if alt.Transcript != nil {
-						transcript.WriteString(*alt.Transcript)
-						transcript.WriteString(" ")
-					}
+					appendMedicalAlternativeTranscript(&transcript, alt)
 				}
 			}
 		}
@@ -97,4 +97,74 @@ func (c *Client) Transcribe(ctx context.Context, audio *AudioInput) (string, err
 	}
 
 	return strings.TrimSpace(transcript.String()), nil
+}
+
+func appendMedicalAlternativeTranscript(transcript *strings.Builder, alt types.MedicalAlternative) {
+	if !hasSpeakerLabels(alt.Items) {
+		if alt.Transcript != nil && strings.TrimSpace(*alt.Transcript) != "" {
+			appendTranscriptLine(transcript, strings.TrimSpace(*alt.Transcript))
+		}
+		return
+	}
+
+	var line strings.Builder
+	currentSpeaker := ""
+	flush := func() {
+		text := strings.TrimSpace(line.String())
+		if text != "" {
+			appendTranscriptLine(transcript, text)
+		}
+		line.Reset()
+	}
+
+	for _, item := range alt.Items {
+		if item.Content == nil {
+			continue
+		}
+		content := strings.TrimSpace(*item.Content)
+		if content == "" {
+			continue
+		}
+
+		if item.Speaker != nil && *item.Speaker != "" && *item.Speaker != currentSpeaker {
+			flush()
+			currentSpeaker = *item.Speaker
+			line.WriteString(formatSpeakerLabel(currentSpeaker))
+			line.WriteString(": ")
+		}
+
+		if item.Type == types.ItemTypePunctuation {
+			line.WriteString(content)
+			continue
+		}
+
+		if line.Len() > 0 && !strings.HasSuffix(line.String(), " ") {
+			line.WriteString(" ")
+		}
+		line.WriteString(content)
+	}
+	flush()
+}
+
+func hasSpeakerLabels(items []types.MedicalItem) bool {
+	for _, item := range items {
+		if item.Speaker != nil && *item.Speaker != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func appendTranscriptLine(transcript *strings.Builder, text string) {
+	if transcript.Len() > 0 {
+		transcript.WriteString("\n")
+	}
+	transcript.WriteString(text)
+}
+
+func formatSpeakerLabel(speaker string) string {
+	if suffix, ok := strings.CutPrefix(speaker, "spk_"); ok {
+		return "Speaker " + suffix
+	}
+	return speaker
 }

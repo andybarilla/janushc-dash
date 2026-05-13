@@ -3,6 +3,7 @@ import {
   useScribeSessions,
   useCreateScribeSession,
   useUploadScribeAudio,
+  useScribeSession,
 } from "@/lib/scribe-queries";
 import { Button } from "@/components/ui/button";
 
@@ -13,10 +14,13 @@ export default function ScribePage() {
   const [encounterId, setEncounterId] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [activeSessionId, setActiveSessionId] = useState("");
+  const [selectedHistorySessionId, setSelectedHistorySessionId] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: sessions = [], isLoading } = useScribeSessions();
+  const { data: selectedSession, isLoading: isLoadingSelectedSession } =
+    useScribeSession(selectedHistorySessionId);
   const createSession = useCreateScribeSession();
   const uploadAudio = useUploadScribeAudio();
 
@@ -154,9 +158,15 @@ export default function ScribePage() {
         ) : (
           <div className="space-y-2">
             {sessions.map((session) => (
-              <div
+              <button
                 key={session.id}
-                className="bg-card border border-border rounded-lg p-3 flex items-center justify-between"
+                type="button"
+                onClick={() => setSelectedHistorySessionId(session.id)}
+                className={`w-full text-left bg-card border rounded-lg p-3 flex items-center justify-between hover:bg-muted/50 ${
+                  selectedHistorySessionId === session.id
+                    ? "border-primary"
+                    : "border-border"
+                }`}
               >
                 <div className="space-y-1">
                   <div className="text-sm">
@@ -172,11 +182,90 @@ export default function ScribePage() {
                 >
                   {session.status}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
         )}
       </div>
+
+      {selectedHistorySessionId && (
+        <div className="space-y-4 bg-card border border-border rounded-lg p-4">
+          {isLoadingSelectedSession ? (
+            <div className="text-sm text-muted-foreground">Loading session...</div>
+          ) : selectedSession ? (
+            <>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold">
+                    Patient {selectedSession.patient_id}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Encounter {selectedSession.encounter_id} · Department {selectedSession.department_id}
+                  </p>
+                </div>
+                <span className={`text-xs font-medium ${statusColor[selectedSession.status] || ""}`}>
+                  {selectedSession.status}
+                </span>
+              </div>
+
+              {selectedSession.error_message && (
+                <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-500">
+                  {selectedSession.error_message}
+                </div>
+              )}
+
+              {selectedSession.ai_output ? (
+                <div className="space-y-4 text-sm">
+                  <ResultSection title="HPI" body={selectedSession.ai_output.hpi} />
+                  <ResultSection title="Assessment & Plan" body={selectedSession.ai_output.assessment_plan} />
+                  <ResultSection title="Physical Exam" body={selectedSession.ai_output.physical_exam} />
+                  {selectedSession.ai_output.diagnoses_labs?.length > 0 && (
+                    <section className="space-y-2">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Diagnoses / Labs
+                      </h4>
+                      <ul className="list-disc space-y-1 pl-5">
+                        {selectedSession.ai_output.diagnoses_labs.map((item, index) => (
+                          <li key={index}>
+                            {item.diagnosis} — {item.lab}
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No AI note output stored for this session yet.
+                </p>
+              )}
+
+              {selectedSession.transcript && (
+                <details className="space-y-2">
+                  <summary className="cursor-pointer text-sm font-medium">
+                    Transcript
+                  </summary>
+                  <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-3 text-xs leading-relaxed">
+                    {selectedSession.transcript}
+                  </pre>
+                </details>
+              )}
+            </>
+          ) : null}
+        </div>
+      )}
     </div>
+  );
+}
+
+function ResultSection({ title, body }: { title: string; body?: string }) {
+  if (!body) return null;
+  return (
+    <section className="space-y-2">
+      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {title}
+      </h4>
+      <p className="whitespace-pre-wrap leading-relaxed">{body}</p>
+    </section>
   );
 }

@@ -16,4 +16,4 @@ RETURNING id, tenant_id, email, password_hash, role, name, created_at, updated_a
 -- name: GetUserByEmailOnly :one
 SELECT id, tenant_id, email, password_hash, role, name, created_at, updated_at
 FROM users
-WHERE email = $1;
+WHERE lower(email) = lower($1);
