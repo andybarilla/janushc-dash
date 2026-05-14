@@ -26,7 +26,24 @@ type CreateScribeSessionParams struct {
 	DepartmentID string      `json:"department_id"`
 }
 
-func (q *Queries) CreateScribeSession(ctx context.Context, arg CreateScribeSessionParams) (ScribeSession, error) {
+type CreateScribeSessionRow struct {
+	ID           pgtype.UUID        `json:"id"`
+	TenantID     pgtype.UUID        `json:"tenant_id"`
+	UserID       pgtype.UUID        `json:"user_id"`
+	PatientID    string             `json:"patient_id"`
+	EncounterID  string             `json:"encounter_id"`
+	DepartmentID string             `json:"department_id"`
+	Status       string             `json:"status"`
+	Transcript   pgtype.Text        `json:"transcript"`
+	AiOutput     []byte             `json:"ai_output"`
+	ErrorMessage pgtype.Text        `json:"error_message"`
+	StartedAt    pgtype.Timestamptz `json:"started_at"`
+	StoppedAt    pgtype.Timestamptz `json:"stopped_at"`
+	CompletedAt  pgtype.Timestamptz `json:"completed_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) CreateScribeSession(ctx context.Context, arg CreateScribeSessionParams) (CreateScribeSessionRow, error) {
 	row := q.db.QueryRow(ctx, createScribeSession,
 		arg.TenantID,
 		arg.UserID,
@@ -34,7 +51,7 @@ func (q *Queries) CreateScribeSession(ctx context.Context, arg CreateScribeSessi
 		arg.EncounterID,
 		arg.DepartmentID,
 	)
-	var i ScribeSession
+	var i CreateScribeSessionRow
 	err := row.Scan(
 		&i.ID,
 		&i.TenantID,
@@ -56,7 +73,8 @@ func (q *Queries) CreateScribeSession(ctx context.Context, arg CreateScribeSessi
 
 const getScribeSession = `-- name: GetScribeSession :one
 SELECT id, tenant_id, user_id, patient_id, encounter_id, department_id, status,
-       transcript, ai_output, error_message, started_at, stopped_at, completed_at, created_at
+       transcript, ai_output, error_message, started_at, stopped_at, completed_at, created_at,
+       sent_to_ehr_at, sent_to_ehr_by
 FROM scribe_sessions
 WHERE id = $1 AND tenant_id = $2
 `
@@ -84,6 +102,8 @@ func (q *Queries) GetScribeSession(ctx context.Context, arg GetScribeSessionPara
 		&i.StoppedAt,
 		&i.CompletedAt,
 		&i.CreatedAt,
+		&i.SentToEhrAt,
+		&i.SentToEhrBy,
 	)
 	return i, err
 }
@@ -104,6 +124,7 @@ approved_counts AS (
 SELECT
     s.id, s.tenant_id, s.user_id, s.patient_id, s.encounter_id, s.department_id,
     s.status, s.error_message, s.started_at, s.stopped_at, s.completed_at, s.created_at,
+    s.sent_to_ehr_at,
     COALESCE(ac.approved_count, 0)::int AS approved_count
 FROM scribe_sessions s
 LEFT JOIN approved_counts ac ON ac.session_id = s.id
@@ -125,6 +146,7 @@ type ListScribeSessionsRow struct {
 	StoppedAt     pgtype.Timestamptz `json:"stopped_at"`
 	CompletedAt   pgtype.Timestamptz `json:"completed_at"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	SentToEhrAt   pgtype.Timestamptz `json:"sent_to_ehr_at"`
 	ApprovedCount int32              `json:"approved_count"`
 }
 
@@ -150,6 +172,7 @@ func (q *Queries) ListScribeSessions(ctx context.Context, tenantID pgtype.UUID) 
 			&i.StoppedAt,
 			&i.CompletedAt,
 			&i.CreatedAt,
+			&i.SentToEhrAt,
 			&i.ApprovedCount,
 		); err != nil {
 			return nil, err
@@ -160,6 +183,26 @@ func (q *Queries) ListScribeSessions(ctx context.Context, tenantID pgtype.UUID) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const markScribeSessionSent = `-- name: MarkScribeSessionSent :execrows
+UPDATE scribe_sessions
+SET sent_to_ehr_at = now(), sent_to_ehr_by = $3
+WHERE id = $1 AND tenant_id = $2 AND sent_to_ehr_at IS NULL
+`
+
+type MarkScribeSessionSentParams struct {
+	ID          pgtype.UUID `json:"id"`
+	TenantID    pgtype.UUID `json:"tenant_id"`
+	SentToEhrBy pgtype.UUID `json:"sent_to_ehr_by"`
+}
+
+func (q *Queries) MarkScribeSessionSent(ctx context.Context, arg MarkScribeSessionSentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markScribeSessionSent, arg.ID, arg.TenantID, arg.SentToEhrBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateScribeSessionComplete = `-- name: UpdateScribeSessionComplete :exec

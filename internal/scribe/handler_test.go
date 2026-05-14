@@ -143,6 +143,42 @@ func TestBuildSectionsMap_ApprovedRowSetsApprovedState(t *testing.T) {
 // The DB query (DISTINCT ON ... ORDER BY at DESC) returns at most one row per
 // section — the latest event. If that latest event is a 'revoked' action, the
 // section must end up pending. This guards the Go-side derivation contract.
+func TestAllSectionsApproved_AllApproved(t *testing.T) {
+	rows := []database.GetSessionSectionStatesRow{
+		{Section: "hpi", Action: "approved"},
+		{Section: "plan", Action: "approved"},
+		{Section: "exam", Action: "approved"},
+		{Section: "labs", Action: "approved"},
+	}
+	if !allSectionsApproved(rows) {
+		t.Error("expected all sections approved")
+	}
+}
+
+func TestAllSectionsApproved_MissingSection(t *testing.T) {
+	rows := []database.GetSessionSectionStatesRow{
+		{Section: "hpi", Action: "approved"},
+		{Section: "plan", Action: "approved"},
+		{Section: "exam", Action: "approved"},
+		// labs missing
+	}
+	if allSectionsApproved(rows) {
+		t.Error("expected false when a section is missing")
+	}
+}
+
+func TestAllSectionsApproved_OneRevoked(t *testing.T) {
+	rows := []database.GetSessionSectionStatesRow{
+		{Section: "hpi", Action: "approved"},
+		{Section: "plan", Action: "approved"},
+		{Section: "exam", Action: "revoked"},
+		{Section: "labs", Action: "approved"},
+	}
+	if allSectionsApproved(rows) {
+		t.Error("expected false when a section is revoked")
+	}
+}
+
 func TestBuildSectionsMap_RevokedRowYieldsPending(t *testing.T) {
 	rows := []database.GetSessionSectionStatesRow{
 		{Section: "hpi", Action: "revoked"},

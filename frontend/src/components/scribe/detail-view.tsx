@@ -36,6 +36,7 @@ interface Props {
   onApprove: (section: SectionKey) => void;
   onApproveAll: () => void;
   onReject: () => void;
+  onSend: () => void;
   onOpenNotes: () => void;
   onAddNoteForSection: (section: SectionKey) => void;
   onRetry: () => void;
@@ -57,6 +58,7 @@ export function DetailView({
   onApprove,
   onApproveAll,
   onReject,
+  onSend,
   onOpenNotes,
   onAddNoteForSection,
   onRetry,
@@ -207,7 +209,8 @@ export function DetailView({
               <button
                 type="button"
                 className="janus-btn janus-btn-primary"
-                disabled={!allApproved}
+                disabled={!allApproved || isSent}
+                onClick={!isSent && allApproved ? onSend : undefined}
                 title={
                   isSent
                     ? "Already sent"

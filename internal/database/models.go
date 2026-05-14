@@ -95,6 +95,8 @@ type ScribeSession struct {
 	StoppedAt    pgtype.Timestamptz `json:"stopped_at"`
 	CompletedAt  pgtype.Timestamptz `json:"completed_at"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	SentToEhrAt  pgtype.Timestamptz `json:"sent_to_ehr_at"`
+	SentToEhrBy  pgtype.UUID        `json:"sent_to_ehr_by"`
 }
 
 type Tenant struct {

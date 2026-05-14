@@ -3,6 +3,7 @@ import { Download, Upload } from "lucide-react";
 import {
   useApproveSection,
   useRevokeSection,
+  useSendToEHR,
   useScribeSession,
   useScribeSessions,
 } from "@/lib/scribe-queries";
@@ -39,6 +40,7 @@ export default function ScribePage() {
 
   const approveMut = useApproveSection();
   const revokeMut = useRevokeSection();
+  const sendMut = useSendToEHR();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -61,13 +63,7 @@ export default function ScribePage() {
   const { data: selectedDetail, isLoading: detailLoading } =
     useScribeSession(selectedId ?? "");
 
-  const approvedCountFor = (id: string) =>
-    sessions.find((s) => s.id === id)?.approved_count ?? 0;
-
-  const entries = useMemo(
-    () => buildEntries(sessions, approvedCountFor),
-    [sessions],
-  );
+  const entries = useMemo(() => buildEntries(sessions), [sessions]);
 
   const stats: StatsValues = useMemo(() => {
     const today = new Date().toDateString();
@@ -149,9 +145,7 @@ export default function ScribePage() {
     setNotesOpen(true);
   };
 
-  const statusId = selectedDetail
-    ? deriveStatusId(selectedDetail, selectedDetail.approved_count)
-    : null;
+  const statusId = selectedDetail ? deriveStatusId(selectedDetail) : null;
 
   return (
     <div className="janus-scribe-page">
@@ -212,8 +206,10 @@ export default function ScribePage() {
             setNotesOpen(true);
           }}
           onAddNoteForSection={handleAddNoteForSection}
+          onSend={() => {
+            if (selectedId) sendMut.mutate({ sessionId: selectedId });
+          }}
           onRetry={() => {
-            // Retry isn't wired to a backend endpoint yet.
             window.alert("Retry is not yet implemented.");
           }}
         />

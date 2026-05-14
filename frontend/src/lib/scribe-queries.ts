@@ -19,6 +19,7 @@ export interface ScribeSession {
   error_message?: string;
   created_at: string;
   completed_at?: string;
+  sent_to_ehr_at?: string;
   approved_count: number;
 }
 
@@ -31,6 +32,7 @@ export interface ScribeSessionDetail extends ScribeSession {
     diagnoses_labs: { diagnosis: string; lab: string }[];
   };
   sections: Record<SectionKey, SectionStateData>;
+  sent_to_ehr_at?: string;
 }
 
 interface CreateSessionRequest {
@@ -74,6 +76,21 @@ export function useApproveSection() {
     mutationFn: ({ sessionId, section }: { sessionId: string; section: SectionKey }) =>
       api.fetch<Record<string, never>>(
         `/api/scribe/sessions/${sessionId}/sections/${section}/approve`,
+        { method: "POST" },
+      ),
+    onSuccess: (_data, { sessionId }) => {
+      queryClient.invalidateQueries({ queryKey: ["scribeSessions", sessionId] });
+      queryClient.invalidateQueries({ queryKey: ["scribeSessions"] });
+    },
+  });
+}
+
+export function useSendToEHR() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sessionId }: { sessionId: string }) =>
+      api.fetch<Record<string, never>>(
+        `/api/scribe/sessions/${sessionId}/send`,
         { method: "POST" },
       ),
     onSuccess: (_data, { sessionId }) => {

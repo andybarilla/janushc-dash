@@ -48,12 +48,10 @@ export const STATUS: Record<StatusId, StatusDef> = {
   },
 };
 
-// Backend currently has 4 status values; map them to the design's 7 here.
-// The "sent" state is driven by client-side approval — a complete session
-// with all sections approved is treated as sent.
+// Backend has 4 status values; map them to the design's statuses here.
+// "sent" is driven by the server-set sent_to_ehr_at field.
 export function deriveStatusId(
-  session: { status: string; transcript?: string },
-  approvedCount: number,
+  session: { status: string; transcript?: string; sent_to_ehr_at?: string },
 ): StatusId {
   switch (session.status) {
     case "recording":
@@ -63,7 +61,7 @@ export function deriveStatusId(
         ? "extracting"
         : "transcribing";
     case "complete":
-      return approvedCount === 4 ? "sent" : "ready";
+      return session.sent_to_ehr_at ? "sent" : "ready";
     case "error":
       return "failed";
     default:

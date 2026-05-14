@@ -88,6 +88,7 @@ type sessionResponse struct {
 	ErrorMessage  string `json:"error_message,omitempty"`
 	CreatedAt     string `json:"created_at"`
 	CompletedAt   string `json:"completed_at,omitempty"`
+	SentToEhrAt   string `json:"sent_to_ehr_at,omitempty"`
 	ApprovedCount int    `json:"approved_count"`
 }
 
@@ -157,7 +158,14 @@ func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(toSessionResponse(session))
+	json.NewEncoder(w).Encode(sessionResponse{
+		ID:           uuidToString(session.ID),
+		PatientID:    session.PatientID,
+		EncounterID:  session.EncounterID,
+		DepartmentID: session.DepartmentID,
+		Status:       session.Status,
+		CreatedAt:    session.CreatedAt.Time.Format("2006-01-02T15:04:05Z"),
+	})
 }
 
 func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
@@ -245,6 +253,23 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+func allSectionsApproved(rows []database.GetSessionSectionStatesRow) bool {
+	approved := make(map[string]bool, len(sectionKeys))
+	for _, r := range rows {
+		if r.Action == "approved" {
+			approved[r.Section] = true
+		} else {
+			approved[r.Section] = false
+		}
+	}
+	for _, k := range sectionKeys {
+		if !approved[k] {
+			return false
+		}
+	}
+	return true
 }
 
 func buildSectionsMap(rows []database.GetSessionSectionStatesRow) map[string]sectionState {
@@ -339,11 +364,6 @@ func (h *Handler) HandleProcess(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "failed to save results", http.StatusInternalServerError)
 		return
-	}
-
-	// Write to athena (non-blocking — if it fails, session is still complete with output cached)
-	if writeErr := h.processor.WriteToAthena(r.Context(), h.cfg.AthenaPracticeID, session.EncounterID, output); writeErr != nil {
-		log.Printf("scribe athena write error for session %s: %v", sessionID, writeErr)
 	}
 
 	// Re-fetch session to return updated state
@@ -471,11 +491,6 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Write to athena (non-blocking)
-	if writeErr := h.processor.WriteToAthena(r.Context(), h.cfg.AthenaPracticeID, session.EncounterID, output); writeErr != nil {
-		log.Printf("scribe athena write error for session %s: %v", sessionID, writeErr)
-	}
-
 	// Re-fetch session to return updated state
 	updated, err := h.queries.GetScribeSession(r.Context(), database.GetScribeSessionParams{
 		ID:       sessionUUID,
@@ -496,6 +511,87 @@ func (h *Handler) HandleApproveSection(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) HandleRevokeSection(w http.ResponseWriter, r *http.Request) {
 	h.handleSectionAction(w, r, "revoked")
+}
+
+func (h *Handler) HandleSend(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	sessionUUID := pgtype.UUID{}
+	if err := sessionUUID.Scan(chi.URLParam(r, "id")); err != nil {
+		http.Error(w, "invalid session ID", http.StatusBadRequest)
+		return
+	}
+	tenantUUID := pgtype.UUID{}
+	if err := tenantUUID.Scan(claims.TenantID); err != nil {
+		http.Error(w, "invalid tenant context", http.StatusBadRequest)
+		return
+	}
+	userUUID := pgtype.UUID{}
+	if err := userUUID.Scan(claims.UserID); err != nil {
+		http.Error(w, "invalid user context", http.StatusBadRequest)
+		return
+	}
+
+	session, err := h.queries.GetScribeSession(r.Context(), database.GetScribeSessionParams{
+		ID:       sessionUUID,
+		TenantID: tenantUUID,
+	})
+	if err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if session.Status != "complete" {
+		http.Error(w, "session is not ready to send", http.StatusBadRequest)
+		return
+	}
+
+	states, err := h.queries.GetSessionSectionStates(r.Context(), sessionUUID)
+	if err != nil {
+		http.Error(w, "failed to load section states", http.StatusInternalServerError)
+		return
+	}
+	if !allSectionsApproved(states) {
+		http.Error(w, "all sections must be approved before sending", http.StatusBadRequest)
+		return
+	}
+
+	// Mark sent first — the UPDATE is the gate against double-sends.
+	// 0 rows affected means already sent by a concurrent request.
+	n, err := h.queries.MarkScribeSessionSent(r.Context(), database.MarkScribeSessionSentParams{
+		ID:          sessionUUID,
+		TenantID:    tenantUUID,
+		SentToEhrBy: userUUID,
+	})
+	if err != nil {
+		http.Error(w, "failed to mark session as sent", http.StatusInternalServerError)
+		return
+	}
+	if n == 0 {
+		http.Error(w, "session already sent", http.StatusConflict)
+		return
+	}
+
+	// Call athena after marking. If athena fails, the session remains marked sent
+	// in the DB — do not roll back. A timeout means athena may have received the
+	// write; rolling back and retrying risks a duplicate note in the EMR.
+	// Manual resolution required on persistent failure; that's preferable to a double-send.
+	if session.AiOutput != nil {
+		var output ScribeOutput
+		if err := json.Unmarshal(session.AiOutput, &output); err == nil {
+			if writeErr := h.processor.WriteToAthena(r.Context(), h.cfg.AthenaPracticeID, session.EncounterID, output); writeErr != nil {
+				log.Printf("scribe send: athena write error for session %s (marked sent, manual review needed): %v", uuidToString(sessionUUID), writeErr)
+				http.Error(w, "sent to EHR failed — contact support", http.StatusInternalServerError)
+				return
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte("{}"))
 }
 
 func (h *Handler) handleSectionAction(w http.ResponseWriter, r *http.Request, action string) {
@@ -569,6 +665,9 @@ func toSessionResponse(s database.ScribeSession) sessionResponse {
 	if s.CompletedAt.Valid {
 		resp.CompletedAt = s.CompletedAt.Time.Format("2006-01-02T15:04:05Z")
 	}
+	if s.SentToEhrAt.Valid {
+		resp.SentToEhrAt = s.SentToEhrAt.Time.Format("2006-01-02T15:04:05Z")
+	}
 	return resp
 }
 
@@ -587,6 +686,9 @@ func toListSessionResponse(s database.ListScribeSessionsRow) sessionResponse {
 	}
 	if s.CompletedAt.Valid {
 		resp.CompletedAt = s.CompletedAt.Time.Format("2006-01-02T15:04:05Z")
+	}
+	if s.SentToEhrAt.Valid {
+		resp.SentToEhrAt = s.SentToEhrAt.Time.Format("2006-01-02T15:04:05Z")
 	}
 	return resp
 }

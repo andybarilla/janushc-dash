@@ -222,15 +222,11 @@ function Row({
   );
 }
 
-// Build entries from raw sessions + a function that knows the approval state.
-export function buildEntries(
-  sessions: ScribeSession[],
-  approvedCountFor: (id: string) => number,
-): SessionListEntry[] {
+export function buildEntries(sessions: ScribeSession[]): SessionListEntry[] {
   return sessions.map((s) => ({
     session: s,
-    statusId: deriveStatusId(s, approvedCountFor(s.id)),
-    wordCount: 0, // Word count comes from the detail endpoint; list rows show 0 until selected.
+    statusId: deriveStatusId(s),
+    wordCount: 0,
   }));
 }
 
