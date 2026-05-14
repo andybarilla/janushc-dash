@@ -42,7 +42,7 @@ func main() {
 	var opts options
 	flag.StringVar(&opts.input, "input", "tmp/transcripts", "transcript .txt file or directory to import")
 	flag.StringVar(&opts.tenantName, "tenant", "Janus Healthcare", "tenant name to import sessions under")
-	flag.StringVar(&opts.userEmail, "user", "doctor@janushc.com", "user email to own imported sessions")
+	flag.StringVar(&opts.userEmail, "user", "courtney@janushc.com", "user email to own imported sessions")
 	flag.StringVar(&opts.patientPrefix, "patient-prefix", "demo-patient", "placeholder patient ID prefix")
 	flag.StringVar(&opts.departmentID, "department-id", "1", "placeholder department ID")
 	flag.BoolVar(&opts.process, "process", true, "run Bedrock scribe processing and store ai_output")

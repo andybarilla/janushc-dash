@@ -1,0 +1,2 @@
+-- Irreversible data migration: previous scribe session owners are not recoverable.
+-- Intentionally left blank.

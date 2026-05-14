@@ -103,10 +103,6 @@ func TestIsValidSection(t *testing.T) {
 	}
 }
 
-
-
-
-
 func makeApprovalRows(sections ...string) []database.GetSessionSectionStatesRow {
 	rows := make([]database.GetSessionSectionStatesRow, 0, len(sections))
 	for _, s := range sections {
@@ -114,7 +110,7 @@ func makeApprovalRows(sections ...string) []database.GetSessionSectionStatesRow 
 			Section:  s,
 			Action:   "approved",
 			At:       pgtype.Timestamptz{Time: time.Now(), Valid: true},
-			UserName: "Courtney Barilla",
+			UserName: "Courtney Crance",
 		})
 	}
 	return rows
@@ -232,8 +228,6 @@ func TestAllSectionsApproved_OneRevoked(t *testing.T) {
 		t.Error("expected false when a section is revoked")
 	}
 }
-
-
 
 func TestValidateUpload_ValidFile(t *testing.T) {
 	body := &bytes.Buffer{}

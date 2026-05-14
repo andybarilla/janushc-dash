@@ -45,7 +45,7 @@ func main() {
 		role  string
 		name  string
 	}{
-		{"doctor@janushc.com", "physician", "Dr. Jane Barilla"},
+		{"courtney@janushc.com", "physician", "Courtney Crance"},
 		{"sarah@janushc.com", "staff", "Sarah Thompson"},
 		{"kim@janushc.com", "staff", "Kim Rodriguez"},
 		{"alex@janushc.com", "staff", "Alex Chen"},
