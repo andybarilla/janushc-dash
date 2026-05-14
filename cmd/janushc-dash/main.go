@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -22,6 +24,72 @@ import (
 	"github.com/andybarilla/janushc-dash/internal/users"
 )
 
+type duplicateNormalizedEmail struct {
+	normalizedEmail string
+	userCount       int
+}
+
+func preflightDuplicateNormalizedEmails(databaseURL string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		return fmt.Errorf("connect to database: %w", err)
+	}
+	defer pool.Close()
+
+	if err := pool.Ping(ctx); err != nil {
+		return fmt.Errorf("ping database: %w", err)
+	}
+
+	var usersTableExists bool
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.users') IS NOT NULL").Scan(&usersTableExists); err != nil {
+		return fmt.Errorf("check users table existence: %w", err)
+	}
+	if !usersTableExists {
+		return nil
+	}
+
+	rows, err := pool.Query(ctx, `
+		SELECT lower(email) AS normalized_email, COUNT(*)::int AS user_count
+		FROM public.users
+		GROUP BY lower(email)
+		HAVING COUNT(*) > 1
+		ORDER BY lower(email)
+	`)
+	if err != nil {
+		return fmt.Errorf("check duplicate normalized emails: %w", err)
+	}
+	defer rows.Close()
+
+	duplicates := []duplicateNormalizedEmail{}
+	for rows.Next() {
+		var duplicate duplicateNormalizedEmail
+		if err := rows.Scan(&duplicate.normalizedEmail, &duplicate.userCount); err != nil {
+			return fmt.Errorf("scan duplicate normalized email: %w", err)
+		}
+		duplicates = append(duplicates, duplicate)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read duplicate normalized emails: %w", err)
+	}
+
+	if len(duplicates) > 0 {
+		return fmt.Errorf("duplicate normalized user emails found: %s; resolve duplicates before applying migration 014", formatDuplicateNormalizedEmails(duplicates))
+	}
+
+	return nil
+}
+
+func formatDuplicateNormalizedEmails(duplicates []duplicateNormalizedEmail) string {
+	parts := make([]string, 0, len(duplicates))
+	for _, duplicate := range duplicates {
+		parts = append(parts, fmt.Sprintf("%s (%d users)", duplicate.normalizedEmail, duplicate.userCount))
+	}
+	return strings.Join(parts, ", ")
+}
+
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -36,6 +104,9 @@ func main() {
 	m, err := migrate.New("file://migrations", migrateURL)
 	if err != nil {
 		log.Fatalf("failed to create migrator: %v", err)
+	}
+	if err := preflightDuplicateNormalizedEmails(cfg.DatabaseURL); err != nil {
+		log.Fatalf("failed migration preflight: %v", err)
 	}
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		log.Fatalf("failed to run migrations: %v", err)

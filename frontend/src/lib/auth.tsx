@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 
 interface User {
@@ -19,6 +20,7 @@ interface AuthState {
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [isAuthenticated, setIsAuthenticated] = useState(() => !!api.getToken());
   const [user, setUser] = useState<User | null>(null);
 
@@ -28,14 +30,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ id_token: idToken }),
     });
     api.setToken(res.access_token);
+    queryClient.clear();
     setIsAuthenticated(true);
-  }, []);
+  }, [queryClient]);
 
   const logout = useCallback(() => {
     api.setToken(null);
+    queryClient.clear();
     setIsAuthenticated(false);
     setUser(null);
-  }, []);
+  }, [queryClient]);
 
   return (
     <AuthContext.Provider value={{ isAuthenticated, user, loginWithGoogle, setUser, logout }}>
