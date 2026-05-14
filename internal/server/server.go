@@ -20,6 +20,7 @@ import (
 	"github.com/andybarilla/janushc-dash/internal/config"
 	"github.com/andybarilla/janushc-dash/internal/database"
 	"github.com/andybarilla/janushc-dash/internal/scribe"
+	"github.com/andybarilla/janushc-dash/internal/users"
 )
 
 type Server struct {
@@ -29,10 +30,11 @@ type Server struct {
 	queries         *database.Queries
 	authHandler     *auth.Handler
 	approvalHandler *approval.Handler
+	usersHandler    *users.Handler
 	scribeHandler   *scribe.Handler
 }
 
-func New(cfg *config.Config, db *pgxpool.Pool, queries *database.Queries, authHandler *auth.Handler, approvalHandler *approval.Handler, scribeHandler *scribe.Handler) *Server {
+func New(cfg *config.Config, db *pgxpool.Pool, queries *database.Queries, authHandler *auth.Handler, approvalHandler *approval.Handler, usersHandler *users.Handler, scribeHandler *scribe.Handler) *Server {
 	s := &Server{
 		cfg:             cfg,
 		db:              db,
@@ -40,6 +42,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, queries *database.Queries, authHa
 		queries:         queries,
 		authHandler:     authHandler,
 		approvalHandler: approvalHandler,
+		usersHandler:    usersHandler,
 		scribeHandler:   scribeHandler,
 	}
 	s.setupMiddleware()
@@ -76,11 +79,14 @@ func (s *Server) routes() {
 		r.Post("/api/approvals/batch-approve", s.approvalHandler.HandleBatchApprove)
 		r.Post("/api/approvals/sync", s.approvalHandler.HandleSync)
 
+		r.With(auth.RequireRole("admin")).Get("/api/users", s.usersHandler.HandleList)
+		r.With(auth.RequireRole("admin")).Post("/api/users", s.usersHandler.HandleCreate)
+
 		r.Post("/api/scribe/sessions", s.scribeHandler.HandleCreate)
 		r.Get("/api/scribe/sessions", s.scribeHandler.HandleList)
 		r.Get("/api/scribe/sessions/{id}", s.scribeHandler.HandleGet)
 		r.Post("/api/scribe/sessions/{id}/process", s.scribeHandler.HandleProcess)
-		r.With(middleware.Timeout(5 * time.Minute)).Post("/api/scribe/sessions/{id}/upload", s.scribeHandler.HandleUpload)
+		r.With(middleware.Timeout(5*time.Minute)).Post("/api/scribe/sessions/{id}/upload", s.scribeHandler.HandleUpload)
 
 		r.Get("/api/scribe/sessions/{id}/feedback", s.scribeHandler.HandleListFeedback)
 		r.Post("/api/scribe/sessions/{id}/feedback", s.scribeHandler.HandleCreateFeedback)

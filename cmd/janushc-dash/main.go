@@ -19,6 +19,7 @@ import (
 	"github.com/andybarilla/janushc-dash/internal/scribe"
 	"github.com/andybarilla/janushc-dash/internal/server"
 	"github.com/andybarilla/janushc-dash/internal/transcribe"
+	"github.com/andybarilla/janushc-dash/internal/users"
 )
 
 func main() {
@@ -54,6 +55,7 @@ func main() {
 	authHandler := auth.NewHandler(queries, googleVerifier, cfg.JWTSecret, cfg.JWTExpiry)
 	athenaClient := athena.NewClient(cfg.AthenaBaseURL, cfg.AthenaClientID, cfg.AthenaClientSecret)
 	approvalHandler := approval.NewHandler(queries, athenaClient, cfg)
+	usersHandler := users.NewHandler(queries, cfg.GoogleAllowedDomain)
 
 	// Create bedrock client
 	bedrockClient, err := bedrock.NewClient(context.Background(), cfg.AWSRegion, cfg.BedrockModelID)
@@ -72,6 +74,6 @@ func main() {
 	scribeHandler := scribe.NewHandler(queries, scribeProcessor, cfg, transcribeClient)
 
 	// Start server
-	srv := server.New(cfg, pool, queries, authHandler, approvalHandler, scribeHandler)
+	srv := server.New(cfg, pool, queries, authHandler, approvalHandler, usersHandler, scribeHandler)
 	log.Fatal(srv.Start())
 }
