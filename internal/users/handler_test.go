@@ -173,6 +173,9 @@ func TestHandleCreateValidRequestNormalizesEmailAndTrimsName(t *testing.T) {
 	if got := db.queryRowArgs[1].(string); got != "jane@janushc.com" {
 		t.Fatalf("expected normalized email, got %q", got)
 	}
+	if got := db.queryRowArgs[2].(string); got != "staff" {
+		t.Fatalf("expected role, got %q", got)
+	}
 	if got := db.queryRowArgs[3].(string); got != "Jane User" {
 		t.Fatalf("expected trimmed name, got %q", got)
 	}
@@ -254,6 +257,52 @@ func TestHandleCreateDuplicateEmailReturnsConflict(t *testing.T) {
 	}
 }
 
+func TestHandleCreateRejectsNilClaims(t *testing.T) {
+	db := &fakeDB{}
+	handler := NewHandler(database.New(db), "janushc.com")
+	response := httptest.NewRecorder()
+
+	handler.HandleCreate(response, requestWithClaimsValue(http.MethodPost, "/api/users", `{"email":"jane@janushc.com","name":"Jane User","role":"staff"}`, nil))
+
+	assertStatus(t, response, http.StatusUnauthorized)
+	assertCreateNotCalled(t, db)
+}
+
+func TestHandleCreateRejectsInvalidTenantContext(t *testing.T) {
+	db := &fakeDB{}
+	handler := NewHandler(database.New(db), "janushc.com")
+	response := httptest.NewRecorder()
+	claims := &auth.Claims{UserID: testUserID, TenantID: "not-a-uuid", Role: "admin"}
+
+	handler.HandleCreate(response, requestWithClaimsValue(http.MethodPost, "/api/users", `{"email":"jane@janushc.com","name":"Jane User","role":"staff"}`, claims))
+
+	assertStatus(t, response, http.StatusBadRequest)
+	assertCreateNotCalled(t, db)
+}
+
+func TestHandleListRejectsNilClaims(t *testing.T) {
+	db := &fakeDB{}
+	handler := NewHandler(database.New(db), "janushc.com")
+	response := httptest.NewRecorder()
+
+	handler.HandleList(response, requestWithClaimsValue(http.MethodGet, "/api/users", "", nil))
+
+	assertStatus(t, response, http.StatusUnauthorized)
+	assertListNotCalled(t, db)
+}
+
+func TestHandleListRejectsInvalidTenantContext(t *testing.T) {
+	db := &fakeDB{}
+	handler := NewHandler(database.New(db), "janushc.com")
+	response := httptest.NewRecorder()
+	claims := &auth.Claims{UserID: testUserID, TenantID: "not-a-uuid", Role: "admin"}
+
+	handler.HandleList(response, requestWithClaimsValue(http.MethodGet, "/api/users", "", claims))
+
+	assertStatus(t, response, http.StatusBadRequest)
+	assertListNotCalled(t, db)
+}
+
 func TestHandleListReturnsOnlySafeUserFields(t *testing.T) {
 	tenantUUID := mustUUID(t, testTenantID)
 	createdAt := pgtype.Timestamptz{Time: time.Date(2026, 5, 14, 12, 30, 0, 0, time.UTC), Valid: true}
@@ -303,8 +352,12 @@ func performCreate(t *testing.T, allowedDomain string, body string) (*httptest.R
 }
 
 func requestWithClaims(method string, target string, body string) *http.Request {
-	request := httptest.NewRequest(method, target, strings.NewReader(body))
 	claims := &auth.Claims{UserID: testUserID, TenantID: testTenantID, Role: "admin"}
+	return requestWithClaimsValue(method, target, body, claims)
+}
+
+func requestWithClaimsValue(method string, target string, body string, claims *auth.Claims) *http.Request {
+	request := httptest.NewRequest(method, target, strings.NewReader(body))
 	return request.WithContext(auth.NewContext(request.Context(), claims))
 }
 
@@ -328,6 +381,13 @@ func assertCreateNotCalled(t *testing.T, db *fakeDB) {
 	t.Helper()
 	if len(db.queryRowArgs) != 0 {
 		t.Fatalf("expected create not to be called, got args %#v", db.queryRowArgs)
+	}
+}
+
+func assertListNotCalled(t *testing.T, db *fakeDB) {
+	t.Helper()
+	if len(db.queryArgs) != 0 {
+		t.Fatalf("expected list not to be called, got args %#v", db.queryArgs)
 	}
 }
 
