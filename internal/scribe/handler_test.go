@@ -254,3 +254,80 @@ func TestValidateUpload_ValidFile(t *testing.T) {
 		t.Errorf("expected .mp3, got %s", ext)
 	}
 }
+
+func TestIsValidFeedbackSection(t *testing.T) {
+	cases := map[string]bool{
+		"overall": true,
+		"hpi":     true,
+		"plan":    true,
+		"exam":    true,
+		"labs":    true,
+		"":        false,
+		"summary": false,
+		"HPI":     false,
+	}
+	for input, want := range cases {
+		if got := isValidFeedbackSection(input); got != want {
+			t.Errorf("isValidFeedbackSection(%q) = %v, want %v", input, got, want)
+		}
+	}
+}
+
+func TestIsValidFeedbackCategory(t *testing.T) {
+	for _, c := range []string{"missed_info", "incorrect", "hallucination", "formatting", "good", "comment"} {
+		if !isValidFeedbackCategory(c) {
+			t.Errorf("expected %q to be valid", c)
+		}
+	}
+	for _, c := range []string{"", "missing", "bug", "Good"} {
+		if isValidFeedbackCategory(c) {
+			t.Errorf("expected %q to be invalid", c)
+		}
+	}
+}
+
+func TestDeriveInitials(t *testing.T) {
+	cases := map[string]string{
+		"Jane Smith":          "JS",
+		"jane smith":          "JS",
+		"Dr. Marie Curie":     "MC",
+		"Cher":                "CH",
+		"  Madonna  ":         "MA",
+		"X":                   "X",
+		"":                    "",
+		"Mary Jane Smith Doe": "MD",
+	}
+	for in, want := range cases {
+		if got := deriveInitials(in); got != want {
+			t.Errorf("deriveInitials(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestValidateCreateFeedbackRequest_Valid(t *testing.T) {
+	req := createFeedbackRequest{Section: "hpi", Category: "missed_info", Body: "Missed allergy."}
+	if err := req.validate(); err != nil {
+		t.Errorf("expected valid, got %v", err)
+	}
+}
+
+func TestValidateCreateFeedbackRequest_BadSection(t *testing.T) {
+	req := createFeedbackRequest{Section: "summary", Category: "good", Body: "ok"}
+	if err := req.validate(); err == nil {
+		t.Error("expected error for invalid section")
+	}
+}
+
+func TestValidateCreateFeedbackRequest_BadCategory(t *testing.T) {
+	req := createFeedbackRequest{Section: "hpi", Category: "bug", Body: "ok"}
+	if err := req.validate(); err == nil {
+		t.Error("expected error for invalid category")
+	}
+}
+
+func TestValidateCreateFeedbackRequest_EmptyBody(t *testing.T) {
+	req := createFeedbackRequest{Section: "hpi", Category: "good", Body: "   "}
+	if err := req.validate(); err == nil {
+		t.Error("expected error for empty body")
+	}
+}

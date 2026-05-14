@@ -128,6 +128,83 @@ func isValidSection(s string) bool {
 	return false
 }
 
+var feedbackSections = []string{"overall", "hpi", "plan", "exam", "labs"}
+var feedbackCategories = []string{
+	"missed_info", "incorrect", "hallucination", "formatting", "good", "comment",
+}
+
+func isValidFeedbackSection(s string) bool {
+	for _, k := range feedbackSections {
+		if k == s {
+			return true
+		}
+	}
+	return false
+}
+
+func isValidFeedbackCategory(c string) bool {
+	for _, k := range feedbackCategories {
+		if k == c {
+			return true
+		}
+	}
+	return false
+}
+
+// deriveInitials returns up to two uppercase letters from the user's display
+// name. Multi-word names take first letter of first and last word. Single-word
+// names take the first two letters. Strips a leading "Dr. " honorific so it
+// doesn't dominate the initials.
+func deriveInitials(name string) string {
+	trimmed := strings.TrimSpace(name)
+	trimmed = strings.TrimPrefix(trimmed, "Dr. ")
+	trimmed = strings.TrimPrefix(trimmed, "dr. ")
+	fields := strings.Fields(trimmed)
+	switch {
+	case len(fields) == 0:
+		return ""
+	case len(fields) == 1:
+		w := fields[0]
+		if len(w) == 1 {
+			return strings.ToUpper(w)
+		}
+		return strings.ToUpper(w[:2])
+	default:
+		first := fields[0]
+		last := fields[len(fields)-1]
+		return strings.ToUpper(string(first[0]) + string(last[0]))
+	}
+}
+
+type createFeedbackRequest struct {
+	Section  string `json:"section"`
+	Category string `json:"category"`
+	Body     string `json:"body"`
+}
+
+func (r createFeedbackRequest) validate() error {
+	if !isValidFeedbackSection(r.Section) {
+		return fmt.Errorf("invalid section")
+	}
+	if !isValidFeedbackCategory(r.Category) {
+		return fmt.Errorf("invalid category")
+	}
+	if strings.TrimSpace(r.Body) == "" {
+		return fmt.Errorf("body is required")
+	}
+	return nil
+}
+
+type feedbackResponse struct {
+	ID             string `json:"id"`
+	Section        string `json:"section"`
+	Category       string `json:"category"`
+	Body           string `json:"body"`
+	Author         string `json:"author"`
+	AuthorInitials string `json:"authorInitials"`
+	At             string `json:"at"`
+}
+
 func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	claims := auth.ClaimsFromContext(r.Context())
 	if claims == nil {
@@ -917,6 +994,127 @@ func (h *Handler) handleSectionAction(w http.ResponseWriter, r *http.Request, ac
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte("{}"))
+}
+
+func (h *Handler) HandleCreateFeedback(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	sessionUUID := pgtype.UUID{}
+	if err := sessionUUID.Scan(chi.URLParam(r, "id")); err != nil {
+		http.Error(w, "invalid session ID", http.StatusBadRequest)
+		return
+	}
+	tenantUUID := pgtype.UUID{}
+	if err := tenantUUID.Scan(claims.TenantID); err != nil {
+		http.Error(w, "invalid tenant context", http.StatusBadRequest)
+		return
+	}
+	userUUID := pgtype.UUID{}
+	if err := userUUID.Scan(claims.UserID); err != nil {
+		http.Error(w, "invalid user context", http.StatusBadRequest)
+		return
+	}
+
+	if _, err := h.queries.GetScribeSession(r.Context(), database.GetScribeSessionParams{
+		ID:       sessionUUID,
+		TenantID: tenantUUID,
+	}); err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	var req createFeedbackRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := req.validate(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	row, err := h.queries.CreateFeedback(r.Context(), database.CreateFeedbackParams{
+		SessionID: sessionUUID,
+		Section:   req.Section,
+		Category:  req.Category,
+		Body:      strings.TrimSpace(req.Body),
+		UserID:    userUUID,
+	})
+	if err != nil {
+		http.Error(w, "failed to save feedback", http.StatusInternalServerError)
+		return
+	}
+
+	user, err := h.queries.GetUserByID(r.Context(), userUUID)
+	if err != nil {
+		http.Error(w, "failed to load author", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(feedbackResponse{
+		ID:             uuidToString(row.ID),
+		Section:        row.Section,
+		Category:       row.Category,
+		Body:           row.Body,
+		Author:         user.Name,
+		AuthorInitials: deriveInitials(user.Name),
+		At:             row.At.Time.Format("2006-01-02T15:04:05Z"),
+	})
+}
+
+func (h *Handler) HandleListFeedback(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	sessionUUID := pgtype.UUID{}
+	if err := sessionUUID.Scan(chi.URLParam(r, "id")); err != nil {
+		http.Error(w, "invalid session ID", http.StatusBadRequest)
+		return
+	}
+	tenantUUID := pgtype.UUID{}
+	if err := tenantUUID.Scan(claims.TenantID); err != nil {
+		http.Error(w, "invalid tenant context", http.StatusBadRequest)
+		return
+	}
+
+	if _, err := h.queries.GetScribeSession(r.Context(), database.GetScribeSessionParams{
+		ID:       sessionUUID,
+		TenantID: tenantUUID,
+	}); err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	rows, err := h.queries.GetSessionFeedback(r.Context(), sessionUUID)
+	if err != nil {
+		http.Error(w, "failed to load feedback", http.StatusInternalServerError)
+		return
+	}
+
+	out := make([]feedbackResponse, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, feedbackResponse{
+			ID:             uuidToString(row.ID),
+			Section:        row.Section,
+			Category:       row.Category,
+			Body:           row.Body,
+			Author:         row.AuthorName,
+			AuthorInitials: deriveInitials(row.AuthorName),
+			At:             row.At.Time.Format("2006-01-02T15:04:05Z"),
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
 }
 
 func toSessionResponse(s database.ScribeSession) sessionResponse {
