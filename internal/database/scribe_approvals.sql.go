@@ -11,6 +11,47 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getSessionSectionEdits = `-- name: GetSessionSectionEdits :many
+SELECT DISTINCT ON (section)
+    section, content, edited_by, at
+FROM scribe_section_edits
+WHERE session_id = $1
+ORDER BY section, at DESC
+`
+
+type GetSessionSectionEditsRow struct {
+	Section  string             `json:"section"`
+	Content  []byte             `json:"content"`
+	EditedBy pgtype.UUID        `json:"edited_by"`
+	At       pgtype.Timestamptz `json:"at"`
+}
+
+// Latest edit per section for one session.
+func (q *Queries) GetSessionSectionEdits(ctx context.Context, sessionID pgtype.UUID) ([]GetSessionSectionEditsRow, error) {
+	rows, err := q.db.Query(ctx, getSessionSectionEdits, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetSessionSectionEditsRow{}
+	for rows.Next() {
+		var i GetSessionSectionEditsRow
+		if err := rows.Scan(
+			&i.Section,
+			&i.Content,
+			&i.EditedBy,
+			&i.At,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSessionSectionStates = `-- name: GetSessionSectionStates :many
 SELECT DISTINCT ON (a.section)
     a.section, a.action, a.user_id, a.at, u.name AS user_name
@@ -73,6 +114,28 @@ func (q *Queries) RecordSectionApproval(ctx context.Context, arg RecordSectionAp
 		arg.Section,
 		arg.Action,
 		arg.UserID,
+	)
+	return err
+}
+
+const recordSectionEdit = `-- name: RecordSectionEdit :exec
+INSERT INTO scribe_section_edits (session_id, section, content, edited_by)
+VALUES ($1, $2, $3, $4)
+`
+
+type RecordSectionEditParams struct {
+	SessionID pgtype.UUID `json:"session_id"`
+	Section   string      `json:"section"`
+	Content   []byte      `json:"content"`
+	EditedBy  pgtype.UUID `json:"edited_by"`
+}
+
+func (q *Queries) RecordSectionEdit(ctx context.Context, arg RecordSectionEditParams) error {
+	_, err := q.db.Exec(ctx, recordSectionEdit,
+		arg.SessionID,
+		arg.Section,
+		arg.Content,
+		arg.EditedBy,
 	)
 	return err
 }

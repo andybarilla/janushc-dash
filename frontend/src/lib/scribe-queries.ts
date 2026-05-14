@@ -1,13 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
-import type { SectionKey } from "@/components/scribe/types";
+import type { DiagnosisLab, SectionContent, SectionKey } from "@/components/scribe/types";
 
-export type SectionState = "pending" | "approved";
+export type SectionState = "pending" | "approved" | "stale";
 
 export interface SectionStateData {
   state: SectionState;
+  content: SectionContent;
   approved_by_name?: string;
   approved_at?: string;
+  edited_at?: string;
 }
 
 export interface ScribeSession {
@@ -30,7 +32,7 @@ export interface ScribeSessionDetail extends ScribeSession {
     hpi: string;
     assessment_plan: string;
     physical_exam: string;
-    diagnoses_labs: { diagnosis: string; lab: string }[];
+    diagnoses_labs: DiagnosisLab[];
   };
   sections: Record<SectionKey, SectionStateData>;
   sent_to_ehr_at?: string;
@@ -68,6 +70,31 @@ export function useCreateScribeSession() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["scribeSessions"] });
+    },
+  });
+}
+
+export function useEditSection() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      sessionId,
+      section,
+      content,
+    }: {
+      sessionId: string;
+      section: SectionKey;
+      content: SectionContent;
+    }) =>
+      api.fetch<Record<string, never>>(
+        `/api/scribe/sessions/${sessionId}/sections/${section}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ content }),
+        },
+      ),
+    onSuccess: (_data, { sessionId }) => {
+      queryClient.invalidateQueries({ queryKey: ["scribeSessions", sessionId] });
     },
   });
 }

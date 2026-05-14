@@ -1522,3 +1522,86 @@
               border-color 0.25s var(--janus-motion-ease),
               color 0.25s var(--janus-motion-ease);
 }
+
+/* ── Section inline editor ─────────────────────────────────── */
+.janus-section-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.janus-editor-textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--janus-border);
+  border-radius: var(--janus-radius-sm);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  background: var(--janus-bg);
+  color: var(--janus-text);
+  resize: vertical;
+}
+
+.janus-editor-textarea:focus {
+  outline: none;
+  border-color: var(--janus-accent);
+}
+
+.janus-editor-input {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--janus-border);
+  border-radius: var(--janus-radius-sm);
+  font: inherit;
+  font-size: 13px;
+  background: var(--janus-bg);
+  color: var(--janus-text);
+}
+
+.janus-editor-input:focus {
+  outline: none;
+  border-color: var(--janus-accent);
+}
+
+.janus-labs-editor-table td,
+.janus-labs-editor-table th {
+  padding: 4px 6px;
+  vertical-align: middle;
+}
+
+.janus-labs-editor-table th {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--janus-text-light);
+}
+
+.janus-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Stale section state ────────────────────────────────────── */
+.janus-section-card.stale .janus-section-head {
+  background: rgba(234, 179, 8, 0.06);
+}
+
+.janus-approve-toggle.stale {
+  background: var(--janus-warning-bg, #fef9c3);
+  color: var(--janus-warning-text, #854d0e);
+  border-color: var(--janus-warning-text, #854d0e);
+}
+
+.janus-stale-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: rgba(234, 179, 8, 0.15);
+  color: var(--janus-warning-text, #854d0e);
+  white-space: nowrap;
+}

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Ban,
   CheckCheck,
@@ -15,7 +16,9 @@ import {
 import type { ScribeSessionDetail } from "@/lib/scribe-queries";
 import type {
   Approvals,
+  DiagnosisLab,
   FeedbackNote,
+  SectionContent,
   SectionKey,
   StatusId,
 } from "./types";
@@ -38,6 +41,7 @@ interface Props {
   onApproveAll: () => void;
   onReject: () => void;
   onSend: () => void;
+  onSaveSection: (section: SectionKey, content: SectionContent) => void;
   onOpenNotes: () => void;
   onAddNoteForSection: (section: SectionKey) => void;
   onRetry: () => void;
@@ -60,10 +64,27 @@ export function DetailView({
   onApproveAll,
   onReject,
   onSend,
+  onSaveSection,
   onOpenNotes,
   onAddNoteForSection,
   onRetry,
 }: Props) {
+  const [editingSection, setEditingSection] = useState<SectionKey | null>(null);
+  const [draftContent, setDraftContent] = useState<SectionContent>("");
+
+  const startEdit = (section: SectionKey) => {
+    const current = session?.sections?.[section]?.content;
+    setDraftContent(current ?? (section === "labs" ? [] : ""));
+    setEditingSection(section);
+  };
+
+  const saveEdit = () => {
+    if (!editingSection) return;
+    onSaveSection(editingSection, draftContent);
+    setEditingSection(null);
+  };
+
+  const cancelEdit = () => setEditingSection(null);
   if (loading || !session || !statusId) {
     return (
       <div className="janus-detail-pane">
@@ -240,81 +261,67 @@ export function DetailView({
       ) : null}
 
       <div className="janus-detail-body">
-        {hasSections && aiOutput ? (
+        {hasSections && session.sections ? (
           <>
-            <SectionCard
-              sectionKey="hpi"
-              approved={approvals.hpi}
-              noteCount={notesForSection(notes, "hpi")}
-              canApprove={canApprove}
-              onApprove={() => onApprove("hpi")}
-              onAddNote={() => onAddNoteForSection("hpi")}
-              onOpenNotes={onOpenNotes}
-              onCopy={() => copySection(aiOutput.hpi)}
-            >
-              <p>{aiOutput.hpi || <em>No HPI extracted.</em>}</p>
-            </SectionCard>
-
-            <SectionCard
-              sectionKey="plan"
-              approved={approvals.plan}
-              noteCount={notesForSection(notes, "plan")}
-              canApprove={canApprove}
-              onApprove={() => onApprove("plan")}
-              onAddNote={() => onAddNoteForSection("plan")}
-              onOpenNotes={onOpenNotes}
-              onCopy={() => copySection(aiOutput.assessment_plan)}
-            >
-              {aiOutput.assessment_plan ? (
-                <PlanBody body={aiOutput.assessment_plan} />
-              ) : (
-                <p>
-                  <em>No assessment & plan extracted.</em>
-                </p>
-              )}
-            </SectionCard>
-
-            <SectionCard
-              sectionKey="exam"
-              approved={approvals.exam}
-              noteCount={notesForSection(notes, "exam")}
-              canApprove={canApprove}
-              onApprove={() => onApprove("exam")}
-              onAddNote={() => onAddNoteForSection("exam")}
-              onOpenNotes={onOpenNotes}
-              onCopy={() => copySection(aiOutput.physical_exam)}
-            >
-              <div className="janus-exam-block">
-                {aiOutput.physical_exam || (
-                  <em>No physical exam findings extracted.</em>
-                )}
-              </div>
-            </SectionCard>
-
-            <SectionCard
-              sectionKey="labs"
-              approved={approvals.labs}
-              noteCount={notesForSection(notes, "labs")}
-              canApprove={canApprove}
-              onApprove={() => onApprove("labs")}
-              onAddNote={() => onAddNoteForSection("labs")}
-              onOpenNotes={onOpenNotes}
-              onCopy={() =>
-                copySection(
-                  aiOutput.diagnoses_labs
-                    ?.map((d) => `${d.diagnosis} — ${d.lab}`)
-                    .join("\n"),
-                )
-              }
-            >
-              {aiOutput.diagnoses_labs?.length ? (
-                <LabsTable rows={aiOutput.diagnoses_labs} />
-              ) : (
-                <p>
-                  <em>No diagnoses or labs extracted.</em>
-                </p>
-              )}
-            </SectionCard>
+            {(["hpi", "plan", "exam", "labs"] as SectionKey[]).map((sk) => {
+              const sec = session.sections[sk];
+              const textContent = typeof sec.content === "string" ? sec.content : "";
+              const labsContent = Array.isArray(sec.content) ? sec.content as DiagnosisLab[] : [];
+              const isEditing = editingSection === sk;
+              const stale = sec.state === "stale";
+              return (
+                <SectionCard
+                  key={sk}
+                  sectionKey={sk}
+                  approved={approvals[sk]}
+                  stale={stale}
+                  noteCount={notesForSection(notes, sk)}
+                  canApprove={canApprove}
+                  canEdit={canApprove && isReady}
+                  onApprove={() => onApprove(sk)}
+                  onEdit={() => startEdit(sk)}
+                  onAddNote={() => onAddNoteForSection(sk)}
+                  onOpenNotes={onOpenNotes}
+                  onCopy={() =>
+                    sk === "labs"
+                      ? copySection(labsContent.map((d) => `${d.diagnosis} — ${d.lab}`).join("\n"))
+                      : copySection(textContent)
+                  }
+                >
+                  {isEditing ? (
+                    sk === "labs" ? (
+                      <LabsEditor
+                        rows={draftContent as DiagnosisLab[]}
+                        onChange={(rows) => setDraftContent(rows)}
+                        onSave={saveEdit}
+                        onCancel={cancelEdit}
+                      />
+                    ) : (
+                      <TextEditor
+                        value={draftContent as string}
+                        onChange={(v) => setDraftContent(v)}
+                        onSave={saveEdit}
+                        onCancel={cancelEdit}
+                      />
+                    )
+                  ) : sk === "labs" ? (
+                    labsContent.length ? (
+                      <LabsTable rows={labsContent} />
+                    ) : (
+                      <p><em>No diagnoses or labs extracted.</em></p>
+                    )
+                  ) : sk === "plan" ? (
+                    textContent ? (
+                      <PlanBody body={textContent} />
+                    ) : (
+                      <p><em>No assessment & plan extracted.</em></p>
+                    )
+                  ) : (
+                    <p>{textContent || <em>No content extracted.</em>}</p>
+                  )}
+                </SectionCard>
+              );
+            })}
 
             <TranscriptCard transcript={session.transcript} />
           </>
@@ -366,6 +373,116 @@ function PlanBody({ body }: { body: string }) {
         <li key={i}>{line}</li>
       ))}
     </ol>
+  );
+}
+
+function TextEditor({
+  value,
+  onChange,
+  onSave,
+  onCancel,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="janus-section-editor">
+      <textarea
+        className="janus-editor-textarea"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={6}
+        autoFocus
+      />
+      <div className="janus-editor-actions">
+        <button type="button" className="janus-btn janus-btn-primary janus-btn-sm" onClick={onSave}>
+          Save
+        </button>
+        <button type="button" className="janus-btn janus-btn-ghost janus-btn-sm" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function LabsEditor({
+  rows,
+  onChange,
+  onSave,
+  onCancel,
+}: {
+  rows: DiagnosisLab[];
+  onChange: (rows: DiagnosisLab[]) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  const update = (i: number, field: keyof DiagnosisLab, value: string) => {
+    const next = rows.map((r, idx) =>
+      idx === i ? { ...r, [field]: value } : r,
+    );
+    onChange(next);
+  };
+  const addRow = () => onChange([...rows, { diagnosis: "", lab: "" }]);
+  const removeRow = (i: number) => onChange(rows.filter((_, idx) => idx !== i));
+
+  return (
+    <div className="janus-section-editor">
+      <table className="janus-labs-table janus-labs-editor-table">
+        <thead>
+          <tr>
+            <th>Diagnosis</th>
+            <th>Lab / Test</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i}>
+              <td>
+                <input
+                  className="janus-editor-input"
+                  value={row.diagnosis}
+                  onChange={(e) => update(i, "diagnosis", e.target.value)}
+                  placeholder="Diagnosis (ICD code)"
+                />
+              </td>
+              <td>
+                <input
+                  className="janus-editor-input"
+                  value={row.lab}
+                  onChange={(e) => update(i, "lab", e.target.value)}
+                  placeholder="Lab or test"
+                />
+              </td>
+              <td>
+                <button
+                  type="button"
+                  className="janus-section-action"
+                  title="Remove row"
+                  onClick={() => removeRow(i)}
+                >
+                  <X />
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="janus-editor-actions">
+        <button type="button" className="janus-btn janus-btn-ghost janus-btn-sm" onClick={addRow}>
+          + Add row
+        </button>
+        <button type="button" className="janus-btn janus-btn-primary janus-btn-sm" onClick={onSave}>
+          Save
+        </button>
+        <button type="button" className="janus-btn janus-btn-ghost janus-btn-sm" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }
 

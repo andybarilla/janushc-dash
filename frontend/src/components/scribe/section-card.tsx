@@ -7,6 +7,7 @@ import {
   MessageSquare,
   MessageSquarePlus,
   Microscope,
+  Pencil,
   Stethoscope,
   type LucideIcon,
 } from "lucide-react";
@@ -28,9 +29,12 @@ export const SECTIONS: Record<SectionKey, SectionMeta> = {
 interface Props {
   sectionKey: SectionKey;
   approved: boolean;
+  stale?: boolean;
   noteCount: number;
   canApprove?: boolean;
+  canEdit?: boolean;
   onApprove: () => void;
+  onEdit?: () => void;
   onAddNote: () => void;
   onOpenNotes: () => void;
   onCopy: () => void;
@@ -40,9 +44,12 @@ interface Props {
 export function SectionCard({
   sectionKey,
   approved,
+  stale = false,
   noteCount,
   canApprove = true,
+  canEdit = false,
   onApprove,
+  onEdit,
   onAddNote,
   onOpenNotes,
   onCopy,
@@ -52,7 +59,7 @@ export function SectionCard({
   const Icon = meta.icon;
   return (
     <div
-      className={`janus-section-card ${approved ? "approved" : ""} ${
+      className={`janus-section-card ${approved ? "approved" : ""} ${stale ? "stale" : ""} ${
         noteCount > 0 ? "has-notes" : ""
       }`}
     >
@@ -92,16 +99,31 @@ export function SectionCard({
           >
             <Copy />
           </button>
+          {canEdit ? (
+            <button
+              type="button"
+              className="janus-section-action"
+              title="Edit this section"
+              onClick={onEdit}
+            >
+              <Pencil />
+            </button>
+          ) : null}
+          {stale && !canApprove ? (
+            <span className="janus-stale-badge" title="Edited since approval — re-approve needed">
+              Re-approve needed
+            </span>
+          ) : null}
           {canApprove ? (
             <button
               type="button"
-              className={`janus-approve-toggle ${approved ? "done" : ""}`}
+              className={`janus-approve-toggle ${approved || stale ? "done" : ""} ${stale ? "stale" : ""}`}
               onClick={onApprove}
             >
               <span className="janus-check">
                 <Check />
               </span>
-              {approved ? "Approved" : "Approve"}
+              {stale ? "Re-approve" : approved ? "Approved" : "Approve"}
             </button>
           ) : approved ? (
             <span

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Download, Upload } from "lucide-react";
 import {
   useApproveSection,
+  useEditSection,
   useRejectSession,
   useRevokeSection,
   useSendToEHR,
@@ -22,6 +23,7 @@ import { deriveStatusId, isInPipeline } from "@/components/scribe/status";
 import type {
   Approvals,
   FeedbackNote,
+  SectionContent,
   SectionKey,
 } from "@/components/scribe/types";
 
@@ -43,6 +45,7 @@ export default function ScribePage() {
   const revokeMut = useRevokeSection();
   const sendMut = useSendToEHR();
   const rejectMut = useRejectSession();
+  const editMut = useEditSection();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -119,6 +122,11 @@ export default function ScribePage() {
     SECTION_KEYS.filter((k) => !approvals[k]).forEach((section) =>
       approveMut.mutate({ sessionId: selectedId, section }),
     );
+  };
+
+  const handleSaveSection = (section: SectionKey, content: SectionContent) => {
+    if (!selectedId) return;
+    editMut.mutate({ sessionId: selectedId, section, content });
   };
 
   const handleReject = () => {
@@ -218,6 +226,7 @@ export default function ScribePage() {
           onSend={() => {
             if (selectedId) sendMut.mutate({ sessionId: selectedId });
           }}
+          onSaveSection={handleSaveSection}
           onRetry={() => {
             window.alert("Retry is not yet implemented.");
           }}

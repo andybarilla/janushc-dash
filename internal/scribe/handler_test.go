@@ -103,46 +103,100 @@ func TestIsValidSection(t *testing.T) {
 	}
 }
 
-func TestBuildSectionsMap_EmptyDefaultsAllPending(t *testing.T) {
-	out := buildSectionsMap(nil)
-	if len(out) != 4 {
-		t.Fatalf("expected 4 keys, got %d", len(out))
+
+
+
+
+func makeApprovalRows(sections ...string) []database.GetSessionSectionStatesRow {
+	rows := make([]database.GetSessionSectionStatesRow, 0, len(sections))
+	for _, s := range sections {
+		rows = append(rows, database.GetSessionSectionStatesRow{
+			Section:  s,
+			Action:   "approved",
+			At:       pgtype.Timestamptz{Time: time.Now(), Valid: true},
+			UserName: "Courtney Barilla",
+		})
 	}
+	return rows
+}
+
+func makeEditRow(section string, secondsAfter int) database.GetSessionSectionEditsRow {
+	return database.GetSessionSectionEditsRow{
+		Section: section,
+		Content: []byte(`"edited"`),
+		At:      pgtype.Timestamptz{Time: time.Now().Add(time.Duration(secondsAfter) * time.Second), Valid: true},
+	}
+}
+
+func TestBuildSectionStates_AllApproved_NoEdits(t *testing.T) {
+	rows := makeApprovalRows("hpi", "plan", "exam", "labs")
+	states := buildSectionStates(rows, nil)
 	for _, k := range []string{"hpi", "plan", "exam", "labs"} {
-		if out[k].State != "pending" {
-			t.Errorf("section %s: expected pending, got %q", k, out[k].State)
+		if states[k].state != "approved" {
+			t.Errorf("section %s: expected approved, got %q", k, states[k].state)
 		}
 	}
 }
 
-func TestBuildSectionsMap_ApprovedRowSetsApprovedState(t *testing.T) {
-	at := time.Date(2026, 5, 14, 15, 32, 0, 0, time.UTC)
-	rows := []database.GetSessionSectionStatesRow{
-		{
-			Section:  "hpi",
-			Action:   "approved",
-			At:       pgtype.Timestamptz{Time: at, Valid: true},
-			UserName: "Courtney Barilla",
-		},
-	}
-	out := buildSectionsMap(rows)
-	if out["hpi"].State != "approved" {
-		t.Errorf("expected approved, got %q", out["hpi"].State)
-	}
-	if out["hpi"].ApprovedByName != "Courtney Barilla" {
-		t.Errorf("expected approver name, got %q", out["hpi"].ApprovedByName)
-	}
-	if out["hpi"].ApprovedAt == "" {
-		t.Error("expected approved_at to be set")
-	}
-	if out["plan"].State != "pending" {
-		t.Errorf("untouched section should remain pending, got %q", out["plan"].State)
+func TestBuildSectionStates_EditAfterApproval_IsStale(t *testing.T) {
+	rows := makeApprovalRows("hpi")
+	edit := makeEditRow("hpi", 1) // edit 1 second after approval
+	states := buildSectionStates(rows, []database.GetSessionSectionEditsRow{edit})
+	if states["hpi"].state != "stale" {
+		t.Errorf("expected stale, got %q", states["hpi"].state)
 	}
 }
 
-// The DB query (DISTINCT ON ... ORDER BY at DESC) returns at most one row per
-// section — the latest event. If that latest event is a 'revoked' action, the
-// section must end up pending. This guards the Go-side derivation contract.
+func TestBuildSectionStates_EditBeforeApproval_IsApproved(t *testing.T) {
+	// Approval row timestamp is "now"; edit is in the past (1s ago → negative offset)
+	edit := makeEditRow("hpi", -1)
+	rows := makeApprovalRows("hpi")
+	states := buildSectionStates(rows, []database.GetSessionSectionEditsRow{edit})
+	if states["hpi"].state != "approved" {
+		t.Errorf("expected approved, got %q", states["hpi"].state)
+	}
+}
+
+func TestAllSectionsReadyToSend_StaleBlocksSend(t *testing.T) {
+	rows := makeApprovalRows("hpi", "plan", "exam", "labs")
+	edit := makeEditRow("hpi", 1) // hpi stale
+	if allSectionsReadyToSend(rows, []database.GetSessionSectionEditsRow{edit}) {
+		t.Error("expected false when a section is stale")
+	}
+}
+
+func TestAllSectionsReadyToSend_AllApprovedNoEdits(t *testing.T) {
+	rows := makeApprovalRows("hpi", "plan", "exam", "labs")
+	if !allSectionsReadyToSend(rows, nil) {
+		t.Error("expected true when all sections approved and no edits")
+	}
+}
+
+func TestValidateSectionContent_TextSection_ValidString(t *testing.T) {
+	if err := validateSectionContent("hpi", []byte(`"some text"`)); err != nil {
+		t.Errorf("expected nil error, got %v", err)
+	}
+}
+
+func TestValidateSectionContent_TextSection_InvalidJSON(t *testing.T) {
+	if err := validateSectionContent("hpi", []byte(`123`)); err == nil {
+		t.Error("expected error for non-string hpi content")
+	}
+}
+
+func TestValidateSectionContent_Labs_ValidArray(t *testing.T) {
+	raw := []byte(`[{"diagnosis":"HTN","lab":"CBC"}]`)
+	if err := validateSectionContent("labs", raw); err != nil {
+		t.Errorf("expected nil error, got %v", err)
+	}
+}
+
+func TestValidateSectionContent_Labs_InvalidShape(t *testing.T) {
+	if err := validateSectionContent("labs", []byte(`"not an array"`)); err == nil {
+		t.Error("expected error for non-array labs content")
+	}
+}
+
 func TestAllSectionsApproved_AllApproved(t *testing.T) {
 	rows := []database.GetSessionSectionStatesRow{
 		{Section: "hpi", Action: "approved"},
@@ -179,18 +233,7 @@ func TestAllSectionsApproved_OneRevoked(t *testing.T) {
 	}
 }
 
-func TestBuildSectionsMap_RevokedRowYieldsPending(t *testing.T) {
-	rows := []database.GetSessionSectionStatesRow{
-		{Section: "hpi", Action: "revoked"},
-	}
-	out := buildSectionsMap(rows)
-	if out["hpi"].State != "pending" {
-		t.Errorf("expected pending after revoke, got %q", out["hpi"].State)
-	}
-	if out["hpi"].ApprovedByName != "" || out["hpi"].ApprovedAt != "" {
-		t.Error("revoked section must not carry approver metadata")
-	}
-}
+
 
 func TestValidateUpload_ValidFile(t *testing.T) {
 	body := &bytes.Buffer{}

@@ -80,6 +80,15 @@ type ScribeSectionApproval struct {
 	At        pgtype.Timestamptz `json:"at"`
 }
 
+type ScribeSectionEdit struct {
+	ID        pgtype.UUID        `json:"id"`
+	SessionID pgtype.UUID        `json:"session_id"`
+	Section   string             `json:"section"`
+	Content   []byte             `json:"content"`
+	EditedBy  pgtype.UUID        `json:"edited_by"`
+	At        pgtype.Timestamptz `json:"at"`
+}
+
 type ScribeSession struct {
 	ID           pgtype.UUID        `json:"id"`
 	TenantID     pgtype.UUID        `json:"tenant_id"`

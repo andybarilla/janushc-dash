@@ -28,6 +28,13 @@ export type SectionKey = "hpi" | "plan" | "exam" | "labs";
 
 export type Approvals = Record<SectionKey, boolean>;
 
+export interface DiagnosisLab {
+  diagnosis: string;
+  lab: string;
+}
+
+export type SectionContent = string | DiagnosisLab[];
+
 export type NoteTarget = SectionKey | "overall";
 
 export type NoteCategoryId =

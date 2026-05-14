@@ -94,9 +94,20 @@ type sessionResponse struct {
 }
 
 type sectionState struct {
-	State          string `json:"state"` // "pending" | "approved"
-	ApprovedByName string `json:"approved_by_name,omitempty"`
-	ApprovedAt     string `json:"approved_at,omitempty"`
+	State          string          `json:"state"` // "pending" | "approved" | "stale"
+	Content        json.RawMessage `json:"content"`
+	ApprovedByName string          `json:"approved_by_name,omitempty"`
+	ApprovedAt     string          `json:"approved_at,omitempty"`
+	EditedAt       string          `json:"edited_at,omitempty"`
+}
+
+// sectionStateCore holds derived state for one section, without content.
+// Used by HandleSend to check readiness without loading AI output.
+type sectionStateCore struct {
+	state          string // "pending" | "approved" | "stale"
+	approvedByName string
+	approvedAt     pgtype.Timestamptz
+	editedAt       pgtype.Timestamptz
 }
 
 type sessionDetailResponse struct {
@@ -238,12 +249,22 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	states, err := h.queries.GetSessionSectionStates(r.Context(), sessionUUID)
+	approvalRows, err := h.queries.GetSessionSectionStates(r.Context(), sessionUUID)
 	if err != nil {
 		http.Error(w, "failed to load section states", http.StatusInternalServerError)
 		return
 	}
-	resp.Sections = buildSectionsMap(states)
+	editRows, err := h.queries.GetSessionSectionEdits(r.Context(), sessionUUID)
+	if err != nil {
+		http.Error(w, "failed to load section edits", http.StatusInternalServerError)
+		return
+	}
+	sectionStates := buildSectionStates(approvalRows, editRows)
+	var aiOutput *ScribeOutput
+	if resp.AIOutput != nil {
+		aiOutput = resp.AIOutput
+	}
+	resp.Sections = buildDetailSections(sectionStates, editRows, aiOutput)
 	approved := 0
 	for _, s := range resp.Sections {
 		if s.State == "approved" {
@@ -256,6 +277,55 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+// buildSectionStates derives the approval + stale state for each section
+// from the latest approval event and latest edit per section.
+// This is the authoritative readiness check used by HandleSend.
+func buildSectionStates(
+	approvalRows []database.GetSessionSectionStatesRow,
+	editRows []database.GetSessionSectionEditsRow,
+) map[string]sectionStateCore {
+	// Index latest edit timestamp per section
+	editedAt := make(map[string]pgtype.Timestamptz, len(editRows))
+	for _, e := range editRows {
+		editedAt[e.Section] = e.At
+	}
+
+	out := make(map[string]sectionStateCore, len(sectionKeys))
+	for _, k := range sectionKeys {
+		out[k] = sectionStateCore{state: "pending"}
+	}
+	for _, r := range approvalRows {
+		core := sectionStateCore{approvedAt: r.At, approvedByName: r.UserName}
+		if r.Action != "approved" {
+			core.state = "pending"
+		} else if ea, hasEdit := editedAt[r.Section]; hasEdit && ea.Valid && r.At.Valid && ea.Time.After(r.At.Time) {
+			core.state = "stale"
+			core.editedAt = ea
+		} else {
+			core.state = "approved"
+		}
+		out[r.Section] = core
+	}
+	return out
+}
+
+// allSectionsReadyToSend returns true only when all four sections are "approved"
+// (not pending, not stale). Used by HandleSend.
+func allSectionsReadyToSend(
+	approvalRows []database.GetSessionSectionStatesRow,
+	editRows []database.GetSessionSectionEditsRow,
+) bool {
+	states := buildSectionStates(approvalRows, editRows)
+	for _, k := range sectionKeys {
+		if states[k].state != "approved" {
+			return false
+		}
+	}
+	return true
+}
+
+// allSectionsApproved checks only approval events (no edit consideration).
+// Kept for tests that verify the event-log invariant in isolation.
 func allSectionsApproved(rows []database.GetSessionSectionStatesRow) bool {
 	approved := make(map[string]bool, len(sectionKeys))
 	for _, r := range rows {
@@ -273,21 +343,65 @@ func allSectionsApproved(rows []database.GetSessionSectionStatesRow) bool {
 	return true
 }
 
-func buildSectionsMap(rows []database.GetSessionSectionStatesRow) map[string]sectionState {
+// sectionContentFromAI extracts the original AI-generated content for a section
+// as a JSON-encoded value ready to embed in a response.
+func sectionContentFromAI(section string, output *ScribeOutput) json.RawMessage {
+	if output == nil {
+		return sectionContentEmpty(section)
+	}
+	var v any
+	switch section {
+	case "hpi":
+		v = output.HPI
+	case "plan":
+		v = output.AssessmentPlan
+	case "exam":
+		v = output.PhysicalExam
+	case "labs":
+		v = output.DiagnosesLabs
+	default:
+		return sectionContentEmpty(section)
+	}
+	b, _ := json.Marshal(v)
+	return b
+}
+
+func sectionContentEmpty(section string) json.RawMessage {
+	if section == "labs" {
+		return json.RawMessage(`[]`)
+	}
+	return json.RawMessage(`""`)
+}
+
+// buildDetailSections assembles the full section response including content and
+// human-readable timestamps, suitable for the GET detail endpoint.
+func buildDetailSections(
+	states map[string]sectionStateCore,
+	editRows []database.GetSessionSectionEditsRow,
+	aiOutput *ScribeOutput,
+) map[string]sectionState {
+	// Index edit content per section
+	editContent := make(map[string]json.RawMessage, len(editRows))
+	for _, e := range editRows {
+		editContent[e.Section] = json.RawMessage(e.Content)
+	}
+
 	out := make(map[string]sectionState, len(sectionKeys))
 	for _, k := range sectionKeys {
-		out[k] = sectionState{State: "pending"}
-	}
-	for _, r := range rows {
-		if r.Action == "approved" {
-			out[r.Section] = sectionState{
-				State:          "approved",
-				ApprovedByName: r.UserName,
-				ApprovedAt:     r.At.Time.Format("2006-01-02T15:04:05Z"),
-			}
-		} else {
-			out[r.Section] = sectionState{State: "pending"}
+		core := states[k]
+		content, hasEdit := editContent[k]
+		if !hasEdit {
+			content = sectionContentFromAI(k, aiOutput)
 		}
+		s := sectionState{State: core.state, Content: content}
+		if core.approvedAt.Valid {
+			s.ApprovedByName = core.approvedByName
+			s.ApprovedAt = core.approvedAt.Time.Format("2006-01-02T15:04:05Z")
+		}
+		if core.editedAt.Valid {
+			s.EditedAt = core.editedAt.Time.Format("2006-01-02T15:04:05Z")
+		}
+		out[k] = s
 	}
 	return out
 }
@@ -506,6 +620,101 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(toSessionResponse(updated))
 }
 
+func (h *Handler) HandleEditSection(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	section := chi.URLParam(r, "section")
+	if !isValidSection(section) {
+		http.Error(w, "invalid section", http.StatusBadRequest)
+		return
+	}
+
+	sessionUUID := pgtype.UUID{}
+	if err := sessionUUID.Scan(chi.URLParam(r, "id")); err != nil {
+		http.Error(w, "invalid session ID", http.StatusBadRequest)
+		return
+	}
+	tenantUUID := pgtype.UUID{}
+	if err := tenantUUID.Scan(claims.TenantID); err != nil {
+		http.Error(w, "invalid tenant context", http.StatusBadRequest)
+		return
+	}
+	userUUID := pgtype.UUID{}
+	if err := userUUID.Scan(claims.UserID); err != nil {
+		http.Error(w, "invalid user context", http.StatusBadRequest)
+		return
+	}
+
+	session, err := h.queries.GetScribeSession(r.Context(), database.GetScribeSessionParams{
+		ID:       sessionUUID,
+		TenantID: tenantUUID,
+	})
+	if err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if session.Status != "complete" {
+		http.Error(w, "session is not ready for editing", http.StatusBadRequest)
+		return
+	}
+	if session.RejectedAt.Valid {
+		http.Error(w, "rejected sessions cannot be edited", http.StatusBadRequest)
+		return
+	}
+	if session.SentToEhrAt.Valid {
+		http.Error(w, "sent sessions cannot be edited", http.StatusBadRequest)
+		return
+	}
+
+	// Parse and validate the content field per section type.
+	var body struct {
+		Content json.RawMessage `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Content == nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := validateSectionContent(section, body.Content); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := h.queries.RecordSectionEdit(r.Context(), database.RecordSectionEditParams{
+		SessionID: sessionUUID,
+		Section:   section,
+		Content:   body.Content,
+		EditedBy:  userUUID,
+	}); err != nil {
+		http.Error(w, "failed to record edit", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte("{}"))
+}
+
+// validateSectionContent checks that the raw JSON content matches the expected
+// shape for the given section: a string for text sections, an array of
+// {diagnosis, lab} objects for labs.
+func validateSectionContent(section string, raw json.RawMessage) error {
+	if section == "labs" {
+		var rows []DiagnosisLab
+		if err := json.Unmarshal(raw, &rows); err != nil {
+			return fmt.Errorf("labs content must be an array of {diagnosis, lab} objects")
+		}
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return fmt.Errorf("%s content must be a string", section)
+	}
+	return nil
+}
+
 func (h *Handler) HandleReject(w http.ResponseWriter, r *http.Request) {
 	claims := auth.ClaimsFromContext(r.Context())
 	if claims == nil {
@@ -604,13 +813,18 @@ func (h *Handler) HandleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	states, err := h.queries.GetSessionSectionStates(r.Context(), sessionUUID)
+	approvalRows, err := h.queries.GetSessionSectionStates(r.Context(), sessionUUID)
 	if err != nil {
 		http.Error(w, "failed to load section states", http.StatusInternalServerError)
 		return
 	}
-	if !allSectionsApproved(states) {
-		http.Error(w, "all sections must be approved before sending", http.StatusBadRequest)
+	editRows, err := h.queries.GetSessionSectionEdits(r.Context(), sessionUUID)
+	if err != nil {
+		http.Error(w, "failed to load section edits", http.StatusInternalServerError)
+		return
+	}
+	if !allSectionsReadyToSend(approvalRows, editRows) {
+		http.Error(w, "all sections must be approved (re-approve any edited sections)", http.StatusBadRequest)
 		return
 	}
 
