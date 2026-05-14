@@ -11,6 +11,49 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createTenantUser = `-- name: CreateTenantUser :one
+INSERT INTO users (tenant_id, email, password_hash, role, name)
+VALUES ($1, lower($2), '', $3, $4)
+RETURNING id, tenant_id, email, role, name, created_at, updated_at
+`
+
+type CreateTenantUserParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	Lower    string      `json:"lower"`
+	Role     string      `json:"role"`
+	Name     string      `json:"name"`
+}
+
+type CreateTenantUserRow struct {
+	ID        pgtype.UUID        `json:"id"`
+	TenantID  pgtype.UUID        `json:"tenant_id"`
+	Email     string             `json:"email"`
+	Role      string             `json:"role"`
+	Name      string             `json:"name"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) CreateTenantUser(ctx context.Context, arg CreateTenantUserParams) (CreateTenantUserRow, error) {
+	row := q.db.QueryRow(ctx, createTenantUser,
+		arg.TenantID,
+		arg.Lower,
+		arg.Role,
+		arg.Name,
+	)
+	var i CreateTenantUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Email,
+		&i.Role,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (tenant_id, email, password_hash, role, name)
 VALUES ($1, $2, $3, $4, $5)
@@ -160,4 +203,49 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (GetUserByIDR
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listUsersByTenant = `-- name: ListUsersByTenant :many
+SELECT id, tenant_id, email, role, name, created_at, updated_at
+FROM users
+WHERE tenant_id = $1
+ORDER BY name ASC, email ASC
+`
+
+type ListUsersByTenantRow struct {
+	ID        pgtype.UUID        `json:"id"`
+	TenantID  pgtype.UUID        `json:"tenant_id"`
+	Email     string             `json:"email"`
+	Role      string             `json:"role"`
+	Name      string             `json:"name"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) ListUsersByTenant(ctx context.Context, tenantID pgtype.UUID) ([]ListUsersByTenantRow, error) {
+	rows, err := q.db.Query(ctx, listUsersByTenant, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUsersByTenantRow{}
+	for rows.Next() {
+		var i ListUsersByTenantRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.Email,
+			&i.Role,
+			&i.Name,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
