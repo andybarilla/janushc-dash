@@ -20,6 +20,7 @@ export interface ScribeSession {
   created_at: string;
   completed_at?: string;
   sent_to_ehr_at?: string;
+  rejected_at?: string;
   approved_count: number;
 }
 
@@ -33,6 +34,7 @@ export interface ScribeSessionDetail extends ScribeSession {
   };
   sections: Record<SectionKey, SectionStateData>;
   sent_to_ehr_at?: string;
+  rejected_at?: string;
 }
 
 interface CreateSessionRequest {
@@ -65,6 +67,21 @@ export function useCreateScribeSession() {
         body: JSON.stringify(req),
       }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["scribeSessions"] });
+    },
+  });
+}
+
+export function useRejectSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sessionId }: { sessionId: string }) =>
+      api.fetch<Record<string, never>>(
+        `/api/scribe/sessions/${sessionId}/reject`,
+        { method: "POST" },
+      ),
+    onSuccess: (_data, { sessionId }) => {
+      queryClient.invalidateQueries({ queryKey: ["scribeSessions", sessionId] });
       queryClient.invalidateQueries({ queryKey: ["scribeSessions"] });
     },
   });

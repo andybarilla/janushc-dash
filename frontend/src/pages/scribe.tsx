@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Download, Upload } from "lucide-react";
 import {
   useApproveSection,
+  useRejectSession,
   useRevokeSection,
   useSendToEHR,
   useScribeSession,
@@ -41,6 +42,7 @@ export default function ScribePage() {
   const approveMut = useApproveSection();
   const revokeMut = useRevokeSection();
   const sendMut = useSendToEHR();
+  const rejectMut = useRejectSession();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -120,7 +122,14 @@ export default function ScribePage() {
   };
 
   const handleReject = () => {
-    window.alert("Reject is not yet implemented.");
+    if (!selectedId || !canApprove) return;
+    if (
+      !window.confirm(
+        "Reject this encounter? It won't be sent to the EHR. This can't be undone.",
+      )
+    )
+      return;
+    rejectMut.mutate({ sessionId: selectedId });
   };
 
   const handleAddNote = (

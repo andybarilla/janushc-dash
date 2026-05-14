@@ -74,7 +74,7 @@ func (q *Queries) CreateScribeSession(ctx context.Context, arg CreateScribeSessi
 const getScribeSession = `-- name: GetScribeSession :one
 SELECT id, tenant_id, user_id, patient_id, encounter_id, department_id, status,
        transcript, ai_output, error_message, started_at, stopped_at, completed_at, created_at,
-       sent_to_ehr_at, sent_to_ehr_by
+       sent_to_ehr_at, sent_to_ehr_by, rejected_at, rejected_by
 FROM scribe_sessions
 WHERE id = $1 AND tenant_id = $2
 `
@@ -104,6 +104,8 @@ func (q *Queries) GetScribeSession(ctx context.Context, arg GetScribeSessionPara
 		&i.CreatedAt,
 		&i.SentToEhrAt,
 		&i.SentToEhrBy,
+		&i.RejectedAt,
+		&i.RejectedBy,
 	)
 	return i, err
 }
@@ -124,7 +126,7 @@ approved_counts AS (
 SELECT
     s.id, s.tenant_id, s.user_id, s.patient_id, s.encounter_id, s.department_id,
     s.status, s.error_message, s.started_at, s.stopped_at, s.completed_at, s.created_at,
-    s.sent_to_ehr_at,
+    s.sent_to_ehr_at, s.rejected_at,
     COALESCE(ac.approved_count, 0)::int AS approved_count
 FROM scribe_sessions s
 LEFT JOIN approved_counts ac ON ac.session_id = s.id
@@ -147,6 +149,7 @@ type ListScribeSessionsRow struct {
 	CompletedAt   pgtype.Timestamptz `json:"completed_at"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 	SentToEhrAt   pgtype.Timestamptz `json:"sent_to_ehr_at"`
+	RejectedAt    pgtype.Timestamptz `json:"rejected_at"`
 	ApprovedCount int32              `json:"approved_count"`
 }
 
@@ -173,6 +176,7 @@ func (q *Queries) ListScribeSessions(ctx context.Context, tenantID pgtype.UUID) 
 			&i.CompletedAt,
 			&i.CreatedAt,
 			&i.SentToEhrAt,
+			&i.RejectedAt,
 			&i.ApprovedCount,
 		); err != nil {
 			return nil, err
@@ -183,6 +187,28 @@ func (q *Queries) ListScribeSessions(ctx context.Context, tenantID pgtype.UUID) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const markScribeSessionRejected = `-- name: MarkScribeSessionRejected :execrows
+UPDATE scribe_sessions
+SET rejected_at = now(), rejected_by = $3
+WHERE id = $1 AND tenant_id = $2
+  AND rejected_at IS NULL
+  AND sent_to_ehr_at IS NULL
+`
+
+type MarkScribeSessionRejectedParams struct {
+	ID         pgtype.UUID `json:"id"`
+	TenantID   pgtype.UUID `json:"tenant_id"`
+	RejectedBy pgtype.UUID `json:"rejected_by"`
+}
+
+func (q *Queries) MarkScribeSessionRejected(ctx context.Context, arg MarkScribeSessionRejectedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markScribeSessionRejected, arg.ID, arg.TenantID, arg.RejectedBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const markScribeSessionSent = `-- name: MarkScribeSessionSent :execrows

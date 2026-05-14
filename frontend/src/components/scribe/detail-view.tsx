@@ -1,4 +1,5 @@
 import {
+  Ban,
   CheckCheck,
   Clock,
   FileText,
@@ -78,6 +79,7 @@ export function DetailView({
   const isReady = statusId === "ready";
   const isSent = statusId === "sent";
   const isFailed = statusId === "failed";
+  const isRejected = statusId === "rejected";
   const inPipeline = isInPipeline(statusId);
 
   const aiOutput = session.ai_output;
@@ -140,6 +142,16 @@ export function DetailView({
         {inPipeline ? <PipelineProgress status={status} /> : null}
       </div>
 
+      {isRejected ? (
+        <div className="janus-failure-banner">
+          <Ban />
+          <div>
+            <strong>Encounter rejected</strong>
+            This encounter was rejected and will not be sent to the EHR.
+          </div>
+        </div>
+      ) : null}
+
       {isFailed ? (
         <div className="janus-failure-banner">
           <TriangleAlert />
@@ -160,7 +172,7 @@ export function DetailView({
         </div>
       ) : null}
 
-      {hasSections ? (
+      {hasSections && !isRejected ? (
         <div className="janus-approval-bar">
           <div className="janus-approval-progress">
             <span>Sections approved</span>

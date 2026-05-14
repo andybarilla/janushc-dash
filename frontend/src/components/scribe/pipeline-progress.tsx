@@ -22,6 +22,7 @@ const ORDER: Record<StatusId, number> = {
   ready: 3,
   sent: 3,
   failed: -1,
+  rejected: -1,
 };
 
 export function PipelineProgress({ status }: { status: StatusDef }) {

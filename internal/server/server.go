@@ -88,6 +88,8 @@ func (s *Server) routes() {
 			Post("/api/scribe/sessions/{id}/sections/{section}/revoke", s.scribeHandler.HandleRevokeSection)
 		r.With(auth.RequireRole("physician")).
 			Post("/api/scribe/sessions/{id}/send", s.scribeHandler.HandleSend)
+		r.With(auth.RequireRole("physician")).
+			Post("/api/scribe/sessions/{id}/reject", s.scribeHandler.HandleReject)
 	})
 
 	// SPA static file serving

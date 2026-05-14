@@ -7,9 +7,16 @@ RETURNING id, tenant_id, user_id, patient_id, encounter_id, department_id, statu
 -- name: GetScribeSession :one
 SELECT id, tenant_id, user_id, patient_id, encounter_id, department_id, status,
        transcript, ai_output, error_message, started_at, stopped_at, completed_at, created_at,
-       sent_to_ehr_at, sent_to_ehr_by
+       sent_to_ehr_at, sent_to_ehr_by, rejected_at, rejected_by
 FROM scribe_sessions
 WHERE id = $1 AND tenant_id = $2;
+
+-- name: MarkScribeSessionRejected :execrows
+UPDATE scribe_sessions
+SET rejected_at = now(), rejected_by = $3
+WHERE id = $1 AND tenant_id = $2
+  AND rejected_at IS NULL
+  AND sent_to_ehr_at IS NULL;
 
 -- name: MarkScribeSessionSent :execrows
 UPDATE scribe_sessions
@@ -32,7 +39,7 @@ approved_counts AS (
 SELECT
     s.id, s.tenant_id, s.user_id, s.patient_id, s.encounter_id, s.department_id,
     s.status, s.error_message, s.started_at, s.stopped_at, s.completed_at, s.created_at,
-    s.sent_to_ehr_at,
+    s.sent_to_ehr_at, s.rejected_at,
     COALESCE(ac.approved_count, 0)::int AS approved_count
 FROM scribe_sessions s
 LEFT JOIN approved_counts ac ON ac.session_id = s.id

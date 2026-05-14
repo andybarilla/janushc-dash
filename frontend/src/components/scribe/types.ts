@@ -6,7 +6,8 @@ export type StatusId =
   | "extracting"
   | "ready"
   | "sent"
-  | "failed";
+  | "failed"
+  | "rejected";
 
 export type StatusTone =
   | "neutral"

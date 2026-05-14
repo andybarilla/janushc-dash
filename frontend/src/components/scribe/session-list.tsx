@@ -1,4 +1,5 @@
 import {
+  Ban,
   ChevronDown,
   CircleDot,
   Clock,
@@ -15,7 +16,7 @@ import { StatusPill } from "./status-pill";
 import { STATUS, deriveStatusId, isInPipeline, wordCount } from "./status";
 import type { StatusId } from "./types";
 
-export type ListFilter = "all" | "ready" | "in_pipeline" | "sent" | "attention";
+export type ListFilter = "all" | "ready" | "in_pipeline" | "sent" | "attention" | "rejected";
 
 export interface SessionListEntry {
   session: ScribeSession;
@@ -45,19 +46,20 @@ const FILTERS: {
   { id: "in_pipeline", label: "In pipeline", icon: Loader },
   { id: "sent", label: "Sent", icon: Check },
   { id: "attention", label: "Needs attn", icon: TriangleAlert },
+  { id: "rejected", label: "Rejected", icon: Ban },
 ];
 
 function matchesFilter(statusId: StatusId, filter: ListFilter): boolean {
-  if (filter === "all") return true;
+  if (filter === "all") return statusId !== "rejected";
   if (filter === "ready") return statusId === "ready";
   if (filter === "in_pipeline") return isInPipeline(statusId);
   if (filter === "sent") return statusId === "sent";
   if (filter === "attention") return statusId === "failed";
+  if (filter === "rejected") return statusId === "rejected";
   return true;
 }
 
 function countFor(entries: SessionListEntry[], filter: ListFilter): number {
-  if (filter === "all") return entries.length;
   return entries.filter((e) => matchesFilter(e.statusId, filter)).length;
 }
 

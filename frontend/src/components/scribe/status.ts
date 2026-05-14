@@ -1,5 +1,6 @@
 import {
   AlignLeft,
+  Ban,
   CircleDot,
   CircleHelp,
   CircleX,
@@ -46,12 +47,13 @@ export const STATUS: Record<StatusId, StatusDef> = {
     tone: "error",
     icon: TriangleAlert,
   },
+  rejected: { id: "rejected", label: "Rejected", tone: "warning", icon: Ban },
 };
 
 // Backend has 4 status values; map them to the design's statuses here.
 // "sent" is driven by the server-set sent_to_ehr_at field.
 export function deriveStatusId(
-  session: { status: string; transcript?: string; sent_to_ehr_at?: string },
+  session: { status: string; transcript?: string; sent_to_ehr_at?: string; rejected_at?: string },
 ): StatusId {
   switch (session.status) {
     case "recording":
@@ -61,7 +63,9 @@ export function deriveStatusId(
         ? "extracting"
         : "transcribing";
     case "complete":
-      return session.sent_to_ehr_at ? "sent" : "ready";
+      if (session.rejected_at) return "rejected";
+      if (session.sent_to_ehr_at) return "sent";
+      return "ready";
     case "error":
       return "failed";
     default:

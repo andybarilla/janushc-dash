@@ -89,6 +89,7 @@ type sessionResponse struct {
 	CreatedAt     string `json:"created_at"`
 	CompletedAt   string `json:"completed_at,omitempty"`
 	SentToEhrAt   string `json:"sent_to_ehr_at,omitempty"`
+	RejectedAt    string `json:"rejected_at,omitempty"`
 	ApprovedCount int    `json:"approved_count"`
 }
 
@@ -505,6 +506,60 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(toSessionResponse(updated))
 }
 
+func (h *Handler) HandleReject(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	sessionUUID := pgtype.UUID{}
+	if err := sessionUUID.Scan(chi.URLParam(r, "id")); err != nil {
+		http.Error(w, "invalid session ID", http.StatusBadRequest)
+		return
+	}
+	tenantUUID := pgtype.UUID{}
+	if err := tenantUUID.Scan(claims.TenantID); err != nil {
+		http.Error(w, "invalid tenant context", http.StatusBadRequest)
+		return
+	}
+	userUUID := pgtype.UUID{}
+	if err := userUUID.Scan(claims.UserID); err != nil {
+		http.Error(w, "invalid user context", http.StatusBadRequest)
+		return
+	}
+
+	session, err := h.queries.GetScribeSession(r.Context(), database.GetScribeSessionParams{
+		ID:       sessionUUID,
+		TenantID: tenantUUID,
+	})
+	if err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if session.Status != "complete" {
+		http.Error(w, "only complete sessions can be rejected", http.StatusBadRequest)
+		return
+	}
+
+	n, err := h.queries.MarkScribeSessionRejected(r.Context(), database.MarkScribeSessionRejectedParams{
+		ID:         sessionUUID,
+		TenantID:   tenantUUID,
+		RejectedBy: userUUID,
+	})
+	if err != nil {
+		http.Error(w, "failed to reject session", http.StatusInternalServerError)
+		return
+	}
+	if n == 0 {
+		http.Error(w, "session already rejected or already sent", http.StatusConflict)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte("{}"))
+}
+
 func (h *Handler) HandleApproveSection(w http.ResponseWriter, r *http.Request) {
 	h.handleSectionAction(w, r, "approved")
 }
@@ -668,6 +723,9 @@ func toSessionResponse(s database.ScribeSession) sessionResponse {
 	if s.SentToEhrAt.Valid {
 		resp.SentToEhrAt = s.SentToEhrAt.Time.Format("2006-01-02T15:04:05Z")
 	}
+	if s.RejectedAt.Valid {
+		resp.RejectedAt = s.RejectedAt.Time.Format("2006-01-02T15:04:05Z")
+	}
 	return resp
 }
 
@@ -689,6 +747,9 @@ func toListSessionResponse(s database.ListScribeSessionsRow) sessionResponse {
 	}
 	if s.SentToEhrAt.Valid {
 		resp.SentToEhrAt = s.SentToEhrAt.Time.Format("2006-01-02T15:04:05Z")
+	}
+	if s.RejectedAt.Valid {
+		resp.RejectedAt = s.RejectedAt.Time.Format("2006-01-02T15:04:05Z")
 	}
 	return resp
 }
