@@ -1340,6 +1340,116 @@
   font-size: 12px;
 }
 
+/* Team page */
+.janus-team-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.janus-team-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px 28px;
+}
+.janus-team-card {
+  background: var(--janus-white);
+  border: 1px solid var(--janus-border);
+  border-radius: var(--janus-radius-card);
+  box-shadow: var(--janus-shadow-card);
+  overflow: hidden;
+}
+.janus-team-table-wrap {
+  overflow-x: auto;
+}
+.janus-team-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.janus-team-table th,
+.janus-team-table td {
+  padding: 14px 18px;
+  text-align: left;
+  border-bottom: 1px solid var(--janus-border);
+}
+.janus-team-table th {
+  background: var(--janus-bg-light);
+  color: var(--janus-text-light);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.janus-team-table td {
+  color: var(--janus-text-dark);
+}
+.janus-team-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.janus-team-role {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--janus-border);
+  border-radius: 999px;
+  padding: 3px 9px;
+  color: var(--janus-primary);
+  background: var(--janus-bg-light);
+  font-size: 12px;
+  font-weight: 700;
+}
+.janus-team-role-admin {
+  color: var(--janus-warning-text);
+  background: var(--janus-warning-bg);
+  border-color: var(--janus-warning-border);
+}
+.janus-team-role-physician {
+  color: var(--janus-success-text);
+  background: var(--janus-success-bg);
+  border-color: var(--janus-success-border);
+}
+.janus-team-empty,
+.janus-team-state {
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--janus-text-light);
+}
+.janus-team-empty svg,
+.janus-team-state svg {
+  width: 28px;
+  height: 28px;
+  color: var(--janus-primary);
+}
+.janus-team-empty h2 {
+  margin: 0;
+  color: var(--janus-text-dark);
+  font-size: 18px;
+}
+.janus-team-state-error {
+  color: var(--janus-error-text);
+}
+.janus-team-state-error svg {
+  color: var(--janus-error-text);
+}
+.janus-team-state-error strong {
+  display: block;
+  color: var(--janus-error-text);
+  margin-bottom: 2px;
+}
+.janus-team-state-error p,
+.janus-team-role-helper {
+  margin: 0;
+  font-size: 12px;
+  color: var(--janus-text-light);
+}
+.janus-team-role-helper {
+  margin-top: 6px;
+}
+
 /* ============================================================
  * Dark theme component overrides
  *
