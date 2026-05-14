@@ -1,271 +1,251 @@
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Download, Upload } from "lucide-react";
 import {
-  useScribeSessions,
-  useCreateScribeSession,
-  useUploadScribeAudio,
   useScribeSession,
+  useScribeSessions,
 } from "@/lib/scribe-queries";
-import { Button } from "@/components/ui/button";
+import {
+  SessionList,
+  buildEntries,
+  type ListFilter,
+} from "@/components/scribe/session-list";
+import { DetailView } from "@/components/scribe/detail-view";
+import { NotesDrawer } from "@/components/scribe/notes-drawer";
+import { StatsStrip, type StatsValues } from "@/components/scribe/stats-strip";
+import { UploadModal } from "@/components/scribe/upload-modal";
+import { deriveStatusId, isInPipeline } from "@/components/scribe/status";
+import type {
+  Approvals,
+  FeedbackNote,
+  SectionKey,
+} from "@/components/scribe/types";
 
-const ACCEPTED_FORMATS = ".mp3,.m4a,.wav,.webm,.ogg";
+const EMPTY_APPROVALS: Approvals = {
+  hpi: false,
+  plan: false,
+  exam: false,
+  labs: false,
+};
+
+// Per-session UI state (approvals + notes) lives client-side only.
+// TODO: persist when backend endpoints exist.
+type SessionUiState = {
+  approvals: Approvals;
+  notes: FeedbackNote[];
+};
 
 export default function ScribePage() {
-  const [patientId, setPatientId] = useState("");
-  const [encounterId, setEncounterId] = useState("");
-  const [departmentId, setDepartmentId] = useState("");
-  const [activeSessionId, setActiveSessionId] = useState("");
-  const [selectedHistorySessionId, setSelectedHistorySessionId] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { data: sessions = [], isLoading: sessionsLoading } = useScribeSessions();
 
-  const { data: sessions = [], isLoading } = useScribeSessions();
-  const { data: selectedSession, isLoading: isLoadingSelectedSession } =
-    useScribeSession(selectedHistorySessionId);
-  const createSession = useCreateScribeSession();
-  const uploadAudio = useUploadScribeAudio();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<ListFilter>("all");
+  const [dateRange, setDateRange] = useState("today");
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [notesDefaultSection, setNotesDefaultSection] = useState<SectionKey | null>(null);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uiBySession, setUiBySession] = useState<Record<string, SessionUiState>>({});
 
-  const handleCreate = async () => {
-    const session = await createSession.mutateAsync({
-      patient_id: patientId,
-      encounter_id: encounterId,
-      department_id: departmentId,
-    });
-    setActiveSessionId(session.id);
-  };
+  // Auto-select the first session when the list loads.
+  useEffect(() => {
+    const first = sessions[0];
+    if (!selectedId && first) {
+      setSelectedId(first.id);
+    }
+  }, [sessions, selectedId]);
 
-  const handleUpload = async () => {
-    if (!activeSessionId || !selectedFile) return;
-    await uploadAudio.mutateAsync({
-      id: activeSessionId,
-      file: selectedFile,
-    });
-    setSelectedFile(null);
-    setActiveSessionId("");
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
+  // Poll the selected session more aggressively while it's in-flight.
+  const { data: selectedDetail, isLoading: detailLoading } =
+    useScribeSession(selectedId ?? "");
 
-  const statusColor: Record<string, string> = {
-    processing: "text-yellow-500",
-    complete: "text-green-500",
-    error: "text-red-500",
-    recording: "text-blue-500",
-  };
+  const approvedCountFor = (id: string) =>
+    (Object.keys(EMPTY_APPROVALS) as SectionKey[]).filter(
+      (k) => uiBySession[id]?.approvals?.[k],
+    ).length;
 
-  return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <h2 className="text-lg font-semibold">Scribe</h2>
-
-      <div className="space-y-3 bg-card border border-border rounded-lg p-4">
-        <h3 className="text-sm font-medium text-muted-foreground">
-          {activeSessionId ? "Upload Audio" : "New Session"}
-        </h3>
-
-        {!activeSessionId ? (
-          <>
-            <div className="grid grid-cols-3 gap-2">
-              <input
-                type="text"
-                placeholder="Patient ID"
-                value={patientId}
-                onChange={(e) => setPatientId(e.target.value)}
-                className="bg-background border border-border rounded-lg px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <input
-                type="text"
-                placeholder="Encounter ID"
-                value={encounterId}
-                onChange={(e) => setEncounterId(e.target.value)}
-                className="bg-background border border-border rounded-lg px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <input
-                type="text"
-                placeholder="Department ID"
-                value={departmentId}
-                onChange={(e) => setDepartmentId(e.target.value)}
-                className="bg-background border border-border rounded-lg px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <Button
-              onClick={handleCreate}
-              disabled={
-                !patientId ||
-                !encounterId ||
-                !departmentId ||
-                createSession.isPending
-              }
-              size="sm"
-            >
-              {createSession.isPending ? "Creating..." : "Create Session"}
-            </Button>
-          </>
-        ) : (
-          <>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={ACCEPTED_FORMATS}
-              onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
-              className="block w-full text-sm text-foreground file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border file:border-border file:text-sm file:font-medium file:bg-background file:text-foreground hover:file:bg-muted"
-            />
-            {selectedFile && (
-              <p className="text-xs text-muted-foreground">
-                {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(1)} MB)
-              </p>
-            )}
-            {uploadAudio.isError && (
-              <p className="text-xs text-red-500">
-                Upload failed: {uploadAudio.error instanceof Error ? uploadAudio.error.message : "Unknown error"}
-              </p>
-            )}
-            <div className="flex gap-2">
-              <Button
-                onClick={handleUpload}
-                disabled={!selectedFile || uploadAudio.isPending}
-                size="sm"
-              >
-                {uploadAudio.isPending
-                  ? "Transcribing & Processing..."
-                  : "Upload & Process"}
-              </Button>
-              <Button
-                onClick={() => {
-                  setActiveSessionId("");
-                  setSelectedFile(null);
-                  if (fileInputRef.current) fileInputRef.current.value = "";
-                }}
-                variant="outline"
-                size="sm"
-              >
-                Cancel
-              </Button>
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="space-y-3">
-        <h3 className="text-sm font-medium text-muted-foreground">
-          Session History
-        </h3>
-        {isLoading ? (
-          <div className="text-center text-muted-foreground py-8">
-            Loading...
-          </div>
-        ) : sessions.length === 0 ? (
-          <div className="text-center text-muted-foreground py-8">
-            No sessions yet.
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {sessions.map((session) => (
-              <button
-                key={session.id}
-                type="button"
-                onClick={() => setSelectedHistorySessionId(session.id)}
-                className={`w-full text-left bg-card border rounded-lg p-3 flex items-center justify-between hover:bg-muted/50 ${
-                  selectedHistorySessionId === session.id
-                    ? "border-primary"
-                    : "border-border"
-                }`}
-              >
-                <div className="space-y-1">
-                  <div className="text-sm">
-                    Patient {session.patient_id} — Encounter{" "}
-                    {session.encounter_id}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {new Date(session.created_at).toLocaleString()}
-                  </div>
-                </div>
-                <span
-                  className={`text-xs font-medium ${statusColor[session.status] || ""}`}
-                >
-                  {session.status}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {selectedHistorySessionId && (
-        <div className="space-y-4 bg-card border border-border rounded-lg p-4">
-          {isLoadingSelectedSession ? (
-            <div className="text-sm text-muted-foreground">Loading session...</div>
-          ) : selectedSession ? (
-            <>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-semibold">
-                    Patient {selectedSession.patient_id}
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    Encounter {selectedSession.encounter_id} · Department {selectedSession.department_id}
-                  </p>
-                </div>
-                <span className={`text-xs font-medium ${statusColor[selectedSession.status] || ""}`}>
-                  {selectedSession.status}
-                </span>
-              </div>
-
-              {selectedSession.error_message && (
-                <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-500">
-                  {selectedSession.error_message}
-                </div>
-              )}
-
-              {selectedSession.ai_output ? (
-                <div className="space-y-4 text-sm">
-                  <ResultSection title="HPI" body={selectedSession.ai_output.hpi} />
-                  <ResultSection title="Assessment & Plan" body={selectedSession.ai_output.assessment_plan} />
-                  <ResultSection title="Physical Exam" body={selectedSession.ai_output.physical_exam} />
-                  {selectedSession.ai_output.diagnoses_labs?.length > 0 && (
-                    <section className="space-y-2">
-                      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Diagnoses / Labs
-                      </h4>
-                      <ul className="list-disc space-y-1 pl-5">
-                        {selectedSession.ai_output.diagnoses_labs.map((item, index) => (
-                          <li key={index}>
-                            {item.diagnosis} — {item.lab}
-                          </li>
-                        ))}
-                      </ul>
-                    </section>
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No AI note output stored for this session yet.
-                </p>
-              )}
-
-              {selectedSession.transcript && (
-                <details className="space-y-2">
-                  <summary className="cursor-pointer text-sm font-medium">
-                    Transcript
-                  </summary>
-                  <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-3 text-xs leading-relaxed">
-                    {selectedSession.transcript}
-                  </pre>
-                </details>
-              )}
-            </>
-          ) : null}
-        </div>
-      )}
-    </div>
+  const entries = useMemo(
+    () => buildEntries(sessions, approvedCountFor),
+    [sessions, uiBySession],
   );
-}
 
-function ResultSection({ title, body }: { title: string; body?: string }) {
-  if (!body) return null;
+  const stats: StatsValues = useMemo(() => {
+    const today = new Date().toDateString();
+    let todayTotal = 0;
+    let inPipelineCount = 0;
+    let awaitingReview = 0;
+    let sentToEhr = 0;
+    let needsAttention = 0;
+    for (const e of entries) {
+      if (new Date(e.session.created_at).toDateString() === today) todayTotal++;
+      if (isInPipeline(e.statusId)) inPipelineCount++;
+      if (e.statusId === "ready") awaitingReview++;
+      if (e.statusId === "sent") sentToEhr++;
+      if (e.statusId === "failed") needsAttention++;
+    }
+    return {
+      todayTotal,
+      inPipeline: inPipelineCount,
+      awaitingReview,
+      sentToEhr,
+      needsAttention,
+    };
+  }, [entries]);
+
+  const selectedUi = selectedId ? uiBySession[selectedId] : undefined;
+  const approvals = selectedUi?.approvals ?? EMPTY_APPROVALS;
+  const notes = selectedUi?.notes ?? [];
+
+  const updateUi = (id: string, updater: (prev: SessionUiState) => SessionUiState) => {
+    setUiBySession((prev) => ({
+      ...prev,
+      [id]: updater(prev[id] ?? { approvals: { ...EMPTY_APPROVALS }, notes: [] }),
+    }));
+  };
+
+  const handleSelect = (id: string) => {
+    setSelectedId(id);
+    setNotesOpen(false);
+    setNotesDefaultSection(null);
+  };
+
+  const handleApprove = (section: SectionKey) => {
+    if (!selectedId) return;
+    updateUi(selectedId, (prev) => ({
+      ...prev,
+      approvals: { ...prev.approvals, [section]: !prev.approvals[section] },
+    }));
+  };
+
+  const handleApproveAll = () => {
+    if (!selectedId) return;
+    updateUi(selectedId, (prev) => ({
+      ...prev,
+      approvals: { hpi: true, plan: true, exam: true, labs: true },
+    }));
+  };
+
+  const handleReject = () => {
+    if (!selectedId) return;
+    if (
+      !window.confirm(
+        'Reject this encounter? It will be flagged for re-processing.',
+      )
+    )
+      return;
+    updateUi(selectedId, (prev) => ({
+      ...prev,
+      approvals: { ...EMPTY_APPROVALS },
+    }));
+  };
+
+  const handleAddNote = (
+    note: Omit<FeedbackNote, "id" | "at" | "author" | "authorInitials">,
+  ) => {
+    if (!selectedId) return;
+    const full: FeedbackNote = {
+      id: `n_${Date.now()}`,
+      author: "You",
+      authorInitials: "YO",
+      at: new Date().toISOString(),
+      ...note,
+    };
+    updateUi(selectedId, (prev) => ({
+      ...prev,
+      notes: [...prev.notes, full],
+    }));
+  };
+
+  const handleAddNoteForSection = (section: SectionKey) => {
+    setNotesDefaultSection(section);
+    setNotesOpen(true);
+  };
+
+  const statusId = selectedDetail
+    ? deriveStatusId(
+        selectedDetail,
+        approvedCountFor(selectedDetail.id),
+      )
+    : null;
+
   return (
-    <section className="space-y-2">
-      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {title}
-      </h4>
-      <p className="whitespace-pre-wrap leading-relaxed">{body}</p>
-    </section>
+    <div className="janus-scribe-page">
+      <div className="janus-page-header">
+        <div>
+          <h1>Scribe</h1>
+          <p className="janus-page-subtitle">
+            Review AI-extracted encounter notes before sending to the EHR.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            type="button"
+            className="janus-btn janus-btn-secondary janus-btn-sm"
+            disabled
+            title="Coming soon"
+          >
+            <Download />
+            Export today's batch
+          </button>
+          <button
+            type="button"
+            className="janus-btn janus-btn-secondary janus-btn-sm"
+            onClick={() => setUploadOpen(true)}
+          >
+            <Upload />
+            Upload audio
+          </button>
+        </div>
+      </div>
+
+      <StatsStrip stats={stats} />
+
+      <div className="janus-workspace">
+        <SessionList
+          entries={entries}
+          selectedId={selectedId}
+          onSelect={handleSelect}
+          query={query}
+          onQuery={setQuery}
+          filter={filter}
+          onFilter={setFilter}
+          dateRange={dateRange}
+          onDateRange={setDateRange}
+        />
+        <DetailView
+          session={selectedDetail ?? null}
+          statusId={statusId}
+          approvals={approvals}
+          notes={notes}
+          loading={!!selectedId && detailLoading && !selectedDetail}
+          onApprove={handleApprove}
+          onApproveAll={handleApproveAll}
+          onReject={handleReject}
+          onOpenNotes={() => {
+            setNotesDefaultSection(null);
+            setNotesOpen(true);
+          }}
+          onAddNoteForSection={handleAddNoteForSection}
+          onRetry={() => {
+            // Retry isn't wired to a backend endpoint yet.
+            window.alert("Retry is not yet implemented.");
+          }}
+        />
+        <NotesDrawer
+          open={notesOpen}
+          notes={notes}
+          onClose={() => setNotesOpen(false)}
+          onAddNote={handleAddNote}
+          defaultSection={notesDefaultSection}
+        />
+      </div>
+
+      <UploadModal
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        onCreated={(id) => setSelectedId(id)}
+      />
+
+      {sessionsLoading && sessions.length === 0 ? null : null}
+    </div>
   );
 }

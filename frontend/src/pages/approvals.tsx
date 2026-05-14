@@ -54,7 +54,7 @@ export default function ApprovalsPage() {
   const unflaggedItems = filteredItems.filter((i) => !i.flagged);
 
   return (
-    <div className="max-w-3xl mx-auto space-y-4">
+    <div className="max-w-3xl mx-auto space-y-4 p-6">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Pending Approvals</h2>
         <Button onClick={handleSync} disabled={sync.isPending} size="sm" variant="outline">

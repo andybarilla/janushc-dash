@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "./styles/janus-tokens.css";
+@import "./styles/janus-scribe.css";
 
 @custom-variant dark (&:is(.dark *));
 

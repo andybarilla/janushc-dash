@@ -3,9 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { useCurrentUser } from "@/lib/queries";
 import { AppShell } from "@/components/layout/app-shell";
-import { getNavForRole } from "@/components/layout/nav-config";
 import LoginPage from "@/pages/login";
-import ApprovalsPage from "@/pages/approvals";
 import ScribePage from "@/pages/scribe";
 
 function AuthenticatedLayout() {
@@ -29,23 +27,14 @@ function AuthenticatedLayout() {
   return <AppShell user={user} />;
 }
 
-function DefaultRedirect() {
-  const { user } = useAuth();
-  const nav = getNavForRole(user?.role || "");
-  const first = nav[0];
-  const defaultPath = first ? first.path : "/login";
-  return <Navigate to={defaultPath} replace />;
-}
-
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route element={<AuthenticatedLayout />}>
-          <Route path="/approvals" element={<ApprovalsPage />} />
           <Route path="/scribe" element={<ScribePage />} />
-          <Route path="*" element={<DefaultRedirect />} />
+          <Route path="*" element={<Navigate to="/scribe" replace />} />
         </Route>
       </Routes>
     </BrowserRouter>
