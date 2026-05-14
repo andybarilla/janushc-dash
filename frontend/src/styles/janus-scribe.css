@@ -1337,3 +1337,188 @@
   color: var(--janus-error-text);
   font-size: 12px;
 }
+
+/* ============================================================
+ * Dark theme component overrides
+ *
+ * The token swap in janus-tokens.css carries most of the UI. These
+ * rules patch the specific spots where a pure token swap doesn't
+ * produce the right result — hard-coded foreground colors, surfaces
+ * that need to sit visually behind a card whose background is now
+ * the same as --janus-bg-light, and a few status tints that read
+ * too washed-out at the dark palette's contrast level.
+ * ============================================================ */
+
+/* In-pipeline pill — the rule above bakes the light-theme teal alpha.
+   Retune to the new lighter primary so it reads on dark. */
+:root[data-theme="dark"] .janus-status.progress {
+  background: rgba(127, 200, 217, 0.14);
+  color: var(--janus-primary);
+  border-color: rgba(127, 200, 217, 0.32);
+}
+:root[data-theme="dark"] .janus-status.neutral {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--janus-text-light);
+  border-color: var(--janus-border);
+}
+
+/* Recessed surfaces inside cards. On light, these used --janus-bg-light
+   to recede from --janus-white. On dark, both tokens land on similar
+   surfaces, so darken with a black alpha to keep the "inside the card"
+   reading. */
+:root[data-theme="dark"] .janus-section-head { background: rgba(0, 0, 0, 0.18); }
+:root[data-theme="dark"] .janus-audio-strip,
+:root[data-theme="dark"] .janus-pipeline-track,
+:root[data-theme="dark"] .janus-note,
+:root[data-theme="dark"] .janus-transcript-body,
+:root[data-theme="dark"] .janus-transcript-toggle,
+:root[data-theme="dark"] .janus-note-composer,
+:root[data-theme="dark"] .janus-list-meta,
+:root[data-theme="dark"] .janus-modal-foot {
+  background: rgba(0, 0, 0, 0.20);
+}
+
+/* Form inputs need a darker fill than the card they sit in. */
+:root[data-theme="dark"] .janus-topbar-search input,
+:root[data-theme="dark"] .janus-filter-search input,
+:root[data-theme="dark"] .janus-composer-input,
+:root[data-theme="dark"] .janus-input {
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--janus-text-dark);
+}
+:root[data-theme="dark"] .janus-topbar-search input:focus,
+:root[data-theme="dark"] .janus-filter-search input:focus,
+:root[data-theme="dark"] .janus-composer-input:focus,
+:root[data-theme="dark"] .janus-input:focus {
+  background: rgba(0, 0, 0, 0.30);
+}
+
+/* Pipeline active-step pulse: lighter teal alpha so it glows without glaring. */
+:root[data-theme="dark"] .janus-pipeline-step.active .janus-dot {
+  box-shadow: 0 0 0 4px rgba(127, 200, 217, 0.18);
+  animation: janus-pulse-dark 1.6s ease-in-out infinite;
+}
+@keyframes janus-pulse-dark {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(127, 200, 217, 0.18); }
+  50%      { box-shadow: 0 0 0 8px rgba(127, 200, 217, 0.06); }
+}
+
+/* Sparkline area-fill is hard-coded to the light primary alpha. */
+:root[data-theme="dark"] .janus-spark-fill { fill: rgba(127, 200, 217, 0.14); }
+
+/* Brand monogram disc glares on dark — outline it instead. */
+:root[data-theme="dark"] .janus-brand-mark {
+  background: transparent;
+  color: var(--janus-primary);
+  border: 1.5px solid var(--janus-primary);
+}
+
+/* Avatar gradient — re-anchor with dark text on the light teal disc. */
+:root[data-theme="dark"] .janus-avatar {
+  background: linear-gradient(135deg, var(--janus-primary), var(--janus-secondary));
+  color: #0e1520;
+}
+
+/* Author mark inside notes uses the same flip. */
+:root[data-theme="dark"] .janus-author-mark { color: #0e1520; }
+
+/* Selection highlights — alpha-of-primary is right, but needs more saturation. */
+:root[data-theme="dark"] .janus-session-row.selected {
+  background: rgba(127, 200, 217, 0.08);
+}
+:root[data-theme="dark"] .janus-nav-item.active {
+  background: rgba(127, 200, 217, 0.10);
+  color: var(--janus-primary);
+}
+
+/* Stat-card alert/attention tints. */
+:root[data-theme="dark"] .janus-stat-card.attention { background: rgba(252, 211, 77, 0.08); }
+:root[data-theme="dark"] .janus-stat-card.alert     { background: rgba(252, 165, 165, 0.08); }
+
+/* Primary button — primary is now light teal, so text must flip dark. */
+:root[data-theme="dark"] .janus-btn-primary {
+  background: var(--janus-primary);
+  color: #0e1520;
+}
+:root[data-theme="dark"] .janus-btn-primary:hover:not(:disabled) {
+  background: var(--janus-accent);
+  color: #0e1520;
+}
+:root[data-theme="dark"] .janus-btn-primary:disabled {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--janus-text-light);
+}
+:root[data-theme="dark"] .janus-btn-secondary {
+  background: transparent;
+  color: var(--janus-primary);
+}
+:root[data-theme="dark"] .janus-btn-secondary:hover {
+  background: var(--janus-primary);
+  color: #0e1520;
+}
+
+/* Filter chip active fill: dark glyph on light teal. */
+:root[data-theme="dark"] .janus-chip.active {
+  color: #0e1520;
+}
+:root[data-theme="dark"] .janus-chip.active .janus-chip-count {
+  background: rgba(14, 21, 32, 0.18);
+  color: #0e1520;
+}
+
+/* Composer category active state — same flip. */
+:root[data-theme="dark"] .janus-composer-cat.active {
+  color: #0e1520;
+}
+
+/* Sidebar active nav counter pill — same flip. */
+:root[data-theme="dark"] .janus-nav-item.active .janus-nav-counter {
+  background: var(--janus-primary);
+  color: #0e1520;
+}
+
+/* Approve-toggle "done" check: dark glyph on the success disc. */
+:root[data-theme="dark"] .janus-approve-toggle.done .janus-check {
+  background: var(--janus-success-text);
+  border-color: var(--janus-success-text);
+  color: #0e1520;
+}
+
+/* Section card approved state — pull saturation back over dark. */
+:root[data-theme="dark"] .janus-section-card.approved .janus-section-head {
+  background: rgba(74, 222, 128, 0.08);
+}
+
+/* Right-bubble (provider) speech turn — needs dark text on light teal. */
+:root[data-theme="dark"] .janus-turn.right .janus-turn-bubble {
+  color: #0e1520;
+}
+
+/* Notes drawer shadow needs to be heavier on dark to read as floating. */
+:root[data-theme="dark"] .janus-notes-drawer {
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.55);
+}
+
+/* Modal backdrop is barely visible at 0.4 over a dark page. Darken it. */
+:root[data-theme="dark"] .janus-modal-backdrop {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+/* Smooth theme switch. Scoped so transitions don't fight other animations. */
+.janus-scope,
+.janus-scope .janus-topbar,
+.janus-scope .janus-sidebar,
+.janus-scope .janus-main,
+.janus-scope .janus-section-card,
+.janus-scope .janus-session-row,
+.janus-scope .janus-stat-card,
+.janus-scope .janus-status,
+.janus-scope .janus-btn,
+.janus-scope .janus-nav-item,
+.janus-scope input,
+.janus-scope textarea,
+.janus-scope select {
+  transition: background-color 0.25s var(--janus-motion-ease),
+              border-color 0.25s var(--janus-motion-ease),
+              color 0.25s var(--janus-motion-ease);
+}

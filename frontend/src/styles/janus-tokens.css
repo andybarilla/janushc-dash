@@ -53,6 +53,49 @@
   --janus-motion-fast: 0.3s ease;
 }
 
+/* ============================================================
+ * Dark theme overrides. Activated by data-theme="dark" on <html>.
+ * Components read from the same --janus-* tokens, so swapping the
+ * values here flips the whole UI. A handful of components that
+ * hard-coded foreground colors get targeted overrides in
+ * janus-scribe.css. */
+:root[data-theme="dark"] {
+  /* Brand — swap roles. The lighter teal reads on dark; primary used
+     to be the deep teal which now becomes the "secondary" supporting tone. */
+  --janus-primary: #7fc8d9;
+  --janus-secondary: #4a90a4;
+  --janus-accent: #b8e0ea;
+
+  /* Neutrals — calm slate, not pure black (easier on clinical eyes). */
+  --janus-text-dark: #e8edf3;
+  --janus-text-light: #8a9aae;
+  --janus-bg-light: #161e2a;   /* "panel" surface — was the page bg on light */
+  --janus-white: #1f2937;      /* "card" surface — was the raised bg on light */
+  --janus-border: #2c3849;
+
+  /* Status — low-alpha tints over dark instead of pastel fills, so they
+     don't glow. Text colors lifted for contrast. */
+  --janus-success-bg: rgba(74, 222, 128, 0.12);
+  --janus-success-border: rgba(74, 222, 128, 0.32);
+  --janus-success-text: #6ee7a4;
+
+  --janus-error-bg: rgba(252, 165, 165, 0.10);
+  --janus-error-border: rgba(252, 165, 165, 0.30);
+  --janus-error-text: #fca5a5;
+
+  --janus-warning-bg: rgba(252, 211, 77, 0.10);
+  --janus-warning-border: rgba(252, 211, 77, 0.34);
+  --janus-warning-text: #fcd34d;
+
+  /* Shadows — heavier and warmer for the dark surface. */
+  --janus-shadow-card: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --janus-shadow-cta-primary-hover: 0 10px 25px rgba(127, 200, 217, 0.25);
+}
+
+/* Page background sits behind --janus-bg-light surfaces — make it one
+   notch darker so panels still read as raised. */
+:root[data-theme="dark"] body { background: #0e1520; }
+
 /* Wordmark — flared Roman caps, the only "display" face on the brand */
 .janus-wordmark {
   font-family: var(--janus-font-display);

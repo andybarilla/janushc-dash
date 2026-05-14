@@ -9,14 +9,17 @@ import {
   LogOut,
   Mic,
   Microscope,
+  Moon,
   Pill,
   Search,
   Settings,
+  Sun,
   UserRound,
   UsersRound,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { useTheme } from "@/lib/theme";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,6 +65,7 @@ export function AppShell({ user }: AppShellProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout } = useAuth();
+  const { theme, toggle: toggleTheme } = useTheme();
 
   const moduleLabel =
     Object.entries(MODULE_LABEL_BY_PATH).find(([path]) =>
@@ -105,6 +109,14 @@ export function AppShell({ user }: AppShellProps) {
             <button className="janus-icon-btn" title="Notifications" type="button">
               <Bell />
               <span className="janus-badge-dot" />
+            </button>
+            <button
+              className="janus-icon-btn"
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              type="button"
+              onClick={toggleTheme}
+            >
+              {theme === "dark" ? <Sun /> : <Moon />}
             </button>
             <button className="janus-icon-btn" title="Help" type="button">
               <CircleHelp />

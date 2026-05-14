@@ -5,6 +5,19 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Janus HC</title>
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('janus.theme');
+          if (t !== 'light' && t !== 'dark') {
+            t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          var r = document.documentElement;
+          r.setAttribute('data-theme', t);
+          if (t === 'dark') r.classList.add('dark');
+        } catch (e) { /* localStorage blocked — fall back to default light */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
