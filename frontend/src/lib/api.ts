@@ -1,6 +1,6 @@
 const API_BASE = ""; // Vite proxy handles /api routes
 
-interface ApiError {
+export interface ApiError {
   status: number;
   message: string;
 }

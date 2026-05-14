@@ -5,7 +5,7 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { api } from "./api";
+import { api, type ApiError } from "./api";
 
 export type UserRole = "admin" | "physician" | "staff";
 
@@ -30,6 +30,8 @@ export interface CreateUserInput {
   role: UserRole;
 }
 
+export const managedUsersQueryKey = ["managedUsers"] as const;
+
 export function useCurrentUser(enabled = true) {
   return useQuery({
     queryKey: ["currentUser"],
@@ -38,14 +40,14 @@ export function useCurrentUser(enabled = true) {
   });
 }
 
-export function useManagedUsers(): UseQueryResult<ManagedUser[], Error> {
+export function useManagedUsers(): UseQueryResult<ManagedUser[], ApiError> {
   return useQuery({
-    queryKey: ["managedUsers"],
+    queryKey: managedUsersQueryKey,
     queryFn: () => api.fetch<ManagedUser[]>("/api/users"),
   });
 }
 
-export function useCreateUser(): UseMutationResult<ManagedUser, Error, CreateUserInput> {
+export function useCreateUser(): UseMutationResult<ManagedUser, ApiError, CreateUserInput> {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -59,7 +61,7 @@ export function useCreateUser(): UseMutationResult<ManagedUser, Error, CreateUse
         }),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["managedUsers"] });
+      queryClient.invalidateQueries({ queryKey: managedUsersQueryKey });
     },
   });
 }
