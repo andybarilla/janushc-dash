@@ -71,6 +71,16 @@ type RefreshToken struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+type ScribeFeedback struct {
+	ID        pgtype.UUID        `json:"id"`
+	SessionID pgtype.UUID        `json:"session_id"`
+	Section   string             `json:"section"`
+	Category  string             `json:"category"`
+	Body      string             `json:"body"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	At        pgtype.Timestamptz `json:"at"`
+}
+
 type ScribeSectionApproval struct {
 	ID        pgtype.UUID        `json:"id"`
 	SessionID pgtype.UUID        `json:"session_id"`
