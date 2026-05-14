@@ -6,6 +6,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/andybarilla/janushc-dash/internal/database"
 )
 
 func TestValidateCreateRequest_Valid(t *testing.T) {
@@ -82,6 +87,72 @@ func TestValidateUpload_InvalidExtension(t *testing.T) {
 	_, _, err := parseAudioUpload(req, 100<<20)
 	if err == nil {
 		t.Error("expected error for invalid file extension")
+	}
+}
+
+func TestIsValidSection(t *testing.T) {
+	for _, s := range []string{"hpi", "plan", "exam", "labs"} {
+		if !isValidSection(s) {
+			t.Errorf("expected %q to be valid", s)
+		}
+	}
+	for _, s := range []string{"", "HPI", "foo", "hpi "} {
+		if isValidSection(s) {
+			t.Errorf("expected %q to be invalid", s)
+		}
+	}
+}
+
+func TestBuildSectionsMap_EmptyDefaultsAllPending(t *testing.T) {
+	out := buildSectionsMap(nil)
+	if len(out) != 4 {
+		t.Fatalf("expected 4 keys, got %d", len(out))
+	}
+	for _, k := range []string{"hpi", "plan", "exam", "labs"} {
+		if out[k].State != "pending" {
+			t.Errorf("section %s: expected pending, got %q", k, out[k].State)
+		}
+	}
+}
+
+func TestBuildSectionsMap_ApprovedRowSetsApprovedState(t *testing.T) {
+	at := time.Date(2026, 5, 14, 15, 32, 0, 0, time.UTC)
+	rows := []database.GetSessionSectionStatesRow{
+		{
+			Section:  "hpi",
+			Action:   "approved",
+			At:       pgtype.Timestamptz{Time: at, Valid: true},
+			UserName: "Courtney Barilla",
+		},
+	}
+	out := buildSectionsMap(rows)
+	if out["hpi"].State != "approved" {
+		t.Errorf("expected approved, got %q", out["hpi"].State)
+	}
+	if out["hpi"].ApprovedByName != "Courtney Barilla" {
+		t.Errorf("expected approver name, got %q", out["hpi"].ApprovedByName)
+	}
+	if out["hpi"].ApprovedAt == "" {
+		t.Error("expected approved_at to be set")
+	}
+	if out["plan"].State != "pending" {
+		t.Errorf("untouched section should remain pending, got %q", out["plan"].State)
+	}
+}
+
+// The DB query (DISTINCT ON ... ORDER BY at DESC) returns at most one row per
+// section — the latest event. If that latest event is a 'revoked' action, the
+// section must end up pending. This guards the Go-side derivation contract.
+func TestBuildSectionsMap_RevokedRowYieldsPending(t *testing.T) {
+	rows := []database.GetSessionSectionStatesRow{
+		{Section: "hpi", Action: "revoked"},
+	}
+	out := buildSectionsMap(rows)
+	if out["hpi"].State != "pending" {
+		t.Errorf("expected pending after revoke, got %q", out["hpi"].State)
+	}
+	if out["hpi"].ApprovedByName != "" || out["hpi"].ApprovedAt != "" {
+		t.Error("revoked section must not carry approver metadata")
 	}
 }
 

@@ -29,6 +29,7 @@ interface Props {
   sectionKey: SectionKey;
   approved: boolean;
   noteCount: number;
+  canApprove?: boolean;
   onApprove: () => void;
   onAddNote: () => void;
   onOpenNotes: () => void;
@@ -40,6 +41,7 @@ export function SectionCard({
   sectionKey,
   approved,
   noteCount,
+  canApprove = true,
   onApprove,
   onAddNote,
   onOpenNotes,
@@ -90,16 +92,29 @@ export function SectionCard({
           >
             <Copy />
           </button>
-          <button
-            type="button"
-            className={`janus-approve-toggle ${approved ? "done" : ""}`}
-            onClick={onApprove}
-          >
-            <span className="janus-check">
-              <Check />
+          {canApprove ? (
+            <button
+              type="button"
+              className={`janus-approve-toggle ${approved ? "done" : ""}`}
+              onClick={onApprove}
+            >
+              <span className="janus-check">
+                <Check />
+              </span>
+              {approved ? "Approved" : "Approve"}
+            </button>
+          ) : approved ? (
+            <span
+              className="janus-approve-toggle done"
+              title="Approved"
+              aria-disabled="true"
+            >
+              <span className="janus-check">
+                <Check />
+              </span>
+              Approved
             </span>
-            {approved ? "Approved" : "Approve"}
-          </button>
+          ) : null}
         </div>
       </div>
       <div className="janus-section-body">{children}</div>

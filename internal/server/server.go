@@ -81,6 +81,11 @@ func (s *Server) routes() {
 		r.Get("/api/scribe/sessions/{id}", s.scribeHandler.HandleGet)
 		r.Post("/api/scribe/sessions/{id}/process", s.scribeHandler.HandleProcess)
 		r.With(middleware.Timeout(5 * time.Minute)).Post("/api/scribe/sessions/{id}/upload", s.scribeHandler.HandleUpload)
+
+		r.With(auth.RequireRole("physician")).
+			Post("/api/scribe/sessions/{id}/sections/{section}/approve", s.scribeHandler.HandleApproveSection)
+		r.With(auth.RequireRole("physician")).
+			Post("/api/scribe/sessions/{id}/sections/{section}/revoke", s.scribeHandler.HandleRevokeSection)
 	})
 
 	// SPA static file serving

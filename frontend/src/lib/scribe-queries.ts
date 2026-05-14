@@ -1,5 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
+import type { SectionKey } from "@/components/scribe/types";
+
+export type SectionState = "pending" | "approved";
+
+export interface SectionStateData {
+  state: SectionState;
+  approved_by_name?: string;
+  approved_at?: string;
+}
 
 export interface ScribeSession {
   id: string;
@@ -10,6 +19,7 @@ export interface ScribeSession {
   error_message?: string;
   created_at: string;
   completed_at?: string;
+  approved_count: number;
 }
 
 export interface ScribeSessionDetail extends ScribeSession {
@@ -20,6 +30,7 @@ export interface ScribeSessionDetail extends ScribeSession {
     physical_exam: string;
     diagnoses_labs: { diagnosis: string; lab: string }[];
   };
+  sections: Record<SectionKey, SectionStateData>;
 }
 
 interface CreateSessionRequest {
@@ -52,6 +63,36 @@ export function useCreateScribeSession() {
         body: JSON.stringify(req),
       }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["scribeSessions"] });
+    },
+  });
+}
+
+export function useApproveSection() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sessionId, section }: { sessionId: string; section: SectionKey }) =>
+      api.fetch<Record<string, never>>(
+        `/api/scribe/sessions/${sessionId}/sections/${section}/approve`,
+        { method: "POST" },
+      ),
+    onSuccess: (_data, { sessionId }) => {
+      queryClient.invalidateQueries({ queryKey: ["scribeSessions", sessionId] });
+      queryClient.invalidateQueries({ queryKey: ["scribeSessions"] });
+    },
+  });
+}
+
+export function useRevokeSection() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sessionId, section }: { sessionId: string; section: SectionKey }) =>
+      api.fetch<Record<string, never>>(
+        `/api/scribe/sessions/${sessionId}/sections/${section}/revoke`,
+        { method: "POST" },
+      ),
+    onSuccess: (_data, { sessionId }) => {
+      queryClient.invalidateQueries({ queryKey: ["scribeSessions", sessionId] });
       queryClient.invalidateQueries({ queryKey: ["scribeSessions"] });
     },
   });

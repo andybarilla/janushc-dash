@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Download, Upload } from "lucide-react";
 import {
+  useApproveSection,
+  useRevokeSection,
   useScribeSession,
   useScribeSessions,
 } from "@/lib/scribe-queries";
+import { useAuth } from "@/lib/auth";
 import {
   SessionList,
   buildEntries,
@@ -27,15 +30,15 @@ const EMPTY_APPROVALS: Approvals = {
   labs: false,
 };
 
-// Per-session UI state (approvals + notes) lives client-side only.
-// TODO: persist when backend endpoints exist.
-type SessionUiState = {
-  approvals: Approvals;
-  notes: FeedbackNote[];
-};
+const SECTION_KEYS: SectionKey[] = ["hpi", "plan", "exam", "labs"];
 
 export default function ScribePage() {
   const { data: sessions = [], isLoading: sessionsLoading } = useScribeSessions();
+  const { user } = useAuth();
+  const canApprove = user?.role === "physician";
+
+  const approveMut = useApproveSection();
+  const revokeMut = useRevokeSection();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -44,7 +47,7 @@ export default function ScribePage() {
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesDefaultSection, setNotesDefaultSection] = useState<SectionKey | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [uiBySession, setUiBySession] = useState<Record<string, SessionUiState>>({});
+  const [notesBySession, setNotesBySession] = useState<Record<string, FeedbackNote[]>>({});
 
   // Auto-select the first session when the list loads.
   useEffect(() => {
@@ -59,13 +62,11 @@ export default function ScribePage() {
     useScribeSession(selectedId ?? "");
 
   const approvedCountFor = (id: string) =>
-    (Object.keys(EMPTY_APPROVALS) as SectionKey[]).filter(
-      (k) => uiBySession[id]?.approvals?.[k],
-    ).length;
+    sessions.find((s) => s.id === id)?.approved_count ?? 0;
 
   const entries = useMemo(
     () => buildEntries(sessions, approvedCountFor),
-    [sessions, uiBySession],
+    [sessions],
   );
 
   const stats: StatsValues = useMemo(() => {
@@ -91,16 +92,17 @@ export default function ScribePage() {
     };
   }, [entries]);
 
-  const selectedUi = selectedId ? uiBySession[selectedId] : undefined;
-  const approvals = selectedUi?.approvals ?? EMPTY_APPROVALS;
-  const notes = selectedUi?.notes ?? [];
-
-  const updateUi = (id: string, updater: (prev: SessionUiState) => SessionUiState) => {
-    setUiBySession((prev) => ({
-      ...prev,
-      [id]: updater(prev[id] ?? { approvals: { ...EMPTY_APPROVALS }, notes: [] }),
-    }));
-  };
+  const approvals: Approvals = useMemo(() => {
+    const sections = selectedDetail?.sections;
+    if (!sections) return EMPTY_APPROVALS;
+    return {
+      hpi: sections.hpi?.state === "approved",
+      plan: sections.plan?.state === "approved",
+      exam: sections.exam?.state === "approved",
+      labs: sections.labs?.state === "approved",
+    };
+  }, [selectedDetail]);
+  const notes = (selectedId && notesBySession[selectedId]) || [];
 
   const handleSelect = (id: string) => {
     setSelectedId(id);
@@ -109,33 +111,20 @@ export default function ScribePage() {
   };
 
   const handleApprove = (section: SectionKey) => {
-    if (!selectedId) return;
-    updateUi(selectedId, (prev) => ({
-      ...prev,
-      approvals: { ...prev.approvals, [section]: !prev.approvals[section] },
-    }));
+    if (!selectedId || !canApprove) return;
+    const mutation = approvals[section] ? revokeMut : approveMut;
+    mutation.mutate({ sessionId: selectedId, section });
   };
 
   const handleApproveAll = () => {
-    if (!selectedId) return;
-    updateUi(selectedId, (prev) => ({
-      ...prev,
-      approvals: { hpi: true, plan: true, exam: true, labs: true },
-    }));
+    if (!selectedId || !canApprove) return;
+    SECTION_KEYS.filter((k) => !approvals[k]).forEach((section) =>
+      approveMut.mutate({ sessionId: selectedId, section }),
+    );
   };
 
   const handleReject = () => {
-    if (!selectedId) return;
-    if (
-      !window.confirm(
-        'Reject this encounter? It will be flagged for re-processing.',
-      )
-    )
-      return;
-    updateUi(selectedId, (prev) => ({
-      ...prev,
-      approvals: { ...EMPTY_APPROVALS },
-    }));
+    window.alert("Reject is not yet implemented.");
   };
 
   const handleAddNote = (
@@ -149,9 +138,9 @@ export default function ScribePage() {
       at: new Date().toISOString(),
       ...note,
     };
-    updateUi(selectedId, (prev) => ({
+    setNotesBySession((prev) => ({
       ...prev,
-      notes: [...prev.notes, full],
+      [selectedId]: [...(prev[selectedId] ?? []), full],
     }));
   };
 
@@ -161,10 +150,7 @@ export default function ScribePage() {
   };
 
   const statusId = selectedDetail
-    ? deriveStatusId(
-        selectedDetail,
-        approvedCountFor(selectedDetail.id),
-      )
+    ? deriveStatusId(selectedDetail, selectedDetail.approved_count)
     : null;
 
   return (
@@ -217,6 +203,7 @@ export default function ScribePage() {
           approvals={approvals}
           notes={notes}
           loading={!!selectedId && detailLoading && !selectedDetail}
+          canApprove={canApprove}
           onApprove={handleApprove}
           onApproveAll={handleApproveAll}
           onReject={handleReject}

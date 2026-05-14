@@ -11,11 +11,26 @@ FROM scribe_sessions
 WHERE id = $1 AND tenant_id = $2;
 
 -- name: ListScribeSessions :many
-SELECT id, tenant_id, user_id, patient_id, encounter_id, department_id, status,
-       error_message, started_at, stopped_at, completed_at, created_at
-FROM scribe_sessions
-WHERE tenant_id = $1
-ORDER BY created_at DESC
+WITH latest_per_section AS (
+    SELECT DISTINCT ON (session_id, section)
+        session_id, section, action
+    FROM scribe_section_approvals
+    ORDER BY session_id, section, at DESC
+),
+approved_counts AS (
+    SELECT session_id, COUNT(*)::int AS approved_count
+    FROM latest_per_section
+    WHERE action = 'approved'
+    GROUP BY session_id
+)
+SELECT
+    s.id, s.tenant_id, s.user_id, s.patient_id, s.encounter_id, s.department_id,
+    s.status, s.error_message, s.started_at, s.stopped_at, s.completed_at, s.created_at,
+    COALESCE(ac.approved_count, 0)::int AS approved_count
+FROM scribe_sessions s
+LEFT JOIN approved_counts ac ON ac.session_id = s.id
+WHERE s.tenant_id = $1
+ORDER BY s.created_at DESC
 LIMIT 50;
 
 -- name: UpdateScribeSessionProcessing :exec

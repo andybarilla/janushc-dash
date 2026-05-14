@@ -89,27 +89,43 @@ func (q *Queries) GetScribeSession(ctx context.Context, arg GetScribeSessionPara
 }
 
 const listScribeSessions = `-- name: ListScribeSessions :many
-SELECT id, tenant_id, user_id, patient_id, encounter_id, department_id, status,
-       error_message, started_at, stopped_at, completed_at, created_at
-FROM scribe_sessions
-WHERE tenant_id = $1
-ORDER BY created_at DESC
+WITH latest_per_section AS (
+    SELECT DISTINCT ON (session_id, section)
+        session_id, section, action
+    FROM scribe_section_approvals
+    ORDER BY session_id, section, at DESC
+),
+approved_counts AS (
+    SELECT session_id, COUNT(*)::int AS approved_count
+    FROM latest_per_section
+    WHERE action = 'approved'
+    GROUP BY session_id
+)
+SELECT
+    s.id, s.tenant_id, s.user_id, s.patient_id, s.encounter_id, s.department_id,
+    s.status, s.error_message, s.started_at, s.stopped_at, s.completed_at, s.created_at,
+    COALESCE(ac.approved_count, 0)::int AS approved_count
+FROM scribe_sessions s
+LEFT JOIN approved_counts ac ON ac.session_id = s.id
+WHERE s.tenant_id = $1
+ORDER BY s.created_at DESC
 LIMIT 50
 `
 
 type ListScribeSessionsRow struct {
-	ID           pgtype.UUID        `json:"id"`
-	TenantID     pgtype.UUID        `json:"tenant_id"`
-	UserID       pgtype.UUID        `json:"user_id"`
-	PatientID    string             `json:"patient_id"`
-	EncounterID  string             `json:"encounter_id"`
-	DepartmentID string             `json:"department_id"`
-	Status       string             `json:"status"`
-	ErrorMessage pgtype.Text        `json:"error_message"`
-	StartedAt    pgtype.Timestamptz `json:"started_at"`
-	StoppedAt    pgtype.Timestamptz `json:"stopped_at"`
-	CompletedAt  pgtype.Timestamptz `json:"completed_at"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	ID            pgtype.UUID        `json:"id"`
+	TenantID      pgtype.UUID        `json:"tenant_id"`
+	UserID        pgtype.UUID        `json:"user_id"`
+	PatientID     string             `json:"patient_id"`
+	EncounterID   string             `json:"encounter_id"`
+	DepartmentID  string             `json:"department_id"`
+	Status        string             `json:"status"`
+	ErrorMessage  pgtype.Text        `json:"error_message"`
+	StartedAt     pgtype.Timestamptz `json:"started_at"`
+	StoppedAt     pgtype.Timestamptz `json:"stopped_at"`
+	CompletedAt   pgtype.Timestamptz `json:"completed_at"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	ApprovedCount int32              `json:"approved_count"`
 }
 
 func (q *Queries) ListScribeSessions(ctx context.Context, tenantID pgtype.UUID) ([]ListScribeSessionsRow, error) {
@@ -134,6 +150,7 @@ func (q *Queries) ListScribeSessions(ctx context.Context, tenantID pgtype.UUID) 
 			&i.StoppedAt,
 			&i.CompletedAt,
 			&i.CreatedAt,
+			&i.ApprovedCount,
 		); err != nil {
 			return nil, err
 		}

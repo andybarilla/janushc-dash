@@ -80,20 +80,39 @@ func (r processRequest) validate() error {
 }
 
 type sessionResponse struct {
-	ID           string `json:"id"`
-	PatientID    string `json:"patient_id"`
-	EncounterID  string `json:"encounter_id"`
-	DepartmentID string `json:"department_id"`
-	Status       string `json:"status"`
-	ErrorMessage string `json:"error_message,omitempty"`
-	CreatedAt    string `json:"created_at"`
-	CompletedAt  string `json:"completed_at,omitempty"`
+	ID            string `json:"id"`
+	PatientID     string `json:"patient_id"`
+	EncounterID   string `json:"encounter_id"`
+	DepartmentID  string `json:"department_id"`
+	Status        string `json:"status"`
+	ErrorMessage  string `json:"error_message,omitempty"`
+	CreatedAt     string `json:"created_at"`
+	CompletedAt   string `json:"completed_at,omitempty"`
+	ApprovedCount int    `json:"approved_count"`
+}
+
+type sectionState struct {
+	State          string `json:"state"` // "pending" | "approved"
+	ApprovedByName string `json:"approved_by_name,omitempty"`
+	ApprovedAt     string `json:"approved_at,omitempty"`
 }
 
 type sessionDetailResponse struct {
 	sessionResponse
-	Transcript string       `json:"transcript,omitempty"`
-	AIOutput   *ScribeOutput `json:"ai_output,omitempty"`
+	Transcript string                  `json:"transcript,omitempty"`
+	AIOutput   *ScribeOutput           `json:"ai_output,omitempty"`
+	Sections   map[string]sectionState `json:"sections"`
+}
+
+var sectionKeys = []string{"hpi", "plan", "exam", "labs"}
+
+func isValidSection(s string) bool {
+	for _, k := range sectionKeys {
+		if k == s {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
@@ -210,8 +229,41 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	states, err := h.queries.GetSessionSectionStates(r.Context(), sessionUUID)
+	if err != nil {
+		http.Error(w, "failed to load section states", http.StatusInternalServerError)
+		return
+	}
+	resp.Sections = buildSectionsMap(states)
+	approved := 0
+	for _, s := range resp.Sections {
+		if s.State == "approved" {
+			approved++
+		}
+	}
+	resp.ApprovedCount = approved
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+func buildSectionsMap(rows []database.GetSessionSectionStatesRow) map[string]sectionState {
+	out := make(map[string]sectionState, len(sectionKeys))
+	for _, k := range sectionKeys {
+		out[k] = sectionState{State: "pending"}
+	}
+	for _, r := range rows {
+		if r.Action == "approved" {
+			out[r.Section] = sectionState{
+				State:          "approved",
+				ApprovedByName: r.UserName,
+				ApprovedAt:     r.At.Time.Format("2006-01-02T15:04:05Z"),
+			}
+		} else {
+			out[r.Section] = sectionState{State: "pending"}
+		}
+	}
+	return out
 }
 
 func (h *Handler) HandleProcess(w http.ResponseWriter, r *http.Request) {
@@ -438,6 +490,70 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(toSessionResponse(updated))
 }
 
+func (h *Handler) HandleApproveSection(w http.ResponseWriter, r *http.Request) {
+	h.handleSectionAction(w, r, "approved")
+}
+
+func (h *Handler) HandleRevokeSection(w http.ResponseWriter, r *http.Request) {
+	h.handleSectionAction(w, r, "revoked")
+}
+
+func (h *Handler) handleSectionAction(w http.ResponseWriter, r *http.Request, action string) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	section := chi.URLParam(r, "section")
+	if !isValidSection(section) {
+		http.Error(w, "invalid section", http.StatusBadRequest)
+		return
+	}
+
+	sessionUUID := pgtype.UUID{}
+	if err := sessionUUID.Scan(chi.URLParam(r, "id")); err != nil {
+		http.Error(w, "invalid session ID", http.StatusBadRequest)
+		return
+	}
+	tenantUUID := pgtype.UUID{}
+	if err := tenantUUID.Scan(claims.TenantID); err != nil {
+		http.Error(w, "invalid tenant context", http.StatusBadRequest)
+		return
+	}
+	userUUID := pgtype.UUID{}
+	if err := userUUID.Scan(claims.UserID); err != nil {
+		http.Error(w, "invalid user context", http.StatusBadRequest)
+		return
+	}
+
+	session, err := h.queries.GetScribeSession(r.Context(), database.GetScribeSessionParams{
+		ID:       sessionUUID,
+		TenantID: tenantUUID,
+	})
+	if err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if session.Status != "complete" {
+		http.Error(w, "session is not ready for approval", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.queries.RecordSectionApproval(r.Context(), database.RecordSectionApprovalParams{
+		SessionID: sessionUUID,
+		Section:   section,
+		Action:    action,
+		UserID:    userUUID,
+	}); err != nil {
+		http.Error(w, "failed to record approval", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte("{}"))
+}
+
 func toSessionResponse(s database.ScribeSession) sessionResponse {
 	resp := sessionResponse{
 		ID:           uuidToString(s.ID),
@@ -458,12 +574,13 @@ func toSessionResponse(s database.ScribeSession) sessionResponse {
 
 func toListSessionResponse(s database.ListScribeSessionsRow) sessionResponse {
 	resp := sessionResponse{
-		ID:           uuidToString(s.ID),
-		PatientID:    s.PatientID,
-		EncounterID:  s.EncounterID,
-		DepartmentID: s.DepartmentID,
-		Status:       s.Status,
-		CreatedAt:    s.CreatedAt.Time.Format("2006-01-02T15:04:05Z"),
+		ID:            uuidToString(s.ID),
+		PatientID:     s.PatientID,
+		EncounterID:   s.EncounterID,
+		DepartmentID:  s.DepartmentID,
+		Status:        s.Status,
+		CreatedAt:     s.CreatedAt.Time.Format("2006-01-02T15:04:05Z"),
+		ApprovedCount: int(s.ApprovedCount),
 	}
 	if s.ErrorMessage.Valid {
 		resp.ErrorMessage = s.ErrorMessage.String

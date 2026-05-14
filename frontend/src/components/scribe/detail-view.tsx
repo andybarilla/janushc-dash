@@ -32,6 +32,7 @@ interface Props {
   approvals: Approvals;
   notes: FeedbackNote[];
   loading: boolean;
+  canApprove: boolean;
   onApprove: (section: SectionKey) => void;
   onApproveAll: () => void;
   onReject: () => void;
@@ -52,6 +53,7 @@ export function DetailView({
   approvals,
   notes,
   loading,
+  canApprove,
   onApprove,
   onApproveAll,
   onReject,
@@ -181,7 +183,7 @@ export function DetailView({
               <MessageSquare />
               Feedback{totalNotes > 0 ? ` (${totalNotes})` : ""}
             </button>
-            {!isSent && !allApproved ? (
+            {canApprove && !isSent && !allApproved ? (
               <button
                 type="button"
                 className="janus-btn janus-btn-secondary janus-btn-sm"
@@ -191,7 +193,7 @@ export function DetailView({
                 Approve all
               </button>
             ) : null}
-            {!isSent ? (
+            {canApprove && !isSent ? (
               <button
                 type="button"
                 className="janus-btn janus-btn-danger-ghost janus-btn-sm"
@@ -201,21 +203,23 @@ export function DetailView({
                 Reject
               </button>
             ) : null}
-            <button
-              type="button"
-              className="janus-btn janus-btn-primary"
-              disabled={!allApproved}
-              title={
-                isSent
-                  ? "Already sent"
-                  : allApproved
-                    ? "Send to EHR"
-                    : "Approve all sections first"
-              }
-            >
-              {isSent ? <Check /> : <Send />}
-              {isSent ? "Sent to EHR" : "Send to EHR"}
-            </button>
+            {canApprove ? (
+              <button
+                type="button"
+                className="janus-btn janus-btn-primary"
+                disabled={!allApproved}
+                title={
+                  isSent
+                    ? "Already sent"
+                    : allApproved
+                      ? "Send to EHR"
+                      : "Approve all sections first"
+                }
+              >
+                {isSent ? <Check /> : <Send />}
+                {isSent ? "Sent to EHR" : "Send to EHR"}
+              </button>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -227,6 +231,7 @@ export function DetailView({
               sectionKey="hpi"
               approved={approvals.hpi}
               noteCount={notesForSection(notes, "hpi")}
+              canApprove={canApprove}
               onApprove={() => onApprove("hpi")}
               onAddNote={() => onAddNoteForSection("hpi")}
               onOpenNotes={onOpenNotes}
@@ -239,6 +244,7 @@ export function DetailView({
               sectionKey="plan"
               approved={approvals.plan}
               noteCount={notesForSection(notes, "plan")}
+              canApprove={canApprove}
               onApprove={() => onApprove("plan")}
               onAddNote={() => onAddNoteForSection("plan")}
               onOpenNotes={onOpenNotes}
@@ -257,6 +263,7 @@ export function DetailView({
               sectionKey="exam"
               approved={approvals.exam}
               noteCount={notesForSection(notes, "exam")}
+              canApprove={canApprove}
               onApprove={() => onApprove("exam")}
               onAddNote={() => onAddNoteForSection("exam")}
               onOpenNotes={onOpenNotes}
@@ -273,6 +280,7 @@ export function DetailView({
               sectionKey="labs"
               approved={approvals.labs}
               noteCount={notesForSection(notes, "labs")}
+              canApprove={canApprove}
               onApprove={() => onApprove("labs")}
               onAddNote={() => onAddNoteForSection("labs")}
               onOpenNotes={onOpenNotes}
