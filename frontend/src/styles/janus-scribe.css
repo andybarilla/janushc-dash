@@ -324,6 +324,8 @@
   grid-template-columns: 400px 1fr;
   flex: 1;
   min-height: 0;
+  position: relative;
+  overflow: hidden;
 }
 .janus-list-pane {
   background: var(--janus-white);

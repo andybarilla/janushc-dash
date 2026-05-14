@@ -40,6 +40,17 @@ export function NotesDrawer({
     if (defaultSection) setTarget(defaultSection);
   }, [defaultSection]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
+
   const handleSubmit = () => {
     if (!draft.trim()) return;
     onAddNote({ category, section: target, body: draft.trim() });
@@ -61,6 +72,7 @@ export function NotesDrawer({
           className="janus-icon-btn"
           onClick={onClose}
           title="Close"
+          aria-label="Close feedback drawer"
         >
           <X />
         </button>
