@@ -1,5 +1,13 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  type UseMutationResult,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 import { api } from "./api";
+
+export type UserRole = "admin" | "physician" | "staff";
 
 interface UserProfile {
   id: string;
@@ -8,11 +16,51 @@ interface UserProfile {
   role: string;
 }
 
+export interface ManagedUser {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  created_at: string;
+}
+
+export interface CreateUserInput {
+  email: string;
+  name: string;
+  role: UserRole;
+}
+
 export function useCurrentUser(enabled = true) {
   return useQuery({
     queryKey: ["currentUser"],
     queryFn: () => api.fetch<UserProfile>("/api/auth/me"),
     enabled,
+  });
+}
+
+export function useManagedUsers(): UseQueryResult<ManagedUser[], Error> {
+  return useQuery({
+    queryKey: ["managedUsers"],
+    queryFn: () => api.fetch<ManagedUser[]>("/api/users"),
+  });
+}
+
+export function useCreateUser(): UseMutationResult<ManagedUser, Error, CreateUserInput> {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateUserInput): Promise<ManagedUser> =>
+      api.fetch<ManagedUser>("/api/users", {
+        method: "POST",
+        body: JSON.stringify({
+          email: input.email.trim().toLowerCase(),
+          name: input.name.trim(),
+          role: input.role,
+        }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["managedUsers"] });
+    },
   });
 }
 
