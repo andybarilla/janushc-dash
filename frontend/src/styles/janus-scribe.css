@@ -1752,7 +1752,7 @@
 /* ============================================================
  * Responsive/mobile layout
  * ============================================================ */
-@media (max-width: 1024px) {
+@media (max-width: 1280px) {
   .janus-app {
     grid-template-columns: 72px 1fr;
   }
@@ -1773,7 +1773,7 @@
   }
 
   .janus-workspace {
-    grid-template-columns: minmax(320px, 38vw) 1fr;
+    grid-template-columns: minmax(300px, 36vw) 1fr;
   }
 }
 
