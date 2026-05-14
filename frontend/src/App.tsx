@@ -38,8 +38,16 @@ function AuthenticatedLayout(): ReactElement {
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background text-muted-foreground">
-        Loading...
+      <div className="janus-scope">
+        <div className="janus-route-loading">
+          <div
+            className="janus-route-loading-card"
+            role="status"
+            aria-label="Loading Janus"
+          >
+            Loading…
+          </div>
+        </div>
       </div>
     );
   }

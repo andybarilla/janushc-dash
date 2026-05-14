@@ -135,6 +135,20 @@ describe("AdminRoute", () => {
 });
 
 describe("App team route", () => {
+  it("uses Janus styling for the authenticated route loading state", () => {
+    window.history.pushState(null, "", "/team");
+    mocks.useCurrentUser.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+    });
+
+    render(<App />);
+
+    const loadingStatus = screen.getByRole("status", { name: "Loading Janus" });
+    expect(loadingStatus).toHaveClass("janus-route-loading-card");
+    expect(loadingStatus.closest(".janus-scope")).not.toBeNull();
+  });
+
   it("renders the real Team page for authenticated admins", () => {
     window.history.pushState(null, "", "/team");
 

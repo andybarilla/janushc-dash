@@ -31,6 +31,22 @@
 .janus-sidebar { grid-area: sidebar; }
 .janus-main    { grid-area: main; min-width: 0; }
 
+.janus-route-loading {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--janus-bg-light);
+  padding: 24px;
+}
+.janus-route-loading-card {
+  background: var(--janus-white);
+  border: 1px solid var(--janus-border);
+  border-radius: var(--janus-radius-card);
+  color: var(--janus-text-light);
+  font-weight: 600;
+  padding: 18px 24px;
+}
+
 /* Top bar */
 .janus-topbar {
   background: var(--janus-white);
@@ -1354,7 +1370,6 @@
   background: var(--janus-white);
   border: 1px solid var(--janus-border);
   border-radius: var(--janus-radius-card);
-  box-shadow: var(--janus-shadow-card);
   overflow: hidden;
 }
 .janus-team-table-wrap {
@@ -1391,20 +1406,21 @@
   border: 1px solid var(--janus-border);
   border-radius: 999px;
   padding: 3px 9px;
-  color: var(--janus-primary);
+  color: var(--janus-text-dark);
   background: var(--janus-bg-light);
   font-size: 12px;
   font-weight: 700;
 }
 .janus-team-role-admin {
-  color: var(--janus-warning-text);
-  background: var(--janus-warning-bg);
-  border-color: var(--janus-warning-border);
+  color: var(--janus-primary);
+  background: rgba(44, 95, 125, 0.08);
+  border-color: rgba(44, 95, 125, 0.18);
 }
-.janus-team-role-physician {
-  color: var(--janus-success-text);
-  background: var(--janus-success-bg);
-  border-color: var(--janus-success-border);
+.janus-team-role-physician,
+.janus-team-role-staff {
+  color: var(--janus-text-dark);
+  background: var(--janus-bg-light);
+  border-color: var(--janus-border);
 }
 .janus-team-empty,
 .janus-team-state {
@@ -1541,6 +1557,10 @@
 :root[data-theme="dark"] .janus-nav-item.active {
   background: rgba(127, 200, 217, 0.10);
   color: var(--janus-primary);
+}
+:root[data-theme="dark"] .janus-team-role-admin {
+  background: rgba(127, 200, 217, 0.10);
+  border-color: rgba(127, 200, 217, 0.24);
 }
 
 /* Stat-card alert/attention tints. */
