@@ -1748,3 +1748,271 @@
   color: var(--janus-warning-text, #854d0e);
   white-space: nowrap;
 }
+
+/* ============================================================
+ * Responsive/mobile layout
+ * ============================================================ */
+@media (max-width: 1024px) {
+  .janus-app {
+    grid-template-columns: 72px 1fr;
+  }
+
+  .janus-sidebar {
+    padding: 12px 8px;
+  }
+
+  .janus-nav-section-label,
+  .janus-sidebar-bottom,
+  .janus-nav-item span:not(.janus-nav-counter) {
+    display: none;
+  }
+
+  .janus-nav-item {
+    justify-content: center;
+    padding: 12px;
+  }
+
+  .janus-workspace {
+    grid-template-columns: minmax(320px, 38vw) 1fr;
+  }
+}
+
+@media (max-width: 820px) {
+  .janus-app {
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+  }
+
+  .janus-topbar {
+    min-height: 56px;
+    padding: 0 12px;
+    gap: 10px;
+  }
+
+  .janus-brand {
+    min-width: 0;
+    border-right: none;
+    padding-right: 0;
+  }
+
+  .janus-brand-mark {
+    width: 30px;
+    height: 30px;
+  }
+
+  .janus-brand-name,
+  .janus-module-name {
+    font-size: 14px;
+  }
+
+  .janus-topbar-search {
+    display: none;
+  }
+
+  .janus-topbar-actions {
+    gap: 4px;
+  }
+
+  .janus-topbar-actions .janus-icon-btn[title="Notifications"],
+  .janus-topbar-actions .janus-icon-btn[title="Help"],
+  .janus-topbar-actions .janus-icon-btn[title="Settings"] {
+    display: none;
+  }
+
+  .janus-avatar {
+    margin-left: 2px;
+  }
+
+  .janus-sidebar {
+    position: sticky;
+    top: 56px;
+    z-index: 40;
+    order: 2;
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 8px 12px;
+    border-right: none;
+    border-bottom: 1px solid var(--janus-border);
+    scrollbar-width: none;
+  }
+
+  .janus-sidebar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .janus-sidebar > div {
+    display: contents;
+  }
+
+  .janus-nav-item {
+    width: auto;
+    min-width: 48px;
+    min-height: 44px;
+    flex: 0 0 auto;
+  }
+
+  .janus-nav-item svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .janus-main {
+    order: 3;
+    min-height: 0;
+  }
+
+  .janus-scribe-page {
+    height: auto;
+    min-height: calc(100dvh - 113px);
+  }
+
+  .janus-page-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+    padding: 18px 16px 14px;
+  }
+
+  .janus-page-header > div:last-child,
+  .janus-action-cluster,
+  .janus-editor-actions {
+    flex-wrap: wrap;
+  }
+
+  .janus-page-header h1 {
+    font-size: 22px;
+  }
+
+  .janus-stats-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 12px 16px;
+    gap: 10px;
+  }
+
+  .janus-stat-card {
+    padding: 12px;
+  }
+
+  .janus-stat-value {
+    font-size: 24px;
+  }
+
+  .janus-workspace {
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  .janus-list-pane {
+    max-height: 58dvh;
+    border-right: none;
+    border-bottom: 1px solid var(--janus-border);
+  }
+
+  .janus-detail-pane {
+    overflow: visible;
+  }
+
+  .janus-detail-header,
+  .janus-detail-body,
+  .janus-approval-bar {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .janus-detail-title-row,
+  .janus-approval-bar,
+  .janus-audio-strip {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .janus-detail-body {
+    overflow: visible;
+    padding-bottom: 32px;
+  }
+
+  .janus-notes-drawer {
+    width: min(100vw, 420px);
+  }
+}
+
+@media (max-width: 520px) {
+  .janus-module-sep,
+  .janus-brand-name {
+    display: none;
+  }
+
+  .janus-stats-strip {
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .janus-stats-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .janus-stat-card {
+    min-width: 150px;
+  }
+
+  .janus-filter-bar,
+  .janus-list-meta,
+  .janus-session-row {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .janus-detail-meta-row,
+  .janus-section-head {
+    gap: 8px;
+  }
+
+  .janus-section-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    padding: 12px;
+  }
+
+  .janus-btn {
+    justify-content: center;
+    min-height: 40px;
+  }
+
+  .janus-approval-bar .janus-btn,
+  .janus-action-cluster .janus-btn,
+  .janus-page-header .janus-btn {
+    flex: 1 1 100%;
+  }
+
+  .janus-pipeline-track {
+    overflow-x: auto;
+  }
+
+  .janus-pipeline-steps {
+    min-width: 420px;
+  }
+
+  .janus-labs-table,
+  .janus-labs-editor-table,
+  .janus-team-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .janus-notes-drawer {
+    inset: 0;
+    width: 100vw;
+    max-width: none;
+  }
+
+  .janus-modal {
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+}
