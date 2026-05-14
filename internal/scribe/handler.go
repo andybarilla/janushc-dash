@@ -253,7 +253,7 @@ func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 		EncounterID:  session.EncounterID,
 		DepartmentID: session.DepartmentID,
 		Status:       session.Status,
-		CreatedAt:    session.CreatedAt.Time.Format("2006-01-02T15:04:05Z"),
+		CreatedAt:    session.CreatedAt.Time.UTC().Format("2006-01-02T15:04:05Z"),
 	})
 }
 
@@ -473,10 +473,10 @@ func buildDetailSections(
 		s := sectionState{State: core.state, Content: content}
 		if core.approvedAt.Valid {
 			s.ApprovedByName = core.approvedByName
-			s.ApprovedAt = core.approvedAt.Time.Format("2006-01-02T15:04:05Z")
+			s.ApprovedAt = core.approvedAt.Time.UTC().Format("2006-01-02T15:04:05Z")
 		}
 		if core.editedAt.Valid {
-			s.EditedAt = core.editedAt.Time.Format("2006-01-02T15:04:05Z")
+			s.EditedAt = core.editedAt.Time.UTC().Format("2006-01-02T15:04:05Z")
 		}
 		out[k] = s
 	}
@@ -1064,7 +1064,7 @@ func (h *Handler) HandleCreateFeedback(w http.ResponseWriter, r *http.Request) {
 		Body:           row.Body,
 		Author:         user.Name,
 		AuthorInitials: deriveInitials(user.Name),
-		At:             row.At.Time.Format("2006-01-02T15:04:05Z"),
+		At:             row.At.Time.UTC().Format("2006-01-02T15:04:05Z"),
 	})
 }
 
@@ -1109,7 +1109,7 @@ func (h *Handler) HandleListFeedback(w http.ResponseWriter, r *http.Request) {
 			Body:           row.Body,
 			Author:         row.AuthorName,
 			AuthorInitials: deriveInitials(row.AuthorName),
-			At:             row.At.Time.Format("2006-01-02T15:04:05Z"),
+			At:             row.At.Time.UTC().Format("2006-01-02T15:04:05Z"),
 		})
 	}
 
@@ -1124,19 +1124,19 @@ func toSessionResponse(s database.ScribeSession) sessionResponse {
 		EncounterID:  s.EncounterID,
 		DepartmentID: s.DepartmentID,
 		Status:       s.Status,
-		CreatedAt:    s.CreatedAt.Time.Format("2006-01-02T15:04:05Z"),
+		CreatedAt:    s.CreatedAt.Time.UTC().Format("2006-01-02T15:04:05Z"),
 	}
 	if s.ErrorMessage.Valid {
 		resp.ErrorMessage = s.ErrorMessage.String
 	}
 	if s.CompletedAt.Valid {
-		resp.CompletedAt = s.CompletedAt.Time.Format("2006-01-02T15:04:05Z")
+		resp.CompletedAt = s.CompletedAt.Time.UTC().Format("2006-01-02T15:04:05Z")
 	}
 	if s.SentToEhrAt.Valid {
-		resp.SentToEhrAt = s.SentToEhrAt.Time.Format("2006-01-02T15:04:05Z")
+		resp.SentToEhrAt = s.SentToEhrAt.Time.UTC().Format("2006-01-02T15:04:05Z")
 	}
 	if s.RejectedAt.Valid {
-		resp.RejectedAt = s.RejectedAt.Time.Format("2006-01-02T15:04:05Z")
+		resp.RejectedAt = s.RejectedAt.Time.UTC().Format("2006-01-02T15:04:05Z")
 	}
 	return resp
 }
@@ -1148,20 +1148,20 @@ func toListSessionResponse(s database.ListScribeSessionsRow) sessionResponse {
 		EncounterID:   s.EncounterID,
 		DepartmentID:  s.DepartmentID,
 		Status:        s.Status,
-		CreatedAt:     s.CreatedAt.Time.Format("2006-01-02T15:04:05Z"),
+		CreatedAt:     s.CreatedAt.Time.UTC().Format("2006-01-02T15:04:05Z"),
 		ApprovedCount: int(s.ApprovedCount),
 	}
 	if s.ErrorMessage.Valid {
 		resp.ErrorMessage = s.ErrorMessage.String
 	}
 	if s.CompletedAt.Valid {
-		resp.CompletedAt = s.CompletedAt.Time.Format("2006-01-02T15:04:05Z")
+		resp.CompletedAt = s.CompletedAt.Time.UTC().Format("2006-01-02T15:04:05Z")
 	}
 	if s.SentToEhrAt.Valid {
-		resp.SentToEhrAt = s.SentToEhrAt.Time.Format("2006-01-02T15:04:05Z")
+		resp.SentToEhrAt = s.SentToEhrAt.Time.UTC().Format("2006-01-02T15:04:05Z")
 	}
 	if s.RejectedAt.Valid {
-		resp.RejectedAt = s.RejectedAt.Time.Format("2006-01-02T15:04:05Z")
+		resp.RejectedAt = s.RejectedAt.Time.UTC().Format("2006-01-02T15:04:05Z")
 	}
 	return resp
 }
