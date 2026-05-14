@@ -29,8 +29,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+export interface AppShellUser {
+  name: string;
+  email: string;
+  role: string;
+}
+
 interface AppShellProps {
-  user: { name: string; email: string; role: string };
+  user: AppShellUser;
 }
 
 interface NavEntry {
@@ -50,6 +56,7 @@ const SECTION_LABELS: Record<NavEntry["section"], string> = {
 
 const MODULE_LABEL_BY_PATH: Record<string, string> = {
   "/scribe": "Scribe",
+  "/team": "Team",
 };
 
 function getInitials(name: string): string {
@@ -72,6 +79,11 @@ export function AppShell({ user }: AppShellProps) {
       location.pathname.startsWith(path),
     )?.[1] ?? "Dashboard";
 
+  const teamItems: NavEntry[] =
+    user.role === "admin"
+      ? [{ id: "team", label: "Team", icon: UsersRound, section: "admin", path: "/team" }]
+      : [];
+
   const items: NavEntry[] = [
     { id: "scribe", label: "Scribe", icon: Mic, section: "workspace", path: "/scribe" },
     { id: "approvals", label: "Approvals", icon: CheckCircle, section: "workspace" },
@@ -80,7 +92,7 @@ export function AppShell({ user }: AppShellProps) {
     { id: "records", label: "Records", icon: FileText, section: "workspace" },
     { id: "labs", label: "Labs", icon: Microscope, section: "clinical" },
     { id: "meds", label: "Medications", icon: Pill, section: "clinical" },
-    { id: "team", label: "Team", icon: UsersRound, section: "admin" },
+    ...teamItems,
     { id: "reports", label: "Reports", icon: ChartLine, section: "admin" },
   ];
 
@@ -195,7 +207,7 @@ export function AppShell({ user }: AppShellProps) {
         </aside>
 
         <main className="janus-main">
-          <Outlet />
+          <Outlet context={{ user }} />
         </main>
       </div>
     </div>
