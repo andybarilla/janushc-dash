@@ -1,4 +1,12 @@
-import { useMemo, useState, type FormEvent, type ReactElement } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactElement,
+} from "react";
 import { AlertCircle, Plus, UsersRound, X } from "lucide-react";
 import {
   useCreateUser,
@@ -65,13 +73,21 @@ function userErrorMessage(error: ApiError): string {
 }
 
 export default function TeamPage(): ReactElement {
-  const { data: users = [], isLoading, error } = useManagedUsers();
+  const { data: users = [], isLoading, isFetching, error, refetch } = useManagedUsers();
   const createUser = useCreateUser();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<UserRole>("staff");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const modalRef = useRef<HTMLFormElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect((): void => {
+    if (isModalOpen) {
+      nameInputRef.current?.focus();
+    }
+  }, [isModalOpen]);
 
   const stats: TeamStat[] = useMemo((): TeamStat[] => {
     const physicianCount = users.filter((user: ManagedUser): boolean => user.role === "physician").length;
@@ -89,6 +105,7 @@ export default function TeamPage(): ReactElement {
   const selectedRoleHelper = ROLE_OPTIONS.find(
     (option: RoleOption): boolean => option.value === role,
   )?.helper;
+  const loadErrorMessage = error?.message || "Please refresh the page and try again.";
   const isSubmitDisabled = createUser.isPending || !name.trim() || !email.trim() || !role;
 
   const resetForm = (): void => {
@@ -131,6 +148,37 @@ export default function TeamPage(): ReactElement {
     }
   };
 
+  const handleModalKeyDown = (event: KeyboardEvent<HTMLFormElement>): void => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeModal();
+      return;
+    }
+
+    if (event.key !== "Tab") return;
+
+    const focusableElements = Array.from(
+      modalRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter((element: HTMLElement): boolean => element.offsetParent !== null);
+
+    if (focusableElements.length === 0) return;
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+
+    if (!firstElement || !lastElement) return;
+
+    if (event.shiftKey && document.activeElement === firstElement) {
+      event.preventDefault();
+      lastElement.focus();
+    } else if (!event.shiftKey && document.activeElement === lastElement) {
+      event.preventDefault();
+      firstElement.focus();
+    }
+  };
+
   return (
     <div className="janus-scribe-page">
       <div className="janus-page-header">
@@ -166,8 +214,18 @@ export default function TeamPage(): ReactElement {
               <AlertCircle />
               <div>
                 <strong>Unable to load users.</strong>
-                <p>Please refresh the page and try again.</p>
+                <p>{loadErrorMessage}</p>
               </div>
+              <button
+                type="button"
+                className="janus-btn janus-btn-secondary janus-btn-sm"
+                onClick={(): void => {
+                  void refetch();
+                }}
+                disabled={isFetching}
+              >
+                {isFetching ? "Retrying…" : "Retry"}
+              </button>
             </div>
           ) : isLoading ? (
             <div className="janus-team-state">Loading team…</div>
@@ -218,11 +276,13 @@ export default function TeamPage(): ReactElement {
       {isModalOpen ? (
         <div className="janus-modal-backdrop" onClick={closeModal}>
           <form
+            ref={modalRef}
             className="janus-modal"
             role="dialog"
             aria-modal="true"
             aria-labelledby="team-add-user-title"
             onClick={(event): void => event.stopPropagation()}
+            onKeyDown={handleModalKeyDown}
             onSubmit={handleSubmit}
           >
             <div className="janus-modal-head">
@@ -233,6 +293,7 @@ export default function TeamPage(): ReactElement {
                 className="janus-icon-btn"
                 onClick={closeModal}
                 title="Close"
+                aria-label="Close dialog"
                 disabled={createUser.isPending}
               >
                 <X />
@@ -245,6 +306,7 @@ export default function TeamPage(): ReactElement {
                 </label>
                 <input
                   id="team-user-name"
+                  ref={nameInputRef}
                   className="janus-input"
                   value={name}
                   onChange={(event): void => {
