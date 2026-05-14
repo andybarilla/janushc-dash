@@ -82,6 +82,9 @@ func (s *Server) routes() {
 		r.Post("/api/scribe/sessions/{id}/process", s.scribeHandler.HandleProcess)
 		r.With(middleware.Timeout(5 * time.Minute)).Post("/api/scribe/sessions/{id}/upload", s.scribeHandler.HandleUpload)
 
+		r.Get("/api/scribe/sessions/{id}/feedback", s.scribeHandler.HandleListFeedback)
+		r.Post("/api/scribe/sessions/{id}/feedback", s.scribeHandler.HandleCreateFeedback)
+
 		r.With(auth.RequireRole("physician")).
 			Post("/api/scribe/sessions/{id}/sections/{section}/approve", s.scribeHandler.HandleApproveSection)
 		r.With(auth.RequireRole("physician")).
