@@ -1,6 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
-import type { DiagnosisLab, SectionContent, SectionKey } from "@/components/scribe/types";
+import type {
+  DiagnosisLab,
+  FeedbackNote,
+  NoteCategoryId,
+  NoteTarget,
+  SectionContent,
+  SectionKey,
+} from "@/components/scribe/types";
 
 export type SectionState = "pending" | "approved" | "stale";
 
@@ -155,6 +162,57 @@ export function useRevokeSection() {
     onSuccess: (_data, { sessionId }) => {
       queryClient.invalidateQueries({ queryKey: ["scribeSessions", sessionId] });
       queryClient.invalidateQueries({ queryKey: ["scribeSessions"] });
+    },
+  });
+}
+
+interface CreateFeedbackRequest {
+  sessionId: string;
+  section: NoteTarget;
+  category: NoteCategoryId;
+  body: string;
+}
+
+export function useSessionFeedback(sessionId: string) {
+  return useQuery({
+    queryKey: ["scribeSessions", sessionId, "feedback"],
+    queryFn: () =>
+      api.fetch<FeedbackNote[]>(`/api/scribe/sessions/${sessionId}/feedback`),
+    enabled: !!sessionId,
+  });
+}
+
+export function useAddFeedback() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sessionId, section, category, body }: CreateFeedbackRequest) =>
+      api.fetch<FeedbackNote>(`/api/scribe/sessions/${sessionId}/feedback`, {
+        method: "POST",
+        body: JSON.stringify({ section, category, body }),
+      }),
+    onMutate: async (vars) => {
+      const key = ["scribeSessions", vars.sessionId, "feedback"];
+      await queryClient.cancelQueries({ queryKey: key });
+      const prev = queryClient.getQueryData<FeedbackNote[]>(key) ?? [];
+      const optimistic: FeedbackNote = {
+        id: `tmp_${Date.now()}`,
+        author: "You",
+        authorInitials: "YO",
+        at: new Date().toISOString(),
+        section: vars.section,
+        category: vars.category,
+        body: vars.body,
+      };
+      queryClient.setQueryData<FeedbackNote[]>(key, [...prev, optimistic]);
+      return { prev, key };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx) queryClient.setQueryData(ctx.key, ctx.prev);
+    },
+    onSettled: (_data, _err, vars) => {
+      queryClient.invalidateQueries({
+        queryKey: ["scribeSessions", vars.sessionId, "feedback"],
+      });
     },
   });
 }
