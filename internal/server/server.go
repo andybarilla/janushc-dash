@@ -85,6 +85,7 @@ func (s *Server) routes() {
 		r.Post("/api/scribe/sessions", s.scribeHandler.HandleCreate)
 		r.Get("/api/scribe/sessions", s.scribeHandler.HandleList)
 		r.Get("/api/scribe/sessions/{id}", s.scribeHandler.HandleGet)
+		r.Get("/api/scribe/sessions/{id}/audio", s.scribeHandler.HandleAudio)
 		r.Post("/api/scribe/sessions/{id}/process", s.scribeHandler.HandleProcess)
 		r.With(middleware.Timeout(5*time.Minute)).Post("/api/scribe/sessions/{id}/upload", s.scribeHandler.HandleUpload)
 

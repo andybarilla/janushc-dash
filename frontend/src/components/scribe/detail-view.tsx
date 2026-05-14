@@ -159,7 +159,9 @@ export function DetailView({
           ) : null}
         </div>
 
-        {hasSections ? <AudioStrip /> : null}
+        {hasSections || session.audio_available ? (
+          <AudioStrip sessionId={session.id} available={session.audio_available} />
+        ) : null}
         {inPipeline ? <PipelineProgress status={status} /> : null}
       </div>
 

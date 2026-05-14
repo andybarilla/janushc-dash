@@ -2,14 +2,18 @@ package scribe
 
 import (
 	"bytes"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/andybarilla/janushc-dash/internal/config"
 	"github.com/andybarilla/janushc-dash/internal/database"
 )
 
@@ -246,6 +250,45 @@ func TestValidateUpload_ValidFile(t *testing.T) {
 	defer file.Close()
 	if ext != ".mp3" {
 		t.Errorf("expected .mp3, got %s", ext)
+	}
+}
+
+func TestSaveSessionAudio_PersistsAndRewinds(t *testing.T) {
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, _ := writer.CreateFormFile("audio", "recording.mp3")
+	part.Write([]byte("fake mp3 data"))
+	writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/scribe/sessions/fake-id/upload", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	file, ext, err := parseAudioUpload(req, 100<<20)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	defer file.Close()
+
+	h := NewHandler(nil, nil, &config.Config{ScribeAudioDir: t.TempDir()}, nil)
+	if err := h.saveSessionAudio(file, "tenant-1", "session-1", ext); err != nil {
+		t.Fatalf("saveSessionAudio: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(h.audioBaseDir(), "tenant-1", "session-1.mp3"))
+	if err != nil {
+		t.Fatalf("read saved audio: %v", err)
+	}
+	if string(got) != "fake mp3 data" {
+		t.Fatalf("saved audio mismatch: %q", string(got))
+	}
+	rewound, err := io.ReadAll(file)
+	if err != nil {
+		t.Fatalf("read rewound upload: %v", err)
+	}
+	if string(rewound) != "fake mp3 data" {
+		t.Fatalf("upload was not rewound: %q", string(rewound))
+	}
+	if !h.sessionAudioAvailable("tenant-1", "session-1") {
+		t.Fatal("expected saved audio to be available")
 	}
 }
 

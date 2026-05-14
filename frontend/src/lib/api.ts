@@ -84,6 +84,31 @@ class ApiClient {
 
     return res.json();
   }
+
+  async fetchBlob(path: string): Promise<Blob> {
+    const headers: Record<string, string> = {};
+
+    const token = this.getToken();
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${API_BASE}${path}`, { headers });
+
+    if (res.status === 401) {
+      this.setToken(null);
+      window.location.href = "/login";
+      throw new Error("Unauthorized");
+    }
+
+    if (!res.ok) {
+      const text = await res.text();
+      const err: ApiError = { status: res.status, message: text };
+      throw err;
+    }
+
+    return res.blob();
+  }
 }
 
 export const api = new ApiClient();

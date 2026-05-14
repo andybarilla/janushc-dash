@@ -3,9 +3,12 @@ package scribe
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"mime"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -112,9 +115,10 @@ type sectionStateCore struct {
 
 type sessionDetailResponse struct {
 	sessionResponse
-	Transcript string                  `json:"transcript,omitempty"`
-	AIOutput   *ScribeOutput           `json:"ai_output,omitempty"`
-	Sections   map[string]sectionState `json:"sections"`
+	Transcript     string                  `json:"transcript,omitempty"`
+	AIOutput       *ScribeOutput           `json:"ai_output,omitempty"`
+	Sections       map[string]sectionState `json:"sections"`
+	AudioAvailable bool                    `json:"audio_available"`
 }
 
 var sectionKeys = []string{"hpi", "plan", "exam", "labs"}
@@ -126,6 +130,72 @@ func isValidSection(s string) bool {
 		}
 	}
 	return false
+}
+
+func (h *Handler) audioBaseDir() string {
+	if h.cfg != nil && h.cfg.ScribeAudioDir != "" {
+		return h.cfg.ScribeAudioDir
+	}
+	return "tmp/scribe-audio"
+}
+
+func (h *Handler) sessionAudioPath(tenantID, sessionID, ext string) string {
+	return filepath.Join(h.audioBaseDir(), tenantID, sessionID+ext)
+}
+
+func (h *Handler) removeExistingSessionAudio(tenantID, sessionID string) error {
+	matches, err := filepath.Glob(filepath.Join(h.audioBaseDir(), tenantID, sessionID+".*"))
+	if err != nil {
+		return err
+	}
+	for _, match := range matches {
+		if err := os.Remove(match); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func (h *Handler) saveSessionAudio(file multipart.File, tenantID, sessionID, ext string) error {
+	if err := os.MkdirAll(filepath.Join(h.audioBaseDir(), tenantID), 0o750); err != nil {
+		return err
+	}
+	if err := h.removeExistingSessionAudio(tenantID, sessionID); err != nil {
+		return err
+	}
+
+	out, err := os.OpenFile(h.sessionAudioPath(tenantID, sessionID, ext), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(out, file)
+	closeErr := out.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	_, err = file.Seek(0, io.SeekStart)
+	return err
+}
+
+func (h *Handler) findSessionAudioPath(tenantID, sessionID string) (string, error) {
+	matches, err := filepath.Glob(filepath.Join(h.audioBaseDir(), tenantID, sessionID+".*"))
+	if err != nil {
+		return "", err
+	}
+	for _, match := range matches {
+		if info, err := os.Stat(match); err == nil && !info.IsDir() {
+			return match, nil
+		}
+	}
+	return "", os.ErrNotExist
+}
+
+func (h *Handler) sessionAudioAvailable(tenantID, sessionID string) bool {
+	_, err := h.findSessionAudioPath(tenantID, sessionID)
+	return err == nil
 }
 
 var feedbackSections = []string{"overall", "hpi", "plan", "exam", "labs"}
@@ -315,6 +385,7 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 
 	resp := sessionDetailResponse{
 		sessionResponse: toSessionResponse(session),
+		AudioAvailable:  h.sessionAudioAvailable(claims.TenantID, sessionID),
 	}
 	if session.Transcript.Valid {
 		resp.Transcript = session.Transcript.String
@@ -352,6 +423,59 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+func (h *Handler) HandleAudio(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	sessionID := chi.URLParam(r, "id")
+	sessionUUID := pgtype.UUID{}
+	if err := sessionUUID.Scan(sessionID); err != nil {
+		http.Error(w, "invalid session ID", http.StatusBadRequest)
+		return
+	}
+	tenantUUID := pgtype.UUID{}
+	if err := tenantUUID.Scan(claims.TenantID); err != nil {
+		http.Error(w, "invalid tenant context", http.StatusBadRequest)
+		return
+	}
+
+	if _, err := h.queries.GetScribeSession(r.Context(), database.GetScribeSessionParams{
+		ID:       sessionUUID,
+		TenantID: tenantUUID,
+	}); err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	path, err := h.findSessionAudioPath(claims.TenantID, sessionID)
+	if err != nil {
+		http.Error(w, "audio not found", http.StatusNotFound)
+		return
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		http.Error(w, "audio not found", http.StatusNotFound)
+		return
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		http.Error(w, "audio not found", http.StatusNotFound)
+		return
+	}
+
+	contentType := mime.TypeByExtension(filepath.Ext(path))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", filepath.Base(path)))
+	http.ServeContent(w, r, filepath.Base(path), info.ModTime(), file)
 }
 
 // buildSectionStates derives the approval + stale state for each section
@@ -605,13 +729,18 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse and validate the uploaded audio file
-	file, _, err := parseAudioUpload(r, maxUploadSize)
+	// Parse, validate, and persist the uploaded audio file for later playback.
+	file, ext, err := parseAudioUpload(r, maxUploadSize)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
+	if err := h.saveSessionAudio(file, claims.TenantID, sessionID, ext); err != nil {
+		log.Printf("scribe audio save error for session %s: %v", sessionID, err)
+		http.Error(w, "failed to save audio", http.StatusInternalServerError)
+		return
+	}
 
 	// Convert to FLAC via ffmpeg
 	flacReader, cleanup, err := transcribe.ConvertToFLAC(r.Context(), file)

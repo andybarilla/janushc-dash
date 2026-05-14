@@ -624,7 +624,8 @@
   display: grid; place-items: center;
   transition: background var(--janus-motion-fast), transform var(--janus-motion-fast);
 }
-.janus-audio-play:hover { background: var(--janus-secondary); transform: scale(1.05); }
+.janus-audio-play:hover:not(:disabled) { background: var(--janus-secondary); transform: scale(1.05); }
+.janus-audio-play:disabled { opacity: 0.45; cursor: not-allowed; }
 .janus-audio-play svg { width: 16px; height: 16px; }
 .janus-audio-waveform { flex: 1; height: 28px; min-width: 0; }
 .janus-audio-time {

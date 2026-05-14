@@ -42,6 +42,7 @@ export interface ScribeSessionDetail extends ScribeSession {
     diagnoses_labs: DiagnosisLab[];
   };
   sections: Record<SectionKey, SectionStateData>;
+  audio_available: boolean;
   sent_to_ehr_at?: string;
   rejected_at?: string;
 }

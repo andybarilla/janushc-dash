@@ -9,6 +9,9 @@ services:
     env_file: .env
     environment:
       PORT: "8080"
+      SCRIBE_AUDIO_DIR: "/app/tmp/scribe-audio"
+    volumes:
+      - scribe_audio:/app/tmp/scribe-audio
     depends_on:
       postgres:
         condition: service_healthy
@@ -31,3 +34,4 @@ services:
 
 volumes:
   postgres_data:
+  scribe_audio:
