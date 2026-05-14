@@ -198,6 +198,28 @@ func (h *Handler) sessionAudioAvailable(tenantID, sessionID string) bool {
 	return err == nil
 }
 
+func audioContentType(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".m4a":
+		return "audio/mp4"
+	case ".mp3":
+		return "audio/mpeg"
+	case ".wav":
+		return "audio/wav"
+	case ".webm":
+		return "audio/webm"
+	case ".ogg":
+		return "audio/ogg"
+	case ".flac":
+		return "audio/flac"
+	}
+	contentType := mime.TypeByExtension(filepath.Ext(path))
+	if contentType == "" {
+		return "application/octet-stream"
+	}
+	return contentType
+}
+
 var feedbackSections = []string{"overall", "hpi", "plan", "exam", "labs"}
 var feedbackCategories = []string{
 	"missed_info", "incorrect", "hallucination", "formatting", "good", "comment",
@@ -469,11 +491,7 @@ func (h *Handler) HandleAudio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	contentType := mime.TypeByExtension(filepath.Ext(path))
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
-	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Type", audioContentType(path))
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", filepath.Base(path)))
 	http.ServeContent(w, r, filepath.Base(path), info.ModTime(), file)
 }

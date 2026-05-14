@@ -253,6 +253,12 @@ func TestValidateUpload_ValidFile(t *testing.T) {
 	}
 }
 
+func TestAudioContentType_M4A(t *testing.T) {
+	if got := audioContentType("session.m4a"); got != "audio/mp4" {
+		t.Fatalf("audioContentType(.m4a) = %q, want audio/mp4", got)
+	}
+}
+
 func TestSaveSessionAudio_PersistsAndRewinds(t *testing.T) {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
