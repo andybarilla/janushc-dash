@@ -1,4 +1,4 @@
-import { useEffect, type ReactElement } from "react";
+import { useEffect, type ReactElement, type ReactNode } from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -13,14 +13,18 @@ import LoginPage from "@/pages/login";
 import ScribePage from "@/pages/scribe";
 import TeamPage from "@/pages/team";
 
-function AdminRoute(): ReactElement {
+interface AdminRouteProps {
+  children: ReactNode;
+}
+
+export function AdminRoute({ children }: AdminRouteProps): ReactElement {
   const { user } = useOutletContext<{ user: AppShellUser }>();
 
   if (user.role !== "admin") {
     return <Navigate to="/scribe" replace />;
   }
 
-  return <TeamPage />;
+  return <>{children}</>;
 }
 
 function AuthenticatedLayout(): ReactElement {
@@ -51,7 +55,14 @@ export default function App(): ReactElement {
         <Route path="/login" element={<LoginPage />} />
         <Route element={<AuthenticatedLayout />}>
           <Route path="/scribe" element={<ScribePage />} />
-          <Route path="/team" element={<AdminRoute />} />
+          <Route
+            path="/team"
+            element={
+              <AdminRoute>
+                <TeamPage />
+              </AdminRoute>
+            }
+          />
           <Route path="*" element={<Navigate to="/scribe" replace />} />
         </Route>
       </Routes>

@@ -19,6 +19,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import type { UserRole } from "@/lib/queries";
 import { useTheme } from "@/lib/theme";
 import {
   DropdownMenu,
@@ -32,7 +33,7 @@ import {
 export interface AppShellUser {
   name: string;
   email: string;
-  role: string;
+  role: UserRole;
 }
 
 interface AppShellProps {
