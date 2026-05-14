@@ -627,7 +627,17 @@
 .janus-audio-play:hover:not(:disabled) { background: var(--janus-secondary); transform: scale(1.05); }
 .janus-audio-play:disabled { opacity: 0.45; cursor: not-allowed; }
 .janus-audio-play svg { width: 16px; height: 16px; }
-.janus-audio-waveform { flex: 1; height: 28px; min-width: 0; }
+.janus-audio-waveform {
+  flex: 1;
+  height: 28px;
+  min-width: 0;
+  border-radius: 4px;
+}
+.janus-audio-waveform.is-seekable { cursor: pointer; }
+.janus-audio-waveform.is-seekable:focus-visible {
+  outline: 2px solid var(--janus-primary);
+  outline-offset: 4px;
+}
 .janus-audio-time {
   font-size: 12px;
   color: var(--janus-text-light);

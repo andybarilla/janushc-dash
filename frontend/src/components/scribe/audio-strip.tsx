@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -17,6 +17,35 @@ function fmtAudioTime(seconds: number) {
     return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   }
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function waitForMetadata(audio: HTMLAudioElement) {
+  if (Number.isFinite(audio.duration) && audio.duration > 0) {
+    return Promise.resolve(audio.duration);
+  }
+
+  return new Promise<number>((resolve, reject) => {
+    const cleanup = () => {
+      audio.removeEventListener("loadedmetadata", onLoadedMetadata);
+      audio.removeEventListener("error", onError);
+    };
+    const onLoadedMetadata = () => {
+      cleanup();
+      resolve(audio.duration);
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error("Unable to load audio metadata"));
+    };
+
+    audio.addEventListener("loadedmetadata", onLoadedMetadata, { once: true });
+    audio.addEventListener("error", onError, { once: true });
+    audio.load();
+  });
 }
 
 export function AudioStrip({ sessionId, available }: Props) {
@@ -77,7 +106,10 @@ export function AudioStrip({ sessionId, available }: Props) {
       const nextUrl = URL.createObjectURL(blob);
       objectUrlRef.current = nextUrl;
       setAudioUrl(nextUrl);
-      if (audioRef.current) audioRef.current.src = nextUrl;
+      if (audioRef.current) {
+        audioRef.current.src = nextUrl;
+        audioRef.current.load();
+      }
       return nextUrl;
     } catch {
       setError("Audio unavailable");
@@ -104,6 +136,48 @@ export function AudioStrip({ sessionId, available }: Props) {
     }
   };
 
+  const seekToRatio = async (ratio: number) => {
+    if (!available || loading) return;
+    const audio = audioRef.current;
+    if (!audio) return;
+    const url = await loadAudio();
+    if (!url) return;
+
+    try {
+      const metadataDuration = await waitForMetadata(audio);
+      if (!Number.isFinite(metadataDuration) || metadataDuration <= 0) return;
+      const nextTime = clamp(ratio, 0, 1) * metadataDuration;
+      audio.currentTime = nextTime;
+      setCurrentTime(nextTime);
+      setDuration(metadataDuration);
+    } catch {
+      setError("Audio unavailable");
+    }
+  };
+
+  const handleWaveformClick = (event: MouseEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    void seekToRatio((event.clientX - rect.left) / rect.width);
+  };
+
+  const handleWaveformKeyDown = (event: KeyboardEvent<SVGSVGElement>) => {
+    if (!available || loading) return;
+    const step = event.shiftKey ? 30 : 5;
+    const knownDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
+    let nextTime: number | null = null;
+
+    if (event.key === "ArrowLeft") nextTime = Math.max(0, currentTime - step);
+    if (event.key === "ArrowRight") nextTime = knownDuration > 0 ? Math.min(knownDuration, currentTime + step) : currentTime + step;
+    if (event.key === "Home") nextTime = 0;
+    if (event.key === "End" && knownDuration > 0) nextTime = knownDuration;
+
+    if (nextTime === null) return;
+    event.preventDefault();
+    const ratio = knownDuration > 0 ? nextTime / knownDuration : 0;
+    void seekToRatio(ratio);
+  };
+
   const progress = Number.isFinite(duration) && duration > 0 ? currentTime / duration : 0;
   const disabled = !available || loading;
   const label = !available
@@ -122,10 +196,19 @@ export function AudioStrip({ sessionId, available }: Props) {
         {playing ? <Pause /> : <Play />}
       </button>
       <svg
-        className="janus-audio-waveform"
+        className={`janus-audio-waveform${available ? " is-seekable" : ""}`}
         viewBox="0 0 400 28"
         preserveAspectRatio="none"
-        aria-hidden="true"
+        role="slider"
+        tabIndex={available ? 0 : -1}
+        aria-label="Audio playback position"
+        aria-disabled={!available || loading}
+        aria-valuemin={0}
+        aria-valuemax={Number.isFinite(duration) && duration > 0 ? Math.round(duration) : 0}
+        aria-valuenow={Math.round(currentTime)}
+        aria-valuetext={`${fmtAudioTime(currentTime)} of ${fmtAudioTime(duration)}`}
+        onClick={handleWaveformClick}
+        onKeyDown={handleWaveformKeyDown}
       >
         {bars.map((h, i) => {
           const y = 14 - h * 12;
