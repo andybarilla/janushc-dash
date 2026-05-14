@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Download, Upload } from "lucide-react";
 import {
+  useAddFeedback,
   useApproveSection,
   useEditSection,
   useRejectSession,
@@ -8,6 +9,7 @@ import {
   useSendToEHR,
   useScribeSession,
   useScribeSessions,
+  useSessionFeedback,
 } from "@/lib/scribe-queries";
 import { useAuth } from "@/lib/auth";
 import {
@@ -46,6 +48,7 @@ export default function ScribePage() {
   const sendMut = useSendToEHR();
   const rejectMut = useRejectSession();
   const editMut = useEditSection();
+  const addFeedbackMut = useAddFeedback();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -54,7 +57,6 @@ export default function ScribePage() {
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesDefaultSection, setNotesDefaultSection] = useState<SectionKey | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [notesBySession, setNotesBySession] = useState<Record<string, FeedbackNote[]>>({});
 
   // Auto-select the first session when the list loads.
   useEffect(() => {
@@ -103,7 +105,7 @@ export default function ScribePage() {
       labs: sections.labs?.state === "approved",
     };
   }, [selectedDetail]);
-  const notes = (selectedId && notesBySession[selectedId]) || [];
+  const { data: notes = [] } = useSessionFeedback(selectedId ?? "");
 
   const handleSelect = (id: string) => {
     setSelectedId(id);
@@ -144,17 +146,12 @@ export default function ScribePage() {
     note: Omit<FeedbackNote, "id" | "at" | "author" | "authorInitials">,
   ) => {
     if (!selectedId) return;
-    const full: FeedbackNote = {
-      id: `n_${Date.now()}`,
-      author: "You",
-      authorInitials: "YO",
-      at: new Date().toISOString(),
-      ...note,
-    };
-    setNotesBySession((prev) => ({
-      ...prev,
-      [selectedId]: [...(prev[selectedId] ?? []), full],
-    }));
+    addFeedbackMut.mutate({
+      sessionId: selectedId,
+      section: note.section,
+      category: note.category,
+      body: note.body,
+    });
   };
 
   const handleAddNoteForSection = (section: SectionKey) => {
