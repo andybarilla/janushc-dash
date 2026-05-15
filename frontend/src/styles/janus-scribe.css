@@ -1918,7 +1918,8 @@
   }
 
   .janus-detail-pane {
-    overflow: visible;
+    overflow-y: visible;
+    overflow-x: clip;
   }
 
   .janus-detail-header,
@@ -1941,7 +1942,12 @@
   }
 
   .janus-notes-drawer {
+    display: none;
     width: min(100vw, 420px);
+  }
+
+  .janus-notes-drawer.open {
+    display: flex;
   }
 }
 
