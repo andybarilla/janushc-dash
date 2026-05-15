@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Bell,
@@ -7,6 +8,7 @@ import {
   CircleHelp,
   FileText,
   LogOut,
+  Menu,
   Mic,
   Microscope,
   Moon,
@@ -16,6 +18,7 @@ import {
   Sun,
   UserRound,
   UsersRound,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -74,6 +77,7 @@ export function AppShell({ user }: AppShellProps) {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const { theme, toggle: toggleTheme } = useTheme();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const moduleLabel =
     Object.entries(MODULE_LABEL_BY_PATH).find(([path]) =>
@@ -119,6 +123,16 @@ export function AppShell({ user }: AppShellProps) {
             />
           </div>
           <div className="janus-topbar-actions">
+            <button
+              className="janus-icon-btn janus-mobile-menu-trigger"
+              title={mobileMenuOpen ? "Close menu" : "Open menu"}
+              type="button"
+              aria-controls="janus-mobile-menu"
+              aria-expanded={mobileMenuOpen}
+              onClick={() => setMobileMenuOpen((open) => !open)}
+            >
+              {mobileMenuOpen ? <X /> : <Menu />}
+            </button>
             <button className="janus-icon-btn" title="Notifications" type="button">
               <Bell />
               <span className="janus-badge-dot" />
@@ -164,7 +178,10 @@ export function AppShell({ user }: AppShellProps) {
           </div>
         </header>
 
-        <aside className="janus-sidebar">
+        <aside
+          id="janus-mobile-menu"
+          className={`janus-sidebar ${mobileMenuOpen ? "is-open" : ""}`}
+        >
           {sections.map((sec) => (
             <div key={sec}>
               <div className="janus-nav-section-label">{SECTION_LABELS[sec]}</div>
@@ -183,7 +200,11 @@ export function AppShell({ user }: AppShellProps) {
                       className={`janus-nav-item ${active ? "active" : ""} ${
                         !navigable ? "disabled" : ""
                       }`}
-                      onClick={() => navigable && navigate(it.path!)}
+                      onClick={() => {
+                        if (!navigable) return;
+                        navigate(it.path!);
+                        setMobileMenuOpen(false);
+                      }}
                       disabled={!navigable}
                     >
                       <Icon />

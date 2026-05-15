@@ -172,6 +172,9 @@
   border: none;
   cursor: pointer;
 }
+.janus-mobile-menu-trigger {
+  display: none;
+}
 
 /* Sidebar */
 .janus-sidebar {
@@ -1824,34 +1827,46 @@
     margin-left: 2px;
   }
 
+  .janus-mobile-menu-trigger {
+    display: grid;
+  }
+
   .janus-sidebar {
     position: sticky;
     top: 56px;
     z-index: 40;
     order: 2;
-    display: flex;
-    flex-direction: row;
-    gap: 6px;
-    overflow-x: auto;
-    padding: 8px 12px;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
     border-right: none;
     border-bottom: 1px solid var(--janus-border);
-    scrollbar-width: none;
+    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.08);
   }
 
-  .janus-sidebar::-webkit-scrollbar {
-    display: none;
+  .janus-sidebar.is-open {
+    display: flex;
   }
 
   .janus-sidebar > div {
-    display: contents;
+    display: block;
+  }
+
+  .janus-nav-section-label {
+    display: block;
+    padding: 8px 12px 4px;
   }
 
   .janus-nav-item {
-    width: auto;
-    min-width: 48px;
+    justify-content: flex-start;
+    width: 100%;
     min-height: 44px;
     flex: 0 0 auto;
+  }
+
+  .janus-nav-item span:not(.janus-nav-counter) {
+    display: inline;
   }
 
   .janus-nav-item svg {
@@ -1887,17 +1902,7 @@
   }
 
   .janus-stats-strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    padding: 12px 16px;
-    gap: 10px;
-  }
-
-  .janus-stat-card {
-    padding: 12px;
-  }
-
-  .janus-stat-value {
-    font-size: 24px;
+    display: none;
   }
 
   .janus-workspace {
@@ -1944,20 +1949,6 @@
   .janus-module-sep,
   .janus-brand-name {
     display: none;
-  }
-
-  .janus-stats-strip {
-    display: flex;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .janus-stats-strip::-webkit-scrollbar {
-    display: none;
-  }
-
-  .janus-stat-card {
-    min-width: 150px;
   }
 
   .janus-filter-bar,
