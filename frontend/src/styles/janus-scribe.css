@@ -1942,12 +1942,19 @@
   }
 
   .janus-notes-drawer {
+    bottom: auto;
     display: none;
     width: min(100vw, 420px);
+    max-height: calc(100dvh - 56px);
   }
 
   .janus-notes-drawer.open {
     display: flex;
+  }
+
+  .janus-notes-list {
+    flex: 0 1 auto;
+    max-height: min(42dvh, 360px);
   }
 }
 
@@ -2003,9 +2010,10 @@
   }
 
   .janus-notes-drawer {
-    inset: 0;
+    inset: 0 0 auto 0;
     width: 100vw;
     max-width: none;
+    max-height: 100dvh;
   }
 
   .janus-modal {
