@@ -54,6 +54,7 @@ func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.RequestID)
 	s.router.Use(middleware.Logger)
 	s.router.Use(middleware.Recoverer)
+	s.router.Use(redirectDashHTTPToHTTPS)
 	s.router.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{s.cfg.CORSOrigin},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -62,6 +63,18 @@ func (s *Server) setupMiddleware() {
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
+}
+
+func redirectDashHTTPToHTTPS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.EqualFold(r.Host, "dash.janushc.com") && strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "http") {
+			target := "https://dash.janushc.com" + r.URL.RequestURI()
+			http.Redirect(w, r, target, http.StatusMovedPermanently)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) routes() {
