@@ -6,8 +6,14 @@ const STORAGE_KEY = "janus.theme";
 
 function readInitial(): Theme {
   if (typeof window === "undefined") return "light";
-  const saved = window.localStorage.getItem(STORAGE_KEY);
-  if (saved === "light" || saved === "dark") return saved;
+
+  try {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (saved === "light" || saved === "dark") return saved;
+  } catch {
+    // Storage may be unavailable in iOS standalone/private contexts.
+  }
+
   return window.matchMedia("(prefers-color-scheme: dark)").matches
     ? "dark"
     : "light";
@@ -22,7 +28,11 @@ export function useTheme() {
     // shadcn/Radix components (portaled dropdowns, popovers) read a parallel
     // theme keyed off the `.dark` class — toggle both so floating UI matches.
     root.classList.toggle("dark", theme === "dark");
-    window.localStorage.setItem(STORAGE_KEY, theme);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, theme);
+    } catch {
+      // Non-persistent theme is better than crashing the app shell.
+    }
   }, [theme]);
 
   const toggle = useCallback(

@@ -1,5 +1,26 @@
 const API_BASE = ""; // Vite proxy handles /api routes
 
+function readStoredToken(): string | null {
+  try {
+    return window.localStorage.getItem("token");
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredToken(token: string | null): void {
+  try {
+    if (token) {
+      window.localStorage.setItem("token", token);
+    } else {
+      window.localStorage.removeItem("token");
+    }
+  } catch {
+    // iOS standalone/private browsing can make localStorage unavailable.
+    // Keep the in-memory token so the app still renders instead of blanking.
+  }
+}
+
 export interface ApiError {
   status: number;
   message: string;
@@ -10,16 +31,12 @@ class ApiClient {
 
   setToken(token: string | null) {
     this.token = token;
-    if (token) {
-      localStorage.setItem("token", token);
-    } else {
-      localStorage.removeItem("token");
-    }
+    writeStoredToken(token);
   }
 
   getToken(): string | null {
     if (!this.token) {
-      this.token = localStorage.getItem("token");
+      this.token = readStoredToken();
     }
     return this.token;
   }

@@ -1,7 +1,7 @@
 {
-  "name": "Janus HC",
-  "short_name": "Janus HC",
-  "description": "Janus HC physician workflow automation",
+  "name": "Janus Dash",
+  "short_name": "Janus Dash",
+  "description": "Janus Dash physician workflow automation",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
