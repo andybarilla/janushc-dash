@@ -3,6 +3,7 @@ package transcribe
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -48,9 +49,15 @@ func (c *Client) Transcribe(ctx context.Context, audio *AudioInput) (string, err
 
 	// Send audio chunks in a goroutine. The goroutine owns closing the stream
 	// to signal end-of-audio to the server.
-	sendErr := make(chan error, 1)
+	type sendStats struct {
+		bytes  int64
+		chunks int
+		err    error
+	}
+	sendDone := make(chan sendStats, 1)
 	go func() {
 		defer stream.Close()
+		var stats sendStats
 		buf := make([]byte, chunkSize)
 		for {
 			n, readErr := audio.Reader.Read(buf)
@@ -60,37 +67,51 @@ func (c *Client) Transcribe(ctx context.Context, audio *AudioInput) (string, err
 				if err := stream.Send(ctx, &types.AudioStreamMemberAudioEvent{
 					Value: types.AudioEvent{AudioChunk: chunk},
 				}); err != nil {
-					sendErr <- fmt.Errorf("send audio chunk: %w", err)
+					stats.err = fmt.Errorf("send audio chunk: %w", err)
+					sendDone <- stats
 					return
 				}
+				stats.bytes += int64(n)
+				stats.chunks++
 			}
 			if readErr != nil {
 				break
 			}
 		}
-		sendErr <- nil
+		sendDone <- stats
 	}()
 
 	// Collect transcript from final results. With speaker labeling enabled,
 	// alternatives include word-level speaker labels; preserve those as readable
 	// line breaks instead of returning one long paragraph.
 	var transcript strings.Builder
+	var partialCount, finalCount, unknownCount int
 	for event := range stream.Events() {
 		switch v := event.(type) {
 		case *types.MedicalTranscriptResultStreamMemberTranscriptEvent:
 			for _, result := range v.Value.Transcript.Results {
 				if result.IsPartial {
+					partialCount++
 					continue
 				}
+				finalCount++
 				for _, alt := range result.Alternatives {
 					appendMedicalAlternativeTranscript(&transcript, alt)
 				}
 			}
+		default:
+			unknownCount++
+			log.Printf("transcribe: unknown event type %T", v)
 		}
 	}
 
-	if err := <-sendErr; err != nil {
-		return "", err
+	stats := <-sendDone
+	log.Printf(
+		"transcribe medical stream: sent %d bytes (%d chunks), received %d partial / %d final results, %d unknown events",
+		stats.bytes, stats.chunks, partialCount, finalCount, unknownCount,
+	)
+	if stats.err != nil {
+		return "", stats.err
 	}
 	if err := stream.Err(); err != nil {
 		return "", fmt.Errorf("stream error: %w", err)
