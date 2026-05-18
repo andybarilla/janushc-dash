@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import {
+  useAddFeedback,
   useApproveSection,
   useRevokeSection,
   useScribeSession,
@@ -8,10 +9,15 @@ import {
   useSendToEHR,
   useSessionFeedback,
 } from "@/lib/scribe-queries";
-import type { Approvals, SectionKey } from "@/components/scribe/types";
+import type {
+  Approvals,
+  NoteTarget,
+  SectionKey,
+} from "@/components/scribe/types";
 import { deriveStatusId } from "@/components/scribe/status";
 import { MInboxView } from "./inbox-view";
 import { MDetailView } from "./detail-view";
+import { MFeedbackSheet } from "./feedback-sheet";
 import type { MobileFilter } from "./filter-row";
 
 type View = "inbox" | "detail";
@@ -33,6 +39,8 @@ export function MobileScribe() {
   const [view, setView] = useState<View>("inbox");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<MobileFilter>("all");
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetTarget, setSheetTarget] = useState<NoteTarget | null>(null);
 
   const { data: selectedDetail, isLoading: detailLoading } = useScribeSession(
     selectedId ?? "",
@@ -42,6 +50,7 @@ export function MobileScribe() {
   const approveMut = useApproveSection();
   const revokeMut = useRevokeSection();
   const sendMut = useSendToEHR();
+  const addFeedbackMut = useAddFeedback();
 
   const approvals: Approvals = useMemo(() => {
     const s = selectedDetail?.sections;
@@ -104,16 +113,33 @@ export function MobileScribe() {
           onApproveAll={handleApproveAll}
           onSend={handleSend}
           onOpenNotes={() => {
-            /* feedback sheet — phase 5 */
+            setSheetTarget(null);
+            setSheetOpen(true);
           }}
-          onAddNoteForSection={() => {
-            /* feedback sheet — phase 5 */
+          onAddNoteForSection={(section) => {
+            setSheetTarget(section);
+            setSheetOpen(true);
           }}
           onRetry={() => {
             window.alert("Retry is not yet implemented.");
           }}
         />
       )}
+      <MFeedbackSheet
+        open={sheetOpen}
+        notes={notes}
+        defaultSection={sheetTarget}
+        onClose={() => setSheetOpen(false)}
+        onSubmit={({ category, section, body }) => {
+          if (!selectedId) return;
+          addFeedbackMut.mutate({
+            sessionId: selectedId,
+            section,
+            category,
+            body,
+          });
+        }}
+      />
     </div>
   );
 }
