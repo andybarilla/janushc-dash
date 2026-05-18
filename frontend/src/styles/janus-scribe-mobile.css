@@ -17,6 +17,15 @@
 .m-app *, .m-app *::before, .m-app *::after { box-sizing: border-box; }
 .m-app [data-lucide] { width: 1em; height: 1em; flex-shrink: 0; }
 
+/* Full-bleed overlay over the desktop AppShell while on a mobile viewport. */
+.m-app.m-overlay {
+  position: fixed;
+  inset: 0;
+  height: 100dvh;
+  width: 100vw;
+  z-index: 100;
+}
+
 /* ============================================================
  * Top bar — iOS-style with brand mark
  * ============================================================ */

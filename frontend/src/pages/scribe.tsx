@@ -12,6 +12,8 @@ import {
   useSessionFeedback,
 } from "@/lib/scribe-queries";
 import { useAuth } from "@/lib/auth";
+import { useIsMobile } from "@/lib/use-is-mobile";
+import { MobileScribe } from "@/components/scribe-mobile/mobile-scribe";
 import {
   SessionList,
   buildEntries,
@@ -39,6 +41,12 @@ const EMPTY_APPROVALS: Approvals = {
 const SECTION_KEYS: SectionKey[] = ["hpi", "plan", "exam", "labs"];
 
 export default function ScribePage() {
+  const isMobile = useIsMobile();
+  if (isMobile) return <MobileScribe />;
+  return <DesktopScribe />;
+}
+
+function DesktopScribe() {
   const { data: sessions = [], isLoading: sessionsLoading } = useScribeSessions();
   const { user } = useAuth();
   const canApprove = user?.role === "physician";
