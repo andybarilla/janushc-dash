@@ -84,7 +84,31 @@
     function Page() {
       return (
         <DesignCanvas storageKey="janus-scribe-mobile" initialScale={0.7}>
-          <DCSection id="screens" title="Mobile Scribe" subtitle="Tap to navigate · each phone is independently interactive">
+          <DCSection id="home" title="Quickstart home" subtitle="The first screen on launch — record, approve, jump anywhere">
+            <DCArtboard id="home-default" label="Home" width={ART_W} height={ART_H} style={{ background: 'transparent', boxShadow: 'none' }}>
+              <Frame title="Home" subtitle="Greeting, primary record CTA, ready count, today's tiles, recent">
+                <MobileScribeApp initialView="home" />
+              </Frame>
+            </DCArtboard>
+
+            <DCArtboard id="home-clean" label="Caught up" width={ART_W} height={ART_H} style={{ background: 'transparent', boxShadow: 'none' }}>
+              <Frame title="All caught up" subtitle="No sessions awaiting review · empty state">
+                <MobileScribeApp
+                  initialView="home"
+                  encountersSeed={ENCOUNTERS
+                    .filter(e => !['ready','failed','ehr_failed'].includes(e.status.id))}
+                />
+              </Frame>
+            </DCArtboard>
+
+            <DCArtboard id="record-idle" label="Record · idle" width={ART_W} height={ART_H} style={{ background: 'transparent', boxShadow: 'none' }}>
+              <Frame title="Record · idle" subtitle="Patient + department, then tap the red mic">
+                <MobileScribeApp initialView="record" />
+              </Frame>
+            </DCArtboard>
+          </DCSection>
+
+          <DCSection id="screens" title="Inbox & review" subtitle="Tap to navigate · each phone is independently interactive">
             <DCArtboard id="list-default" label="Inbox" width={ART_W} height={ART_H} style={{ background: 'transparent', boxShadow: 'none' }}>
               <Frame title="Inbox" subtitle="Today's encounters with quick stats and status filter">
                 <MobileScribeApp initialView="list" initialStatusFilter="all" />

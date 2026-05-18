@@ -22,14 +22,24 @@ interface BaseProps {
   right?: ReactNode;
 }
 
-export function MInboxTopBar({ right, hasAlert }: BaseProps & { hasAlert?: boolean }) {
+export function MInboxTopBar({
+  right,
+  hasAlert,
+  onBack,
+}: BaseProps & { hasAlert?: boolean; onBack?: () => void }) {
   return (
-    <div className="m-topbar">
+    <div className={`m-topbar${onBack ? " with-back" : ""}`}>
+      {onBack ? (
+        <button type="button" className="m-back" onClick={onBack} aria-label="Home">
+          <ChevronLeft />
+          <span>Home</span>
+        </button>
+      ) : null}
       <div className="m-brand">
         <div className="m-brand-mark">J</div>
         <div className="m-brand-text">
           <span className="brand">Janus</span>
-          <span className="module">Scribe</span>
+          <span className="module">{onBack ? "Inbox" : "Scribe"}</span>
         </div>
       </div>
       <div className="m-topbar-actions">

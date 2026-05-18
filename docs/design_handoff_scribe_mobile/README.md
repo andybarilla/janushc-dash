@@ -2,9 +2,9 @@
 
 ## Overview
 
-A phone-sized companion to the existing **Scribe** desktop screen (already implemented). Lets clinicians review AI-extracted encounter notes on their phone — drill into a session, approve each section, post LLM-feedback notes for model improvement, and send the approved chart to the EHR.
+A phone-sized companion to the existing **Scribe** desktop screen (already implemented). Lets clinicians **record encounters on their phone**, review AI-extracted notes, approve each section, post LLM-feedback notes for model improvement, and send the approved chart to the EHR.
 
-Same data model, same pipeline states, same approval rules as desktop. Just laid out for a 375–430px viewport with touch-friendly hit targets and stack navigation instead of a two-pane layout.
+Same data model, same pipeline states, same approval rules as desktop. Just laid out for a 375–430px viewport with a Quickstart home screen, touch-friendly hit targets, and stack navigation instead of a two-pane layout.
 
 ## About the Design Files
 
@@ -26,17 +26,122 @@ Your task is to **recreate these designs in the existing Janus Dashboard codebas
 
 ## Screens / Views
 
-There are **two top-level views** with stack navigation between them, plus a **bottom sheet** that overlays either view.
+There are **four top-level views** in a stack, plus a **bottom sheet** that overlays Detail.
 
-### 1. Inbox (list view)
+Navigation model:
+```
+Home ─┬─► Record  ─► (idle → recording → review → uploading) ─► Home
+      ├─► Inbox   ─► Detail ─► (Feedback sheet)
+      └─► Detail (direct, from Recent list)
+```
+
+Home is the launch screen. From Home the user can: start a recording, jump to the Inbox filtered to any status, or open a specific encounter from the Recent list. Every non-Home screen has a back chevron to return.
+
+### 1. Home (Quickstart)
+
+**Purpose:** Be the launch screen. Surface the two most-common actions (record a new session, approve ready ones) above the fold and give one-tap access to every status bucket.
+
+**Layout (top to bottom):**
+1. **Top bar** (sticky, white, 50px top padding)
+   - Brand lockup on the left (28px "J" disc + JANUS / Scribe stack — same as Inbox)
+   - Right cluster: bell icon (with amber dot if any attention-needing items) + profile icon button
+2. **Greeting** (14×20 padding)
+   - "Good morning," / "Good afternoon," / "Good evening," based on local hour (12/18 cutoffs)
+   - Provider name, 22px / 700 / `--primary-color`
+   - Long-form date (e.g. "Tuesday, May 19"), 12px / `--text-light`
+3. **Primary CTA card** (16px margin, full-width minus 32px, 18px radius, `--primary-color` background)
+   - Left: 52px round mic icon with 1.5px white-35% outline + radial accent glow + outward pulsing ring (2.2s loop)
+   - Center: "Record a session" (17px / 700) + "Saved on device, uploaded when synced" (12px / 78% white)
+   - Right: chevron-right
+   - Shadow: `0 8px 22px rgba(44, 95, 125, 0.30)`
+4. **Review shortcut** (12px gap below CTA, `--warning-bg` / `--warning-border` / `--warning-text`)
+   - Big tabular count (26px / 700) on the left
+   - Two-line title + subtitle ("Sessions ready for your review" / "Approve sections and send to EHR")
+   - Chevron right
+   - **Empty state** (when ready === 0): swap to `--bg-light` background, `--border-color` border, `--text-light` text, title "You're all caught up", subtitle "No sessions awaiting review", no chevron (it's not actionable)
+5. **Attention shortcut** (only when failed + ehr_failed count > 0, same shape but `--error-bg` / `--error-border` / `--error-text`)
+   - "N sessions need attention" / "Failed transcription or EHR sync"
+6. **"Today" section label** (11px uppercase, `--text-light`, 22px top / 8px bottom padding)
+7. **Tiles grid** (2 columns, 10px gap, 16px horizontal margin)
+   - **In pipeline tile** (`progress` variant): blue-tinted icon disc + 24px count + label
+   - **Sent to EHR tile** (default): bg-light icon disc + 24px count + label
+   - Both tiles are tappable and open the Inbox filtered to that bucket
+8. **"Recent" section label**
+9. **Recent list** (white card with `--radius-card`, 1px border, internal border-bottoms between rows)
+   - 4 rows max, sorted by `receivedAt` desc
+   - Each row: 30px round status-colored icon (success for sent, attention for ready, error for failed, progress for in-flight) + patient name (13px / 600 / tabular) + status sub-line ("Sent to EHR · 18m ago" / "Ready for review · 12m ago" / etc.) + right chevron
+   - Tap any row → open that encounter's Detail directly (skip the Inbox)
+10. **"View full inbox (N) →"** text button at the bottom, centered
+
+**Behavior:**
+- Greeting line is computed client-side from `new Date()`; no setting.
+- All counts react live to changes in the encounter list (e.g. when a session moves Ready → Sent, the Review shortcut's count drops by 1 and the Sent tile increments).
+- Recent-row tap opens Detail directly without setting any filter.
+- Inbox shortcuts pre-set the status filter, so the Inbox lands already filtered.
+
+### 2. Record (4-phase flow)
+
+**Purpose:** Capture audio on-device. Audio is stored locally first, then uploaded to S3 in the background, where the existing pipeline (AWS HealthScribe → LLM extractor → EHR sync) takes over.
+
+Four phases, all on one screen (just sub-views — no nav between them):
+
+#### Phase A — Idle (pre-record)
+- Top bar: "← Home" chevron, title "New session", no right action
+- Form (24×20 top, on `--bg-light`):
+  - "PATIENT" label + text input (auto-fills with next sequential ID like `demo-patient-011`; user can edit)
+  - "DEPARTMENT" label + native select ("Department 1" / "Department 2")
+- Center stage (flex 1, vertically centered):
+  - 120px round red record button (`#DC2626` bg, white mic icon, `0 10px 30px rgba(220,38,38,0.35)` shadow, 8px outline ring at 20% alpha)
+  - "Tap to start recording" (14px / 600)
+  - 280px-max paragraph explaining the local-record-then-upload model
+- Pressing the red button → transitions to Phase B, zeroes the timer
+
+#### Phase B — Recording
+- Top bar title becomes "Recording…"
+- Center stage:
+  - 48px / 300-weight timer in `mm:ss` (tabular), font-sans (no special display face)
+  - Meta line: red blinking dot (`#DC2626`, 1.2s opacity loop) + "Recording · {patientId}"
+  - Live animated waveform — 36 bars, 320px max width, 60px tall, every 3rd bar `#DC2626`, the rest at 55% alpha; bar heights animate at ~9fps via JS-driven sine
+  - 120px round white **stop** button — `#DC2626` 2px border, white bg, with a 36px red square inside (square = standard "stop" affordance, contrasts with the round record button)
+  - Outward pulsing ring around the stop button at 35% red, 1.6s loop
+- Pressing the stop button → Phase C
+
+#### Phase C — Review
+- Top bar title "Review recording"
+- Center stage:
+  - 96px round success-tinted check disc (pop-in animation: scale 0.6 → 1, 0 → 1 alpha, 0.4s)
+  - "Recorded {mm:ss}" (20px / 700 / `--primary-color`)
+  - 2-line subtitle: "{patientId} · {department}" + "Saved on device. Ready to queue for transcription."
+  - Audio playback strip (90% width, same chrome as the detail-view audio strip — round play button + waveform + time)
+- Bottom actions tray (white bg, 1px top border, 16×20 + 28px home-indicator padding):
+  - Primary: "📤 Save & queue for processing" (full-width pill)
+  - Secondary row (2 buttons, 50/50): "Re-record" (resets to Phase B) and "Discard" (red ghost — returns to Home, drops the recording)
+- Pressing the primary → Phase D
+
+#### Phase D — Uploading
+- Top bar title "Saving"
+- Center stage:
+  - 96px round teal-tinted upload-cloud disc (pop-in)
+  - "Uploading…" title
+  - 6px tall × 280px max progress bar with infinite indeterminate fill (2.2s ease-out loop: 0% → 85% → 100%)
+  - 2-line subtitle: "{patientId} · {mm:ss}" + "Once uploaded, transcription will start automatically."
+- After ~2.2s the screen pops back to Home and the new encounter shows up in the Recent list as `queued` (in production: when the upload actually completes, your backend should write the encounter and the home polling should pick it up).
+
+**Behavior notes:**
+- Timer is a real `setInterval` that ticks every 1s. Stop button captures the elapsed time and carries it through.
+- Discard from any phase returns to Home without persisting anything.
+- In production: write audio chunks to the device filesystem during Phase B so a crash doesn't lose the recording. Upload starts only on Phase D ("Save & queue"), not during recording.
+
+### 3. Inbox (list view)
 
 **Purpose:** Triage today's encounters. See what's ready for review at a glance, filter by status, jump into a record.
 
 **Layout (top to bottom):**
 1. **Top bar** (sticky, white, `border-bottom: 1px solid --border-color`)
    - 50px top padding (dynamic island clearance)
-   - Brand lockup on the left: 28px round teal disc with "J" in Cinzel + two-line "JANUS / Scribe" stack
-   - Right cluster: Search icon button + Bell icon button (with amber dot if unread)
+   - **"← Home" back chevron** on the left (when reached from Home)
+   - Compact brand lockup: 24px round "J" disc + two-line "JANUS / Inbox"
+   - Right cluster: Search icon button + Bell icon button (amber dot if unread)
 2. **Stats row** (horizontal scroll, gap 8px, padding 12px 16px)
    - 5 stat chips: Today / Ready / Pipeline / Sent / Attn
    - Each chip 110px min-width, 10px×14px padding, `--white` bg with `--shadow-card`, `--radius-card` corners
@@ -62,7 +167,7 @@ There are **two top-level views** with stack navigation between them, plus a **b
 
 **Empty state:** When no rows match the filter, show centered inbox icon + "No encounters match that filter."
 
-### 2. Detail view
+### 4. Detail view
 
 **Purpose:** Review one encounter. Approve each structured section individually, post feedback if the model got something wrong, then send the whole chart to the EHR.
 
@@ -110,7 +215,7 @@ There are **two top-level views** with stack navigation between them, plus a **b
 - **Physical Exam:** preformatted (`white-space: pre-wrap`) so the line breaks in the source render
 - **Diagnoses & Labs:** 2-column table — diagnosis name + small grey ICD-10 code chip in column 1, related labs/details in column 2
 
-### 3. Feedback sheet (bottom sheet)
+### 5. Feedback sheet (bottom sheet)
 
 **Purpose:** Capture structured notes that improve the LLM extraction model. **This is NOT clinical documentation** — the sheet header explicitly says "Notes train the model · not part of the chart."
 
@@ -141,8 +246,15 @@ There are **two top-level views** with stack navigation between them, plus a **b
 ## Interactions & Behavior
 
 ### Navigation
-- Inbox → tap row → push Detail (right-to-left slide if your nav stack supports it)
-- Detail → tap "← Inbox" or hardware back → pop to Inbox, restore scroll position, keep selected ID
+- App launches at **Home**
+- Home → tap primary CTA → push **Record**
+- Home → tap review/attention shortcut, or tile → push **Inbox** with that filter applied
+- Home → tap a Recent row → push **Detail** for that encounter (skips Inbox)
+- Inbox → tap row → push **Detail**
+- Detail → tap "← Inbox" → pop to Inbox
+- Inbox → tap "← Home" → pop to Home
+- Record (any phase except Uploading) → tap "← Home" → discard and return to Home
+- Record → Phase D completes → auto-pop to Home (the new session should appear in Recent)
 - Detail → tap feedback button → present sheet over current view
 - Sheet open → tap scrim/close/swipe down → dismiss sheet (Detail view stays)
 
@@ -163,6 +275,13 @@ There are **two top-level views** with stack navigation between them, plus a **b
 - Submitting appends a new note with: `author`, `authorInitials`, `at: new Date().toISOString()`, `category`, `section`, `body`
 - Notes list scrolls/animates to show the new note (prototype just re-renders)
 - The encounter's notes count updates everywhere it appears: section head pip, approval-bar Feedback count dot, sheet list
+
+### Recording flow
+- **Local-first.** Audio is captured into the device filesystem during Phase B. The upload to S3 only starts when the user taps "Save & queue for processing" in Phase C.
+- **Crash safety.** If the app crashes mid-recording, the partial file should be recoverable on next launch and either offered as a draft ("Resume {patientId} (1:23 recorded)") or auto-discarded with a toast.
+- **Background upload.** Once Phase D starts, the upload should continue in the background even if the user navigates away. Surface its progress in a small banner on Home ("Uploading {patientId}…") if you have a notifications/banners system.
+- **Permissions.** Microphone permission must be requested before Phase B starts. If denied, show a permission-needed state in place of the red button with a link to system settings.
+- **No editing.** The user cannot trim/edit audio — only re-record or discard. (We can add trim in a future iteration if reviewers ask for it.)
 
 ### Status states & what they unlock
 | Status | Audio strip | Pipeline tracker | Sections shown | Approval bar | Send button |
@@ -193,6 +312,8 @@ There are **two top-level views** with stack navigation between them, plus a **b
 ## State Management
 
 Encounter object is the source of truth. The prototype keeps the whole list in component state; in production this should hydrate from your backend and the mutations below should fire API calls.
+
+The Home screen reads the live encounter list to compute its counts and recent activity — no separate "dashboard" model needed.
 
 ```ts
 type Encounter = {
@@ -241,6 +362,7 @@ type TranscriptTurn = { t: string; who: 'Provider' | 'Patient'; text: string };
 ```
 
 ### Mutations
+- `createEncounter({ patientId, department, audioBlob })` — called when the user finishes recording. Server should assign the canonical ID, store the audio, return the new encounter in `queued` state. Add to the local cache immediately so it appears in Home/Recent.
 - `approveSection(encounterId, sectionKey)` — toggle the boolean
 - `approveAll(encounterId)` — set all four to true
 - `sendToEHR(encounterId)` — set status to 'sent', record sentAt; only call when all four approvals are true
@@ -249,8 +371,9 @@ type TranscriptTurn = { t: string; who: 'Provider' | 'Patient'; text: string };
 - `addNote(encounterId, { category, section, body })` — append to notes; stamp author/initials/timestamp server-side
 
 ### Data needs
-- Initial fetch: list of encounters for current user's department, scoped to today by default
-- Polling or WebSocket subscription on pipeline state for in-progress records (to advance the tracker live)
+- Initial fetch: list of encounters for current user's department, scoped to today by default — drives both Home and Inbox
+- Polling or WebSocket subscription on pipeline state for in-progress records (to advance the tracker live and to bump the Home tiles as states transition)
+- An audio-capture binding (Web `MediaRecorder`, `react-native-audio-recorder-player`, AVAudioRecorder, etc.) plus a local-file → S3 multipart-upload binding for the Record flow
 - The prototype uses local mock data (`scribe-data.js`); replace with your API client
 
 ## Design Tokens
@@ -318,9 +441,9 @@ All values come from `colors_and_type.css` (already in your codebase from the de
 ## Implementation Notes for the Coder
 
 ### Recommended approach by target
-- **Responsive web (same React codebase):** wrap the existing desktop Scribe at a `max-width: 640px` breakpoint and swap to these mobile components. Top bar, list, detail, and sheet should be different components, not the same components restyled — the structural differences (stack nav vs. two-pane, bottom sheet vs. right drawer) make a shared-component approach brittle.
-- **React Native:** the mobile-scribe components map cleanly onto `View`/`ScrollView`/`Text` primitives. Use `react-native-bottom-sheet` for the feedback sheet, `react-navigation`'s stack navigator for inbox→detail. The CSS variable system needs to be ported to a theme object.
-- **Native iOS (SwiftUI):** `NavigationStack` for the stack, `.sheet(isPresented:)` with `.presentationDetents([.fraction(0.78)])` for the feedback sheet. Use SF Symbols equivalents for the Lucide icons listed above.
+- **Responsive web (same React codebase):** wrap the existing desktop Scribe at a `max-width: 640px` breakpoint and swap to these mobile components. Home, Record, Inbox, Detail, and Sheet should be different components from their desktop counterparts, not the same components restyled — the structural differences make a shared-component approach brittle.
+- **React Native:** the mobile-scribe components map cleanly onto `View`/`ScrollView`/`Text` primitives. Use `react-navigation`'s stack navigator for Home→Inbox→Detail and Home→Record. `react-native-bottom-sheet` for the feedback sheet. For audio capture, `react-native-audio-recorder-player` or `expo-av` Audio.Recording.
+- **Native iOS (SwiftUI):** `NavigationStack` for the stack, `.sheet(isPresented:)` with `.presentationDetents([.fraction(0.78)])` for the feedback sheet, `AVAudioRecorder` for capture. Use SF Symbols equivalents for the Lucide icons listed above.
 
 ### Gotchas the prototype handles
 - Lucide icons need to be re-hydrated whenever new DOM mounts. The prototype calls `lucide.createIcons()` in a `useEffect` with no deps. Your real binding (e.g. `lucide-react`) will do this automatically.
@@ -349,7 +472,18 @@ All values come from `colors_and_type.css` (already in your codebase from the de
 
 ## Acceptance Checklist
 
-- [ ] All 7 pipeline states render with the correct chrome (audio strip / tracker / banners) on the detail view
+- [ ] App launches on the **Home** screen, not the Inbox
+- [ ] Home greeting reflects local time-of-day (morning/afternoon/evening)
+- [ ] Home Review shortcut count matches the number of `ready` encounters; swaps to the empty-state when zero
+- [ ] Home Attention shortcut is hidden when there are no `failed` / `ehr_failed` encounters and visible when there are
+- [ ] Home tiles open the Inbox pre-filtered to the matching bucket
+- [ ] Home Recent row taps open Detail directly (no Inbox in between)
+- [ ] Record flow goes idle → recording → review → uploading → back to Home
+- [ ] Microphone permission is requested before Phase B (in production)
+- [ ] Phase B timer ticks once per second and survives backgrounding
+- [ ] Phase C "Discard" returns to Home without creating an encounter
+- [ ] Phase D upload happens in the background — user can navigate away during it
+- [ ] All 7 pipeline states render with the correct chrome on the detail view
 - [ ] Section approval state survives navigation back to the inbox and forward into the detail again
 - [ ] Send to EHR is disabled until all four sections are approved
 - [ ] Feedback sheet pre-targets the right section when opened from a section's message icon

@@ -4,7 +4,6 @@ import type { ScribeSession } from "@/lib/scribe-queries";
 import { deriveStatusId, isInPipeline, wordCount } from "@/components/scribe/status";
 import type { StatusId } from "@/components/scribe/types";
 import { MInboxTopBar } from "./top-bar";
-import { MStatsRow, type MobileStats } from "./stats-row";
 import { MFilterRow, type MobileFilter } from "./filter-row";
 import { MSessionRow } from "./session-row";
 
@@ -19,6 +18,7 @@ interface Props {
   filter: MobileFilter;
   onFilter: (f: MobileFilter) => void;
   onSelect: (id: string) => void;
+  onBack?: () => void;
   scrollRef?: MutableRefObject<number>;
 }
 
@@ -37,6 +37,7 @@ export function MInboxView({
   filter,
   onFilter,
   onSelect,
+  onBack,
   scrollRef,
 }: Props) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -72,22 +73,13 @@ export function MInboxView({
     [entries],
   );
 
-  const stats: MobileStats = {
-    today: counts.all,
-    ready: counts.ready,
-    inPipeline: counts.in_pipeline,
-    sent: counts.sent,
-    attention: counts.attention,
-  };
-
   const filtered = entries.filter((e) => matches(e.statusId, filter));
   const hasAlert = counts.attention > 0;
 
   return (
     <>
-      <MInboxTopBar hasAlert={hasAlert} />
+      <MInboxTopBar hasAlert={hasAlert} onBack={onBack} />
       <div className="m-body" ref={bodyRef}>
-        <MStatsRow stats={stats} />
         <MFilterRow value={filter} onChange={onFilter} counts={counts} />
         <div className="m-list-meta">
           <span>

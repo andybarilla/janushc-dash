@@ -11,7 +11,7 @@ interface FilterDef {
 const FILTERS: FilterDef[] = [
   { id: "all", label: "All" },
   { id: "ready", label: "Ready", icon: CircleDot },
-  { id: "in_pipeline", label: "In pipeline", icon: Loader },
+  { id: "in_pipeline", label: "Pipeline", icon: Loader },
   { id: "sent", label: "Sent", icon: Check },
   { id: "attention", label: "Attn", icon: TriangleAlert },
 ];

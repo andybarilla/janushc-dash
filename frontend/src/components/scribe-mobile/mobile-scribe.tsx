@@ -15,12 +15,14 @@ import type {
   SectionKey,
 } from "@/components/scribe/types";
 import { deriveStatusId } from "@/components/scribe/status";
+import { MHomeView } from "./home-view";
 import { MInboxView } from "./inbox-view";
 import { MDetailView } from "./detail-view";
 import { MFeedbackSheet } from "./feedback-sheet";
+import { MRecordView } from "./record-view";
 import type { MobileFilter } from "./filter-row";
 
-type View = "inbox" | "detail";
+type View = "home" | "record" | "inbox" | "detail";
 
 const EMPTY_APPROVALS: Approvals = {
   hpi: false,
@@ -36,7 +38,7 @@ export function MobileScribe() {
   const canApprove = user?.role === "physician";
   const { data: sessions = [], isLoading } = useScribeSessions();
 
-  const [view, setView] = useState<View>("inbox");
+  const [view, setView] = useState<View>("home");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<MobileFilter>("all");
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -84,9 +86,34 @@ export function MobileScribe() {
     sendMut.mutate({ sessionId: selectedId });
   };
 
+  const providerName = user?.name?.trim() || "Provider";
+
   return (
     <div className="m-app m-overlay janus-scope">
-      {view === "inbox" ? (
+      {view === "home" ? (
+        isLoading && sessions.length === 0 ? (
+          <LoadingInbox />
+        ) : (
+          <MHomeView
+            sessions={sessions}
+            providerName={providerName}
+            onRecord={() => setView("record")}
+            onOpenInbox={(f) => {
+              setFilter(f);
+              setView("inbox");
+            }}
+            onOpenEncounter={(id) => {
+              setSelectedId(id);
+              setView("detail");
+            }}
+          />
+        )
+      ) : view === "record" ? (
+        <MRecordView
+          onBack={() => setView("home")}
+          onSaved={() => setView("home")}
+        />
+      ) : view === "inbox" ? (
         isLoading && sessions.length === 0 ? (
           <LoadingInbox />
         ) : (
@@ -96,6 +123,7 @@ export function MobileScribe() {
             filter={filter}
             onFilter={setFilter}
             scrollRef={inboxScrollRef}
+            onBack={() => setView("home")}
             onSelect={(id) => {
               setSelectedId(id);
               setView("detail");

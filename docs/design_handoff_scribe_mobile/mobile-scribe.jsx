@@ -82,7 +82,7 @@ function MPipelineProgress({ status }) {
 }
 
 // ── List view ──────────────────────────────────────────────────────
-function MListView({ encounters, selectedId, onSelect, statusFilter, onStatusFilter }) {
+function MListView({ encounters, selectedId, onSelect, statusFilter, onStatusFilter, onBack }) {
   const counts = useMemoM(() => ({
     all: encounters.length,
     ready: encounters.filter(e => e.status.id === 'ready').length,
@@ -110,12 +110,18 @@ function MListView({ encounters, selectedId, onSelect, statusFilter, onStatusFil
 
   return (
     <>
-      <div className="m-topbar">
+      <div className="m-topbar with-back">
+        {onBack ? (
+          <button className="m-back" onClick={onBack}>
+            <i data-lucide="chevron-left"></i>
+            <span>Home</span>
+          </button>
+        ) : null}
         <div className="m-brand">
           <div className="m-brand-mark">J</div>
           <div className="m-brand-text">
             <span className="brand">Janus</span>
-            <span className="module">Scribe</span>
+            <span className="module">Inbox</span>
           </div>
         </div>
         <div className="m-topbar-actions">
@@ -528,13 +534,356 @@ function MNotesSheet({ open, encounter, onClose, onAddNote, defaultSection }) {
   );
 }
 
+// ── Home / Quickstart ──────────────────────────────────────────────
+function MHomeView({ encounters, onRecord, onOpenInbox, onOpenEncounter }) {
+  const counts = useMemoM(() => ({
+    ready:    encounters.filter(e => e.status.id === 'ready').length,
+    pipeline: encounters.filter(e => ['queued','transcribing','extracting'].includes(e.status.id)).length,
+    sent:     encounters.filter(e => e.status.id === 'sent').length,
+    attn:     encounters.filter(e => ['failed','ehr_failed'].includes(e.status.id)).length,
+    all:      encounters.length,
+  }), [encounters]);
+
+  // Recent activity: most-recently-touched encounters, regardless of status,
+  // newest first. Limit to 4 so the page stays scannable on a phone.
+  const recent = useMemoM(() => {
+    return [...encounters]
+      .sort((a, b) => new Date(b.receivedAt) - new Date(a.receivedAt))
+      .slice(0, 4);
+  }, [encounters]);
+
+  const recentLine = (e) => {
+    if (e.status.id === 'sent')        return `Sent to EHR · ${mFmtRelative(e.sentAt || e.receivedAt)}`;
+    if (e.status.id === 'ready')       return `Ready for review · ${mFmtRelative(e.receivedAt)}`;
+    if (e.status.id === 'failed')      return `Failed · needs attention`;
+    if (e.status.id === 'ehr_failed')  return `EHR sync failed · ${mFmtRelative(e.receivedAt)}`;
+    return `${e.status.label} · ${mFmtRelative(e.receivedAt)}`;
+  };
+
+  const recentIconClass = (e) => {
+    if (e.status.id === 'sent') return 'success';
+    if (e.status.id === 'ready') return 'attention';
+    if (e.status.id === 'failed' || e.status.id === 'ehr_failed') return 'error';
+    return 'progress';
+  };
+  const recentIcon = (e) => {
+    if (e.status.id === 'sent') return 'check';
+    if (e.status.id === 'ready') return 'circle-dot';
+    if (e.status.id === 'failed' || e.status.id === 'ehr_failed') return 'triangle-alert';
+    if (e.status.id === 'transcribing') return 'mic';
+    if (e.status.id === 'extracting') return 'sparkles';
+    return 'inbox';
+  };
+
+  const greeting = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 18) return 'Good afternoon';
+    return 'Good evening';
+  })();
+
+  const dateStr = new Date().toLocaleDateString(undefined, {
+    weekday: 'long', month: 'long', day: 'numeric',
+  });
+
+  return (
+    <>
+      <div className="m-topbar">
+        <div className="m-brand">
+          <div className="m-brand-mark">J</div>
+          <div className="m-brand-text">
+            <span className="brand">Janus</span>
+            <span className="module">Scribe</span>
+          </div>
+        </div>
+        <div className="m-topbar-actions">
+          <button className="m-icon-btn">
+            <i data-lucide="bell"></i>
+            {counts.attn > 0 ? <span className="badge-dot"></span> : null}
+          </button>
+          <button className="m-icon-btn"><i data-lucide="user-round"></i></button>
+        </div>
+      </div>
+
+      <div className="m-body">
+        <div className="m-home-greet">
+          <span className="greet-lbl">{greeting},</span>
+          <span className="greet-name">Dr. Aldana</span>
+          <span className="greet-date">{dateStr}</span>
+        </div>
+
+        <button className="m-home-cta" onClick={onRecord}>
+          <div className="cta-row">
+            <div className="cta-mic"><i data-lucide="mic"></i></div>
+            <div className="cta-text">
+              <span className="cta-title">Record a session</span>
+              <span className="cta-sub">Saved on device, uploaded when synced</span>
+            </div>
+            <i data-lucide="chevron-right" className="cta-arrow"></i>
+          </div>
+        </button>
+
+        {counts.ready > 0 ? (
+          <button className="m-shortcut-card" onClick={() => onOpenInbox('ready')}>
+            <span className="shortcut-num">{counts.ready}</span>
+            <div className="shortcut-body">
+              <span className="shortcut-title">Sessions ready for your review</span>
+              <span className="shortcut-sub">Approve sections and send to EHR</span>
+            </div>
+            <i data-lucide="chevron-right" className="shortcut-arrow"></i>
+          </button>
+        ) : (
+          <div className="m-shortcut-card empty">
+            <span className="shortcut-num">0</span>
+            <div className="shortcut-body">
+              <span className="shortcut-title">You're all caught up</span>
+              <span className="shortcut-sub">No sessions awaiting review</span>
+            </div>
+          </div>
+        )}
+
+        {counts.attn > 0 ? (
+          <button className="m-shortcut-card alert" onClick={() => onOpenInbox('attention')}>
+            <span className="shortcut-num">{counts.attn}</span>
+            <div className="shortcut-body">
+              <span className="shortcut-title">Sessions need attention</span>
+              <span className="shortcut-sub">Failed transcription or EHR sync</span>
+            </div>
+            <i data-lucide="chevron-right" className="shortcut-arrow"></i>
+          </button>
+        ) : null}
+
+        <div className="m-section-lbl">Today</div>
+        <div className="m-tiles">
+          <button className="m-tile progress" onClick={() => onOpenInbox('in_pipeline')}>
+            <div className="tile-icon"><i data-lucide="loader"></i></div>
+            <span className="tile-num">{counts.pipeline}</span>
+            <span className="tile-lbl">In pipeline</span>
+          </button>
+          <button className="m-tile" onClick={() => onOpenInbox('sent')}>
+            <div className="tile-icon"><i data-lucide="check-check"></i></div>
+            <span className="tile-num">{counts.sent}</span>
+            <span className="tile-lbl">Sent to EHR</span>
+          </button>
+        </div>
+
+        <div className="m-section-lbl">Recent</div>
+        <div className="m-recent-list">
+          {recent.map(e => (
+            <div key={e.id} className="m-recent-row" onClick={() => onOpenEncounter(e.id)}>
+              <div className={`m-recent-icon ${recentIconClass(e)}`}>
+                <i data-lucide={recentIcon(e)}></i>
+              </div>
+              <div className="m-recent-body">
+                <div className="m-recent-name">{e.patient.name}</div>
+                <div className="m-recent-sub">{recentLine(e)}</div>
+              </div>
+              <i data-lucide="chevron-right" className="m-recent-chev"></i>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ height: 24 }}></div>
+
+        <button
+          onClick={() => onOpenInbox('all')}
+          style={{
+            display: 'block',
+            margin: '0 auto 16px',
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--primary-color)',
+            fontSize: 13,
+            fontWeight: 600,
+            fontFamily: 'inherit',
+            cursor: 'pointer',
+          }}
+        >
+          View full inbox ({counts.all}) →
+        </button>
+      </div>
+    </>
+  );
+}
+
+// ── Record flow ────────────────────────────────────────────────────
+// Three sub-states: 'idle' | 'recording' | 'review' | 'uploading'
+function MRecordView({ onBack, onSaved, defaultPatientId, defaultDepartment }) {
+  const [phase, setPhase] = useStateM('idle');
+  const [patientId, setPatientId] = useStateM(defaultPatientId || 'demo-patient-011');
+  const [department, setDepartment] = useStateM(defaultDepartment || 'Department 1');
+  const [seconds, setSeconds] = useStateM(0);
+  const timerRef = useRefM(null);
+
+  useEffectM(() => {
+    if (phase === 'recording') {
+      timerRef.current = setInterval(() => setSeconds(s => s + 1), 1000);
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = null;
+    };
+  }, [phase]);
+
+  // Auto-advance after upload animation.
+  useEffectM(() => {
+    if (phase === 'uploading') {
+      const t = setTimeout(() => onSaved({ patientId, department, seconds }), 2200);
+      return () => clearTimeout(t);
+    }
+  }, [phase, patientId, department, seconds, onSaved]);
+
+  const fmt = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
+
+  return (
+    <>
+      <div className="m-detail-topbar">
+        <button className="m-back" onClick={onBack}>
+          <i data-lucide="chevron-left"></i>
+          <span>Home</span>
+        </button>
+        <div className="title">
+          {phase === 'idle'      ? 'New session' :
+           phase === 'recording' ? 'Recording…'   :
+           phase === 'review'    ? 'Review recording' :
+                                   'Saving'}
+        </div>
+        <span style={{ width: 38 }}></span>
+      </div>
+
+      <div className="m-record-stage">
+        {phase === 'idle' ? (
+          <>
+            <div className="m-record-form">
+              <label className="field-label">Patient</label>
+              <input
+                className="field"
+                value={patientId}
+                onChange={(e) => setPatientId(e.target.value)}
+                placeholder="Patient ID"
+              />
+              <label className="field-label">Department</label>
+              <select
+                className="field"
+                value={department}
+                onChange={(e) => setDepartment(e.target.value)}
+              >
+                <option>Department 1</option>
+                <option>Department 2</option>
+              </select>
+            </div>
+            <div className="m-record-center">
+              <button className="m-rec-btn" onClick={() => { setSeconds(0); setPhase('recording'); }}>
+                <i data-lucide="mic"></i>
+              </button>
+              <div className="m-rec-hint">Tap to start recording</div>
+              <div className="m-rec-detail">
+                Audio is saved on your device first. It uploads to S3 in the background, then is transcribed and extracted automatically.
+              </div>
+            </div>
+          </>
+        ) : null}
+
+        {phase === 'recording' ? (
+          <div className="m-record-center">
+            <div className="m-rec-timer">{fmt(seconds)}</div>
+            <div className="m-rec-meta">
+              <span className="rec-dot"></span>
+              <span>Recording · {patientId}</span>
+            </div>
+            <RecordingWave />
+            <button className="m-rec-btn recording" onClick={() => setPhase('review')}>
+              <span className="rec-square"></span>
+            </button>
+            <div className="m-rec-detail">Tap the square to stop. You'll be able to play it back before saving.</div>
+          </div>
+        ) : null}
+
+        {phase === 'review' ? (
+          <>
+            <div className="m-record-center">
+              <div className="m-saved-check"><i data-lucide="check"></i></div>
+              <div className="m-saved-title">Recorded {fmt(seconds || 222)}</div>
+              <div className="m-rec-detail">
+                {patientId} · {department}<br />
+                Saved on device. Ready to queue for transcription.
+              </div>
+              <div className="m-audio" style={{ width: '90%', margin: '8px auto 0' }}>
+                <button className="m-audio-play"><i data-lucide="play"></i></button>
+                <MAudioWave />
+                <span className="m-audio-time">0:00 / {fmt(seconds || 222)}</span>
+              </div>
+            </div>
+            <div className="m-record-actions">
+              <button className="m-send" onClick={() => setPhase('uploading')}>
+                <i data-lucide="upload-cloud"></i>
+                Save & queue for processing
+              </button>
+              <div className="btn-row">
+                <button className="m-send-secondary" onClick={() => { setSeconds(0); setPhase('recording'); }}>
+                  Re-record
+                </button>
+                <button className="m-send-secondary" style={{ color: 'var(--error-text)', borderColor: 'var(--error-border)' }} onClick={onBack}>
+                  Discard
+                </button>
+              </div>
+            </div>
+          </>
+        ) : null}
+
+        {phase === 'uploading' ? (
+          <div className="m-record-center">
+            <div className="m-saved-check" style={{ borderColor: 'var(--primary-color)', background: 'rgba(74,144,164,0.12)', color: 'var(--primary-color)' }}>
+              <i data-lucide="upload-cloud"></i>
+            </div>
+            <div className="m-saved-title">Uploading…</div>
+            <div className="m-upload-progress"><div className="bar"></div></div>
+            <div className="m-rec-detail">
+              {patientId} · {fmt(seconds || 222)}<br />
+              Once uploaded, transcription will start automatically.
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
+// Live waveform during recording — bars animate.
+function RecordingWave() {
+  const [tick, setTick] = useStateM(0);
+  useEffectM(() => {
+    const id = setInterval(() => setTick(t => t + 1), 110);
+    return () => clearInterval(id);
+  }, []);
+  const bars = [];
+  const n = 36;
+  for (let i = 0; i < n; i++) {
+    const phase = (tick * 0.4) + i * 0.6;
+    const h = 0.15 + Math.abs(Math.sin(phase) * 0.45 + Math.sin(phase * 1.7) * 0.25);
+    bars.push(h);
+  }
+  return (
+    <svg className="m-rec-wave" viewBox={`0 0 ${n * 7} 60`} preserveAspectRatio="none">
+      {bars.map((h, i) => {
+        const barH = h * 50;
+        return (
+          <rect key={i} x={i * 7 + 1} y={30 - barH/2} width="4" height={barH} rx="2"
+            fill={i % 3 === 0 ? '#DC2626' : 'rgba(220,38,38,0.55)'} />
+        );
+      })}
+    </svg>
+  );
+}
+
 // ── App wrapper (state for one phone) ──────────────────────────────
 function MobileScribeApp({
-  initialView = 'list',
+  initialView = 'home',
   initialEncounterId = null,
   initialStatusFilter = 'all',
   initialNotesOpen = false,
   initialNotesSection = null,
+  initialRecordPhase = null,
   encountersSeed = ENCOUNTERS,
   transcriptDefaultOpen = false,
 }) {
@@ -573,13 +922,26 @@ function MobileScribeApp({
 
   return (
     <div className="m-app">
-      {view === 'list' ? (
+      {view === 'home' ? (
+        <MHomeView
+          encounters={encounters}
+          onRecord={() => setView('record')}
+          onOpenInbox={(filter) => { setStatusFilter(filter); setView('list'); }}
+          onOpenEncounter={(id) => { setSelectedId(id); setView('detail'); }}
+        />
+      ) : view === 'record' ? (
+        <MRecordView
+          onBack={() => setView('home')}
+          onSaved={() => setView('home')}
+        />
+      ) : view === 'list' ? (
         <MListView
           encounters={encounters}
           selectedId={selectedId}
           onSelect={(id) => { setSelectedId(id); setView('detail'); }}
           statusFilter={statusFilter}
           onStatusFilter={setStatusFilter}
+          onBack={() => setView('home')}
         />
       ) : (
         <MDetailView
