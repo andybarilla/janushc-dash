@@ -1365,6 +1365,75 @@
   font-size: 13px;
   color: var(--janus-text-dark);
 }
+.janus-help-text {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--janus-text-light);
+}
+.janus-segmented-control {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--janus-border);
+  border-radius: var(--janus-radius-input);
+  background: var(--janus-bg-light);
+}
+.janus-segmented-control button {
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--janus-text-light);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 10px;
+}
+.janus-segmented-control button.active {
+  background: var(--janus-white);
+  color: var(--janus-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.janus-segmented-control button:disabled { cursor: not-allowed; opacity: 0.65; }
+.janus-recording-panel {
+  border: 1px solid var(--janus-border);
+  border-radius: var(--janus-radius-card);
+  padding: 14px;
+  background: var(--janus-bg-light);
+}
+.janus-recording-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.janus-recording-status > span {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--janus-text-light);
+}
+.janus-recording-status > span.is-recording {
+  background: var(--janus-error-text);
+  animation: janus-recording-pulse 1s infinite;
+}
+.janus-recording-status strong {
+  color: var(--janus-text-dark);
+  font-variant-numeric: tabular-nums;
+}
+.janus-recording-status small { color: var(--janus-text-light); }
+.janus-recording-audio {
+  width: 100%;
+  margin-bottom: 12px;
+}
+.janus-recording-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+@keyframes janus-recording-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.35); opacity: 0.65; }
+}
 .janus-error-text {
   color: var(--janus-error-text);
   font-size: 12px;

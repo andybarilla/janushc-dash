@@ -1,0 +1,138 @@
+/* ============================================================
+ * Janus Healthcare — Colors & Type
+ * Mined from andybarilla/janushc-site src/layouts/BaseLayout.astro
+ * ============================================================ */
+
+/* ---- Brand fonts (local) ----------------------------------
+ * Cinzel — supplied by the brand. Used for the Roman-cap wordmark
+ * (closest match to the Trajan-style flared caps in the logo file).
+ * ------------------------------------------------------------ */
+@font-face {
+  font-family: "Cinzel";
+  src: url("./fonts/Cinzel-VariableFont_wght.ttf") format("truetype-variations"),
+       url("./fonts/Cinzel-VariableFont_wght.ttf") format("truetype");
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* ---------- Brand palette (from site) ------------------ */
+  --primary-color: #2c5f7d;   /* deep teal-navy   — buttons, headings, footer bg */
+  --secondary-color: #4a90a4; /* mid teal         — links, hover-to               */
+  --accent-color:   #7fc8d9;  /* light teal       — gradient accent, member avatar */
+
+  /* Hero / page-header gradient stops (135deg overlay over banner) */
+  --hero-gradient-from: rgba(0, 102, 204, 0.8);   /* #0066cc */
+  --hero-gradient-to:   rgba(0, 153, 204, 0.7);   /* #0099cc */
+
+  /* ---------- Neutrals ---------------------------------- */
+  --text-dark:   #333333;
+  --text-light:  #666666;
+  --bg-light:    #f8f9fa;
+  --white:       #ffffff;
+  --border-color:#e0e0e0;
+
+  /* ---------- Semantic / status (from contact form) ----- */
+  --success-bg:     #d4edda;
+  --success-border: #c3e6cb;
+  --success-text:   #155724;
+  --error-bg:       #f8d7da;
+  --error-border:   #f5c6cb;
+  --error-text:     #721c24;
+  --warning-bg:     #fff3cd;
+  --warning-border: #ffc107;
+  --warning-text:   #856404;
+
+  /* ---------- Typography -------------------------------- */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+               Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
+  /* Wordmark/logo style — Roman flared caps (Cinzel ≈ Trajan, the closest free match) */
+  --font-display: "Cinzel", "Trajan Pro", "Times New Roman", Georgia, serif;
+  /* Grotesque fallback alias — points to the system stack since the
+   * production site loads no webfont for body copy. */
+  --font-grotesque: var(--font-sans);
+
+  /* Type scale (rem; site base 16px → line-height 1.6) */
+  --fs-display: 3rem;        /* hero h1                  */
+  --fs-h1: 2.5rem;           /* default h1               */
+  --fs-h2: 2rem;
+  --fs-h3: 1.5rem;
+  --fs-h4: 1.3rem;
+  --fs-lead: 1.3rem;         /* page-header subtitle      */
+  --fs-body-lg: 1.2rem;
+  --fs-body: 1rem;
+  --fs-sm: 0.9rem;
+
+  --lh-tight: 1.2;
+  --lh-body: 1.6;
+  --lh-relaxed: 1.8;
+
+  /* ---------- Spacing / shape (from site) --------------- */
+  --container-max: 1200px;
+  --container-pad: 20px;
+
+  --radius-card: 10px;
+  --radius-pill: 50px;     /* CTA buttons              */
+  --radius-input: 5px;     /* form inputs / messages   */
+
+  --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-card-hover: 0 8px 20px rgba(0, 0, 0, 0.12);
+  --shadow-header: 0 2px 8px rgba(0, 0, 0, 0.10);
+  --shadow-cta-hover: 0 10px 25px rgba(0, 0, 0, 0.20);
+  --shadow-cta-primary-hover: 0 10px 25px rgba(44, 95, 125, 0.30);
+
+  --border-thin: 1px solid var(--border-color);
+  --border-card: 2px solid var(--border-color);  /* service cards            */
+
+  --motion-ease: cubic-bezier(.4, 0, .2, 1);
+  --motion-fast: 0.3s ease;     /* the only transition used on the site */
+}
+
+/* ============================================================
+ * Semantic element styles — opt-in by including this stylesheet
+ * ============================================================ */
+
+body.janus,
+.janus-scope {
+  font-family: var(--font-sans);
+  line-height: var(--lh-body);
+  color: var(--text-dark);
+  background: var(--white);
+}
+
+.janus-scope h1, .janus-scope h2, .janus-scope h3,
+.janus-scope h4, .janus-scope h5, .janus-scope h6 {
+  color: var(--primary-color);
+  margin-bottom: 1rem;
+  line-height: var(--lh-tight);
+}
+.janus-scope h1 { font-size: var(--fs-h1); }
+.janus-scope h2 { font-size: var(--fs-h2); }
+.janus-scope h3 { font-size: var(--fs-h3); }
+.janus-scope h4 { font-size: var(--fs-h4); }
+
+.janus-scope p          { color: var(--text-dark); line-height: var(--lh-body); }
+.janus-scope p.muted,
+.janus-scope .text-muted{ color: var(--text-light); }
+.janus-scope .lead      { font-size: var(--fs-lead); color: var(--text-light); }
+.janus-scope a          { color: var(--secondary-color); text-decoration: none; transition: color var(--motion-fast); }
+.janus-scope a:hover    { color: var(--primary-color); }
+
+/* Page header band (used on /about, /services, /contact) */
+.janus-page-header {
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+  color: var(--white);
+  padding: 4rem 0;
+  text-align: center;
+}
+.janus-page-header h1 { color: var(--white); font-size: var(--fs-display); }
+.janus-page-header .lead { color: rgba(255,255,255,0.95); }
+
+/* Wordmark — flared Roman caps, the only "display" face on the brand */
+.janus-wordmark {
+  font-family: var(--font-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+}

@@ -4,6 +4,10 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
 export default defineConfig({
+  // Keep frontend dev aligned with the repo-level .env used by the Go API and Makefile.
+  // Without this, `cd frontend && npm run dev` starts with an empty
+  // VITE_GOOGLE_CLIENT_ID and Google OAuth fails with "Missing required parameter: client_id".
+  envDir: path.resolve(__dirname, ".."),
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {

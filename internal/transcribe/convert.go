@@ -43,6 +43,7 @@ func ConvertToFLAC(ctx context.Context, src io.Reader) (io.ReadCloser, func(), e
 		"-f", "flac",
 		"-ar", "16000",
 		"-ac", "1",
+		"-sample_fmt", "s16",
 		"pipe:1",
 	)
 	cmd.Stdin = src

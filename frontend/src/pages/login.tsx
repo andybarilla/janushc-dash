@@ -7,6 +7,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const { loginWithGoogle, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
   if (isAuthenticated) return <Navigate to="/approvals" replace />;
 
@@ -21,24 +22,30 @@ export default function LoginPage() {
               {error}
             </div>
           )}
-          <GoogleLogin
-            onSuccess={async (response) => {
-              if (!response.credential) {
-                setError("No credential received from Google");
-                return;
-              }
-              try {
-                await loginWithGoogle(response.credential);
-                navigate("/approvals");
-              } catch (err) {
-                setError(formatLoginError(err));
-              }
-            }}
-            onError={() => setError("Google sign in failed")}
-            theme="filled_black"
-            size="large"
-            width="280"
-          />
+          {googleClientId ? (
+            <GoogleLogin
+              onSuccess={async (response) => {
+                if (!response.credential) {
+                  setError("No credential received from Google");
+                  return;
+                }
+                try {
+                  await loginWithGoogle(response.credential);
+                  navigate("/approvals");
+                } catch (err) {
+                  setError(formatLoginError(err));
+                }
+              }}
+              onError={() => setError("Google sign in failed")}
+              theme="filled_black"
+              size="large"
+              width="280"
+            />
+          ) : (
+            <div className="bg-destructive/10 text-destructive p-3 rounded text-sm w-full">
+              Google login is not configured. Set VITE_GOOGLE_CLIENT_ID in the repo .env and restart Vite.
+            </div>
+          )}
         </div>
       </div>
     </div>

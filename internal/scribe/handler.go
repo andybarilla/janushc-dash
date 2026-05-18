@@ -785,6 +785,7 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if transcript == "" {
+		log.Printf("scribe transcription empty result for session %s", sessionID)
 		_ = h.queries.UpdateScribeSessionError(r.Context(), database.UpdateScribeSessionErrorParams{
 			ID:           sessionUUID,
 			TenantID:     tenantUUID,
