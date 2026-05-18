@@ -320,6 +320,10 @@
   gap: 10px;
   margin-bottom: 8px;
 }
+.m-detail-titlerow > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
 .m-patient-name {
   font-size: 18px;
   font-weight: 700;
@@ -333,6 +337,9 @@
   font-size: 12px;
   color: var(--janus-text-light);
   margin: 2px 0 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .m-detail-meta {
   display: flex;
@@ -1041,11 +1048,13 @@
   color: var(--janus-text-light);
   font-size: 13px;
 }
-.m-empty [data-lucide] {
-  font-size: 32px;
+.m-empty [data-lucide],
+.m-empty svg {
+  display: block;
+  width: 32px;
+  height: 32px;
+  margin: 0 auto 10px;
   color: var(--janus-border);
-  display: inline-block;
-  margin-bottom: 10px;
 }
 
 /* Spark fill used by stat sparklines */
