@@ -18,7 +18,7 @@ interface UsageCostCardProps {
 
 function costMicrosForBasis(
   estimatedCostMicros: number,
-  actualCostMicros: number | undefined,
+  actualCostMicros: number | null | undefined,
   costBasis: CostBasis,
 ): number {
   if (costBasis === "actual" || costBasis === "mixed") {
@@ -30,7 +30,7 @@ function costMicrosForBasis(
 
 function formatCost(
   estimatedCostMicros: number,
-  actualCostMicros: number | undefined,
+  actualCostMicros: number | null | undefined,
   costBasis: CostBasis,
 ): string {
   return `${formatMicrosAsDollars(
@@ -73,7 +73,7 @@ export function UsageCostCard({
               <div className="janus-usage-row-main">
                 <span className="janus-usage-row-title">Transcription</span>
                 <span className="janus-usage-row-detail">
-                  {usage.transcription.audio_duration_seconds === undefined
+                  {usage.transcription.audio_duration_seconds == null
                     ? "duration unavailable"
                     : formatAudioMinutes(usage.transcription.audio_duration_seconds)}
                 </span>

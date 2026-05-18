@@ -17,7 +17,7 @@ export function formatTokens(tokens: number): string {
   return new Intl.NumberFormat("en-US").format(tokens);
 }
 
-export function formatModelDisplay(modelId?: string): string {
+export function formatModelDisplay(modelId?: string | null): string {
   if (!modelId) {
     return "model unavailable";
   }

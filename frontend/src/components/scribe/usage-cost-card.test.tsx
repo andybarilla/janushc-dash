@@ -79,6 +79,57 @@ describe("UsageCostCard", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders duration unavailable when audio duration is null", () => {
+    const usage: ScribeUsageSummary = {
+      ...estimatedUsage,
+      transcription: {
+        ...estimatedUsage.transcription!,
+        audio_duration_seconds: null,
+      },
+    };
+
+    render(<UsageCostCard usage={usage} status="completed" inPipeline={false} />);
+
+    expect(screen.getByText("duration unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("0.0 min audio")).not.toBeInTheDocument();
+  });
+
+  it("renders model unavailable when model id is null", () => {
+    const usage: ScribeUsageSummary = {
+      ...estimatedUsage,
+      llm: {
+        ...estimatedUsage.llm!,
+        model_id: null,
+      },
+    };
+
+    render(<UsageCostCard usage={usage} status="completed" inPipeline={false} />);
+
+    expect(screen.getByText("model unavailable")).toBeInTheDocument();
+  });
+
+  it("falls back to estimated costs when actual costs are null", () => {
+    const usage: ScribeUsageSummary = {
+      ...estimatedUsage,
+      transcription: {
+        ...estimatedUsage.transcription!,
+        actual_cost_micros: null,
+      },
+      llm: {
+        ...estimatedUsage.llm!,
+        actual_cost_micros: null,
+      },
+      total_actual_cost_micros: null,
+      cost_basis: "actual",
+    };
+
+    render(<UsageCostCard usage={usage} status="completed" inPipeline={false} />);
+
+    expect(screen.getByText("$2.48 actual")).toBeInTheDocument();
+    expect(screen.getByText("$0.38 actual")).toBeInTheDocument();
+    expect(screen.getByText("$2.86 actual")).toBeInTheDocument();
+  });
+
   it("renders failed no-usage copy", () => {
     render(<UsageCostCard status="failed" inPipeline={false} />);
 
