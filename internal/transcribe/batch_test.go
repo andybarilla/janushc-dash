@@ -48,6 +48,90 @@ func TestExtractBatchTranscriptTextFallsBackToPlainTranscript(t *testing.T) {
 	}
 }
 
+func TestExtractBatchTranscriptDurationSecondsReturnsMaxPronunciationEndTime(t *testing.T) {
+	data := []byte(`{"results":{"items":[
+		{"type":"pronunciation","start_time":"0.00","end_time":"1.25","alternatives":[{"content":"hello"}]},
+		{"type":"pronunciation","start_time":"1.30","end_time":"2.75","alternatives":[{"content":"there"}]},
+		{"type":"pronunciation","start_time":"2.80","end_time":"2.50","alternatives":[{"content":"again"}]}
+	]}}`)
+
+	got, ok, err := ExtractBatchTranscriptDurationSeconds(data)
+	if err != nil {
+		t.Fatalf("ExtractBatchTranscriptDurationSeconds returned error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected duration to be found")
+	}
+	if got != 2.75 {
+		t.Fatalf("got %v", got)
+	}
+}
+
+func TestExtractBatchTranscriptDurationSecondsIgnoresPunctuation(t *testing.T) {
+	data := []byte(`{"results":{"items":[
+		{"type":"pronunciation","start_time":"0.00","end_time":"1.25","alternatives":[{"content":"hello"}]},
+		{"type":"punctuation","end_time":"9.99","alternatives":[{"content":"."}]}
+	]}}`)
+
+	got, ok, err := ExtractBatchTranscriptDurationSeconds(data)
+	if err != nil {
+		t.Fatalf("ExtractBatchTranscriptDurationSeconds returned error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected duration to be found")
+	}
+	if got != 1.25 {
+		t.Fatalf("got %v", got)
+	}
+}
+
+func TestExtractBatchTranscriptDurationSecondsIgnoresMalformedEndTime(t *testing.T) {
+	data := []byte(`{"results":{"items":[
+		{"type":"pronunciation","start_time":"0.00","end_time":"bad","alternatives":[{"content":"hello"}]},
+		{"type":"pronunciation","start_time":"1.30","end_time":"2.75","alternatives":[{"content":"there"}]}
+	]}}`)
+
+	got, ok, err := ExtractBatchTranscriptDurationSeconds(data)
+	if err != nil {
+		t.Fatalf("ExtractBatchTranscriptDurationSeconds returned error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected duration to be found")
+	}
+	if got != 2.75 {
+		t.Fatalf("got %v", got)
+	}
+}
+
+func TestExtractBatchTranscriptDurationSecondsReturnsFalseWithoutDuration(t *testing.T) {
+	data := []byte(`{"results":{"items":[
+		{"type":"pronunciation","start_time":"0.00","alternatives":[{"content":"hello"}]},
+		{"type":"punctuation","alternatives":[{"content":"."}]},
+		{"type":"pronunciation","start_time":"1.30","end_time":"bad","alternatives":[{"content":"there"}]}
+	]}}`)
+
+	got, ok, err := ExtractBatchTranscriptDurationSeconds(data)
+	if err != nil {
+		t.Fatalf("ExtractBatchTranscriptDurationSeconds returned error: %v", err)
+	}
+	if ok {
+		t.Fatal("expected duration not to be found")
+	}
+	if got != 0 {
+		t.Fatalf("got %v", got)
+	}
+}
+
+func TestExtractBatchTranscriptDurationSecondsReturnsErrorForInvalidJSON(t *testing.T) {
+	_, ok, err := ExtractBatchTranscriptDurationSeconds([]byte(`{"results":`))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if ok {
+		t.Fatal("expected duration not to be found")
+	}
+}
+
 func TestMediaFormatForExtension(t *testing.T) {
 	got, err := MediaFormatForExtension(".m4a")
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 	"mime"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -309,6 +310,31 @@ func ExtractBatchTranscriptText(data []byte) (string, error) {
 		return strings.TrimSpace(doc.Results.Transcripts[0].Transcript), nil
 	}
 	return "", errors.New("transcript JSON did not contain transcript text")
+}
+
+func ExtractBatchTranscriptDurationSeconds(data []byte) (float64, bool, error) {
+	var doc batchTranscriptDocument
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return 0, false, fmt.Errorf("parse transcript JSON: %w", err)
+	}
+
+	maxEnd := 0.0
+	for _, item := range doc.Results.Items {
+		if item.Type == "punctuation" || item.EndTime == "" {
+			continue
+		}
+		value, err := strconv.ParseFloat(item.EndTime, 64)
+		if err != nil {
+			continue
+		}
+		if value > maxEnd {
+			maxEnd = value
+		}
+	}
+	if maxEnd <= 0 {
+		return 0, false, nil
+	}
+	return maxEnd, true, nil
 }
 
 func speakerLabelsByTime(doc batchTranscriptDocument) map[string]string {
