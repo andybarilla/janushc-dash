@@ -73,8 +73,12 @@ export function MRecordView({ onBack, onSaved }: Props) {
     return () => window.clearInterval(id);
   }, [phase]);
 
-  // Tear down stream / object URL when the view unmounts.
+  // Tear down stream / object URL when the view unmounts. The mounted flag is
+  // re-armed on every mount so that StrictMode's dev-only mount/unmount/mount
+  // cycle doesn't leave it stuck at false, which would otherwise cause the
+  // real recorder.onstop callback to bail out.
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       const recorder = mediaRecorderRef.current;

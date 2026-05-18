@@ -763,6 +763,7 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	// Convert to FLAC via ffmpeg
 	flacReader, cleanup, err := transcribe.ConvertToFLAC(r.Context(), file)
 	if err != nil {
+		log.Printf("scribe audio conversion error for session %s: %v", sessionID, err)
 		http.Error(w, "failed to convert audio", http.StatusInternalServerError)
 		return
 	}

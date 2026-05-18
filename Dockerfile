@@ -19,7 +19,7 @@ COPY frontend/ .
 RUN npm run build
 
 FROM alpine:3.19
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates ffmpeg
 COPY --from=builder /janushc-dash /janushc-dash
 COPY --from=builder /batch-transcribe-recordings /usr/local/bin/batch-transcribe-recordings
 COPY --from=builder /import-transcripts /usr/local/bin/import-transcripts
