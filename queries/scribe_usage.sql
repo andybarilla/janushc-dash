@@ -21,14 +21,52 @@ WHERE session_id = $1
 ORDER BY created_at ASC;
 
 -- name: GetScribeUsageSummaryForSession :one
+WITH session_usage_events AS (
+    SELECT *
+    FROM scribe_usage_events
+    WHERE session_id = $1
+)
 SELECT
     COUNT(*)::int AS event_count,
     COALESCE(SUM(estimated_cost_micros), 0)::bigint AS total_estimated_cost_micros,
-    (SUM(actual_cost_micros) FILTER (WHERE actual_cost_micros IS NOT NULL))::numeric AS total_actual_cost_micros,
+    (
+        SELECT total_actual_cost_micros
+        FROM (
+            SELECT NULL::bigint AS total_actual_cost_micros
+            WHERE NOT EXISTS (SELECT 1 FROM session_usage_events WHERE actual_cost_micros IS NOT NULL)
+            UNION ALL
+            SELECT SUM(actual_cost_micros)::bigint AS total_actual_cost_micros
+            FROM session_usage_events
+            WHERE actual_cost_micros IS NOT NULL
+        ) actual_cost_summary
+        LIMIT 1
+    ) AS total_actual_cost_micros,
     (SUM(audio_duration_seconds) FILTER (WHERE event_type = 'transcription'))::numeric AS transcription_audio_duration_seconds,
-    (SUM(billable_duration_seconds) FILTER (WHERE event_type = 'transcription'))::numeric AS transcription_billable_duration_seconds,
+    (
+        SELECT transcription_billable_duration_seconds
+        FROM (
+            SELECT NULL::bigint AS transcription_billable_duration_seconds
+            WHERE NOT EXISTS (SELECT 1 FROM session_usage_events WHERE event_type = 'transcription' AND billable_duration_seconds IS NOT NULL)
+            UNION ALL
+            SELECT SUM(billable_duration_seconds)::bigint AS transcription_billable_duration_seconds
+            FROM session_usage_events
+            WHERE event_type = 'transcription' AND billable_duration_seconds IS NOT NULL
+        ) billable_duration_summary
+        LIMIT 1
+    ) AS transcription_billable_duration_seconds,
     COALESCE(SUM(estimated_cost_micros) FILTER (WHERE event_type = 'transcription'), 0)::bigint AS transcription_estimated_cost_micros,
-    (SUM(actual_cost_micros) FILTER (WHERE event_type = 'transcription' AND actual_cost_micros IS NOT NULL))::numeric AS transcription_actual_cost_micros,
+    (
+        SELECT transcription_actual_cost_micros
+        FROM (
+            SELECT NULL::bigint AS transcription_actual_cost_micros
+            WHERE NOT EXISTS (SELECT 1 FROM session_usage_events WHERE event_type = 'transcription' AND actual_cost_micros IS NOT NULL)
+            UNION ALL
+            SELECT SUM(actual_cost_micros)::bigint AS transcription_actual_cost_micros
+            FROM session_usage_events
+            WHERE event_type = 'transcription' AND actual_cost_micros IS NOT NULL
+        ) transcription_actual_cost_summary
+        LIMIT 1
+    ) AS transcription_actual_cost_micros,
     CASE WHEN COUNT(DISTINCT provider) FILTER (WHERE event_type = 'transcription') = 1 THEN MIN(provider) FILTER (WHERE event_type = 'transcription')
          WHEN COUNT(*) FILTER (WHERE event_type = 'transcription') > 1 THEN 'multiple'
          ELSE NULL END AS transcription_provider,
@@ -39,7 +77,18 @@ SELECT
     COALESCE(SUM(output_tokens) FILTER (WHERE event_type = 'llm'), 0)::bigint AS llm_output_tokens,
     COALESCE(SUM(total_tokens) FILTER (WHERE event_type = 'llm'), 0)::bigint AS llm_total_tokens,
     COALESCE(SUM(estimated_cost_micros) FILTER (WHERE event_type = 'llm'), 0)::bigint AS llm_estimated_cost_micros,
-    (SUM(actual_cost_micros) FILTER (WHERE event_type = 'llm' AND actual_cost_micros IS NOT NULL))::numeric AS llm_actual_cost_micros,
+    (
+        SELECT llm_actual_cost_micros
+        FROM (
+            SELECT NULL::bigint AS llm_actual_cost_micros
+            WHERE NOT EXISTS (SELECT 1 FROM session_usage_events WHERE event_type = 'llm' AND actual_cost_micros IS NOT NULL)
+            UNION ALL
+            SELECT SUM(actual_cost_micros)::bigint AS llm_actual_cost_micros
+            FROM session_usage_events
+            WHERE event_type = 'llm' AND actual_cost_micros IS NOT NULL
+        ) llm_actual_cost_summary
+        LIMIT 1
+    ) AS llm_actual_cost_micros,
     CASE WHEN COUNT(DISTINCT provider) FILTER (WHERE event_type = 'llm') = 1 THEN MIN(provider) FILTER (WHERE event_type = 'llm')
          WHEN COUNT(*) FILTER (WHERE event_type = 'llm') > 1 THEN 'multiple'
          ELSE NULL END AS llm_provider,
@@ -52,5 +101,4 @@ SELECT
          THEN MIN(model_id) FILTER (WHERE event_type = 'llm')
          ELSE NULL END AS llm_model_id,
     COUNT(*) FILTER (WHERE actual_cost_micros IS NOT NULL)::int AS actual_event_count
-FROM scribe_usage_events
-WHERE session_id = $1;
+FROM session_usage_events;
