@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useMatch, useNavigate } from "react-router-dom";
 import { Download, Upload } from "lucide-react";
 import {
   useAddFeedback,
@@ -50,6 +51,7 @@ function DesktopScribe() {
   const { data: sessions = [], isLoading: sessionsLoading } = useScribeSessions();
   const { user } = useAuth();
   const canApprove = user?.role === "physician";
+  const navigate = useNavigate();
 
   const approveMut = useApproveSection();
   const revokeMut = useRevokeSection();
@@ -58,7 +60,8 @@ function DesktopScribe() {
   const editMut = useEditSection();
   const addFeedbackMut = useAddFeedback();
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const sessionMatch = useMatch("/scribe/sessions/:sessionId");
+  const selectedId = sessionMatch?.params.sessionId ?? null;
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ListFilter>("all");
   const [dateRange, setDateRange] = useState("today");
@@ -66,13 +69,14 @@ function DesktopScribe() {
   const [notesDefaultSection, setNotesDefaultSection] = useState<SectionKey | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
 
-  // Auto-select the first session when the list loads.
+  // Auto-select the first session when the list loads and nothing is in the URL.
   useEffect(() => {
+    if (selectedId) return;
     const first = sessions[0];
-    if (!selectedId && first) {
-      setSelectedId(first.id);
+    if (first) {
+      navigate(`/scribe/sessions/${first.id}`, { replace: true });
     }
-  }, [sessions, selectedId]);
+  }, [sessions, selectedId, navigate]);
 
   // Poll the selected session more aggressively while it's in-flight.
   const { data: selectedDetail, isLoading: detailLoading } =
@@ -116,7 +120,7 @@ function DesktopScribe() {
   const { data: notes = [] } = useSessionFeedback(selectedId ?? "");
 
   const handleSelect = (id: string) => {
-    setSelectedId(id);
+    navigate(`/scribe/sessions/${id}`);
     setNotesOpen(false);
     setNotesDefaultSection(null);
   };
@@ -248,7 +252,7 @@ function DesktopScribe() {
       <UploadModal
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
-        onCreated={(id) => setSelectedId(id)}
+        onCreated={(id) => navigate(`/scribe/sessions/${id}`)}
       />
 
       {sessionsLoading && sessions.length === 0 ? null : null}

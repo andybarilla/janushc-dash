@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { useLocation, useMatch, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import {
   useAddFeedback,
@@ -22,7 +23,19 @@ import { MFeedbackSheet } from "./feedback-sheet";
 import { MRecordView } from "./record-view";
 import type { MobileFilter } from "./filter-row";
 
-type View = "home" | "record" | "inbox" | "detail";
+const FILTER_VALUES: readonly MobileFilter[] = [
+  "all",
+  "ready",
+  "in_pipeline",
+  "sent",
+  "attention",
+];
+
+function parseFilter(value: string | null): MobileFilter {
+  return FILTER_VALUES.includes(value as MobileFilter)
+    ? (value as MobileFilter)
+    : "all";
+}
 
 const EMPTY_APPROVALS: Approvals = {
   hpi: false,
@@ -38,9 +51,22 @@ export function MobileScribe() {
   const canApprove = user?.role === "physician";
   const { data: sessions = [], isLoading } = useScribeSessions();
 
-  const [view, setView] = useState<View>("home");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [filter, setFilter] = useState<MobileFilter>("all");
+  const navigate = useNavigate();
+  const location = useLocation();
+  const recordMatch = useMatch("/scribe/record");
+  const inboxMatch = useMatch("/scribe/inbox");
+  const detailMatch = useMatch("/scribe/sessions/:sessionId");
+  const selectedId = detailMatch?.params.sessionId ?? null;
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filter = parseFilter(searchParams.get("filter"));
+  const setFilter = (f: MobileFilter) => {
+    const next = new URLSearchParams(searchParams);
+    if (f === "all") next.delete("filter");
+    else next.set("filter", f);
+    setSearchParams(next, { replace: true });
+  };
+
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetTarget, setSheetTarget] = useState<NoteTarget | null>(null);
   const inboxScrollRef = useRef(0);
@@ -86,7 +112,21 @@ export function MobileScribe() {
     sendMut.mutate({ sessionId: selectedId });
   };
 
+  // location.key === "default" means this is the first entry in history (deep link
+  // or refresh). In that case, in-page "back" should jump to a sensible parent
+  // instead of bouncing to login.
+  const isFreshLanding = location.key === "default";
+  const backTo = (fallback: string) => {
+    if (isFreshLanding) navigate(fallback);
+    else navigate(-1);
+  };
+
   const providerName = user?.name?.trim() || "Provider";
+
+  let view: "home" | "record" | "inbox" | "detail" = "home";
+  if (detailMatch) view = "detail";
+  else if (recordMatch) view = "record";
+  else if (inboxMatch) view = "inbox";
 
   return (
     <div className="m-app m-overlay janus-scope">
@@ -97,21 +137,18 @@ export function MobileScribe() {
           <MHomeView
             sessions={sessions}
             providerName={providerName}
-            onRecord={() => setView("record")}
+            onRecord={() => navigate("/scribe/record")}
             onOpenInbox={(f) => {
-              setFilter(f);
-              setView("inbox");
+              const search = f === "all" ? "" : `?filter=${f}`;
+              navigate(`/scribe/inbox${search}`);
             }}
-            onOpenEncounter={(id) => {
-              setSelectedId(id);
-              setView("detail");
-            }}
+            onOpenEncounter={(id) => navigate(`/scribe/sessions/${id}`)}
           />
         )
       ) : view === "record" ? (
         <MRecordView
-          onBack={() => setView("home")}
-          onSaved={() => setView("home")}
+          onBack={() => backTo("/scribe")}
+          onSaved={() => navigate("/scribe")}
         />
       ) : view === "inbox" ? (
         isLoading && sessions.length === 0 ? (
@@ -123,11 +160,8 @@ export function MobileScribe() {
             filter={filter}
             onFilter={setFilter}
             scrollRef={inboxScrollRef}
-            onBack={() => setView("home")}
-            onSelect={(id) => {
-              setSelectedId(id);
-              setView("detail");
-            }}
+            onBack={() => backTo("/scribe")}
+            onSelect={(id) => navigate(`/scribe/sessions/${id}`)}
           />
         )
       ) : (
@@ -138,7 +172,7 @@ export function MobileScribe() {
           notes={notes}
           loading={!!selectedId && detailLoading && !selectedDetail}
           canApprove={canApprove}
-          onBack={() => setView("inbox")}
+          onBack={() => backTo("/scribe/inbox")}
           onApprove={handleApprove}
           onApproveAll={handleApproveAll}
           onSend={handleSend}

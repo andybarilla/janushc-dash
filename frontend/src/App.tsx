@@ -62,7 +62,7 @@ export default function App(): ReactElement {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route element={<AuthenticatedLayout />}>
-          <Route path="/scribe" element={<ScribePage />} />
+          <Route path="/scribe/*" element={<ScribePage />} />
           <Route
             path="/team"
             element={
