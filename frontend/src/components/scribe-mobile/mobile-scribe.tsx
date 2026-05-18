@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import {
   useAddFeedback,
@@ -41,6 +41,7 @@ export function MobileScribe() {
   const [filter, setFilter] = useState<MobileFilter>("all");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetTarget, setSheetTarget] = useState<NoteTarget | null>(null);
+  const inboxScrollRef = useRef(0);
 
   const { data: selectedDetail, isLoading: detailLoading } = useScribeSession(
     selectedId ?? "",
@@ -94,6 +95,7 @@ export function MobileScribe() {
             selectedId={selectedId}
             filter={filter}
             onFilter={setFilter}
+            scrollRef={inboxScrollRef}
             onSelect={(id) => {
               setSelectedId(id);
               setView("detail");

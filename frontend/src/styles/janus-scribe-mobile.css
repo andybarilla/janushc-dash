@@ -32,7 +32,7 @@
 .m-topbar {
   background: var(--janus-white);
   border-bottom: 1px solid var(--janus-border);
-  padding: 50px 16px 12px;   /* top pad clears the dynamic island */
+  padding: max(50px, calc(env(safe-area-inset-top) + 12px)) 16px 12px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -125,7 +125,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 50px 8px 12px;
+  padding: max(50px, calc(env(safe-area-inset-top) + 12px)) 8px 12px;
   background: var(--janus-white);
   border-bottom: 1px solid var(--janus-border);
   flex-shrink: 0;
@@ -791,7 +791,7 @@
 .m-bottom-bar {
   background: var(--janus-white);
   border-top: 1px solid var(--janus-border);
-  padding: 12px 16px 28px;   /* extra bottom pad clears home indicator */
+  padding: 12px 16px max(28px, calc(env(safe-area-inset-bottom) + 12px));
   display: flex;
   align-items: center;
   gap: 10px;
@@ -972,7 +972,7 @@
 .m-composer {
   border-top: 1px solid var(--janus-border);
   background: var(--janus-bg-light);
-  padding: 12px 16px 18px;
+  padding: 12px 16px max(18px, calc(env(safe-area-inset-bottom) + 8px));
 }
 .m-cat-row {
   display: flex;

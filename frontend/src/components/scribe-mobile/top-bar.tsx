@@ -1,5 +1,22 @@
 import type { ReactNode } from "react";
-import { Bell, ChevronLeft, MoreHorizontal, Search } from "lucide-react";
+import {
+  Bell,
+  ChevronLeft,
+  LogOut,
+  MoreHorizontal,
+  Moon,
+  Search,
+  Sun,
+} from "lucide-react";
+import { useAuth } from "@/lib/auth";
+import { useTheme } from "@/lib/theme";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface BaseProps {
   right?: ReactNode;
@@ -35,10 +52,12 @@ export function MInboxTopBar({ right, hasAlert }: BaseProps & { hasAlert?: boole
 interface DetailTopBarProps {
   title: string;
   onBack: () => void;
-  onMore?: () => void;
 }
 
-export function MDetailTopBar({ title, onBack, onMore }: DetailTopBarProps) {
+export function MDetailTopBar({ title, onBack }: DetailTopBarProps) {
+  const { logout } = useAuth();
+  const { theme, toggle: toggleTheme } = useTheme();
+
   return (
     <div className="m-detail-topbar">
       <button type="button" className="m-back" onClick={onBack}>
@@ -48,14 +67,28 @@ export function MDetailTopBar({ title, onBack, onMore }: DetailTopBarProps) {
       <div className="title" title={title}>
         {title}
       </div>
-      <button
-        type="button"
-        className="m-icon-btn"
-        aria-label="More actions"
-        onClick={onMore}
-      >
-        <MoreHorizontal />
-      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button type="button" className="m-icon-btn" aria-label="More actions">
+            <MoreHorizontal />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56 z-[200]">
+          <DropdownMenuItem onClick={toggleTheme}>
+            {theme === "dark" ? (
+              <Sun className="mr-2 h-4 w-4" />
+            ) : (
+              <Moon className="mr-2 h-4 w-4" />
+            )}
+            {theme === "dark" ? "Light mode" : "Dark mode"}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={logout}>
+            <LogOut className="mr-2 h-4 w-4" />
+            Sign out
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

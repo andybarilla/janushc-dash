@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, type MutableRefObject } from "react";
 import { Inbox } from "lucide-react";
 import type { ScribeSession } from "@/lib/scribe-queries";
 import { deriveStatusId, isInPipeline, wordCount } from "@/components/scribe/status";
@@ -19,6 +19,7 @@ interface Props {
   filter: MobileFilter;
   onFilter: (f: MobileFilter) => void;
   onSelect: (id: string) => void;
+  scrollRef?: MutableRefObject<number>;
 }
 
 function matches(statusId: StatusId, filter: MobileFilter): boolean {
@@ -30,7 +31,31 @@ function matches(statusId: StatusId, filter: MobileFilter): boolean {
   return true;
 }
 
-export function MInboxView({ sessions, selectedId, filter, onFilter, onSelect }: Props) {
+export function MInboxView({
+  sessions,
+  selectedId,
+  filter,
+  onFilter,
+  onSelect,
+  scrollRef,
+}: Props) {
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (!scrollRef || !bodyRef.current) return;
+    bodyRef.current.scrollTop = scrollRef.current;
+  }, [scrollRef]);
+
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el || !scrollRef) return;
+    const onScroll = () => {
+      scrollRef.current = el.scrollTop;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [scrollRef]);
+
   const entries: Entry[] = useMemo(
     () => sessions.map((s) => ({ session: s, statusId: deriveStatusId(s) })),
     [sessions],
@@ -61,7 +86,7 @@ export function MInboxView({ sessions, selectedId, filter, onFilter, onSelect }:
   return (
     <>
       <MInboxTopBar hasAlert={hasAlert} />
-      <div className="m-body">
+      <div className="m-body" ref={bodyRef}>
         <MStatsRow stats={stats} />
         <MFilterRow value={filter} onChange={onFilter} counts={counts} />
         <div className="m-list-meta">
