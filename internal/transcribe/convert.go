@@ -35,9 +35,11 @@ func ValidateAudioExtension(ext string) error {
 // ConvertToFLAC converts audio from any supported format to FLAC via ffmpeg.
 // Reads from src and returns a reader of FLAC-encoded audio at 16kHz mono.
 // The context is used to kill the ffmpeg process on cancellation/timeout.
-// The caller must call the returned cleanup function when done reading.
-func ConvertToFLAC(ctx context.Context, src io.Reader) (io.ReadCloser, func(), error) {
-	var stderr bytes.Buffer
+// The caller must call the returned cleanup function when done reading; the
+// returned error wraps ffmpeg's exit error with its stderr output for
+// diagnosis (e.g., unrecognized input format).
+func ConvertToFLAC(ctx context.Context, src io.Reader) (io.ReadCloser, func() error, error) {
+	stderr := &bytes.Buffer{}
 	cmd := exec.CommandContext(ctx, "ffmpeg",
 		"-i", "pipe:0",
 		"-f", "flac",
@@ -47,7 +49,7 @@ func ConvertToFLAC(ctx context.Context, src io.Reader) (io.ReadCloser, func(), e
 		"pipe:1",
 	)
 	cmd.Stdin = src
-	cmd.Stderr = &stderr
+	cmd.Stderr = stderr
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -58,11 +60,12 @@ func ConvertToFLAC(ctx context.Context, src io.Reader) (io.ReadCloser, func(), e
 		return nil, nil, fmt.Errorf("start ffmpeg: %w", err)
 	}
 
-	cleanup := func() {
+	cleanup := func() error {
 		stdout.Close()
 		if err := cmd.Wait(); err != nil {
-			fmt.Fprintf(&stderr, "ffmpeg exit: %v", err)
+			return fmt.Errorf("ffmpeg exit: %w (stderr: %s)", err, strings.TrimSpace(stderr.String()))
 		}
+		return nil
 	}
 
 	return stdout, cleanup, nil

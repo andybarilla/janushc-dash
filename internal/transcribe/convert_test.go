@@ -41,7 +41,9 @@ func TestConvertToFLACProducesTranscribeCompatibleAudio(t *testing.T) {
 		t.Fatalf("ConvertToFLAC: %v", err)
 	}
 	flacData, readErr := io.ReadAll(flacReader)
-	cleanup()
+	if cleanupErr := cleanup(); cleanupErr != nil {
+		t.Fatalf("ConvertToFLAC cleanup: %v", cleanupErr)
+	}
 	if readErr != nil {
 		t.Fatalf("read converted FLAC: %v", readErr)
 	}

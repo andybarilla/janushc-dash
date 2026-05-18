@@ -156,28 +156,30 @@ func (h *Handler) removeExistingSessionAudio(tenantID, sessionID string) error {
 	return nil
 }
 
-func (h *Handler) saveSessionAudio(file multipart.File, tenantID, sessionID, ext string) error {
+func (h *Handler) saveSessionAudio(file multipart.File, tenantID, sessionID, ext string) (int64, error) {
 	if err := os.MkdirAll(filepath.Join(h.audioBaseDir(), tenantID), 0o750); err != nil {
-		return err
+		return 0, err
 	}
 	if err := h.removeExistingSessionAudio(tenantID, sessionID); err != nil {
-		return err
+		return 0, err
 	}
 
 	out, err := os.OpenFile(h.sessionAudioPath(tenantID, sessionID, ext), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	_, copyErr := io.Copy(out, file)
+	written, copyErr := io.Copy(out, file)
 	closeErr := out.Close()
 	if copyErr != nil {
-		return copyErr
+		return written, copyErr
 	}
 	if closeErr != nil {
-		return closeErr
+		return written, closeErr
 	}
-	_, err = file.Seek(0, io.SeekStart)
-	return err
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return written, err
+	}
+	return written, nil
 }
 
 func (h *Handler) findSessionAudioPath(tenantID, sessionID string) (string, error) {
@@ -754,11 +756,13 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
-	if err := h.saveSessionAudio(file, claims.TenantID, sessionID, ext); err != nil {
+	audioBytes, err := h.saveSessionAudio(file, claims.TenantID, sessionID, ext)
+	if err != nil {
 		log.Printf("scribe audio save error for session %s: %v", sessionID, err)
 		http.Error(w, "failed to save audio", http.StatusInternalServerError)
 		return
 	}
+	log.Printf("scribe audio saved for session %s: %d bytes (ext=%s)", sessionID, audioBytes, ext)
 
 	// Convert to FLAC via ffmpeg
 	flacReader, cleanup, err := transcribe.ConvertToFLAC(r.Context(), file)
@@ -767,13 +771,19 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to convert audio", http.StatusInternalServerError)
 		return
 	}
-	defer cleanup()
 
 	// Transcribe the audio
 	transcript, err := h.transcriber.Transcribe(r.Context(), &transcribe.AudioInput{
 		Reader:     flacReader,
 		SampleRate: transcribe.DefaultSampleRate(),
 	})
+	// ffmpeg has exited by the time Transcribe returns (stdout EOF). Capture
+	// its exit error now so we can report it as the root cause when the
+	// transcript came back empty or transcription itself failed.
+	ffmpegErr := cleanup()
+	if ffmpegErr != nil {
+		log.Printf("scribe ffmpeg error for session %s: %v", sessionID, ffmpegErr)
+	}
 	if err != nil {
 		log.Printf("scribe transcription error for session %s: %v", sessionID, err)
 		_ = h.queries.UpdateScribeSessionError(r.Context(), database.UpdateScribeSessionErrorParams{
@@ -786,13 +796,17 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if transcript == "" {
-		log.Printf("scribe transcription empty result for session %s", sessionID)
+		errMsg := "transcription returned empty result"
+		if ffmpegErr != nil {
+			errMsg = fmt.Sprintf("audio conversion failed: %v", ffmpegErr)
+		}
+		log.Printf("scribe transcription empty result for session %s (%d bytes uploaded)", sessionID, audioBytes)
 		_ = h.queries.UpdateScribeSessionError(r.Context(), database.UpdateScribeSessionErrorParams{
 			ID:           sessionUUID,
 			TenantID:     tenantUUID,
-			ErrorMessage: pgtype.Text{String: "transcription returned empty result", Valid: true},
+			ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
 		})
-		http.Error(w, "transcription returned empty result", http.StatusInternalServerError)
+		http.Error(w, errMsg, http.StatusInternalServerError)
 		return
 	}
 

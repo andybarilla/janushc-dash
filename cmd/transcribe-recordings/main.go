@@ -207,7 +207,11 @@ func transcribeFile(client transcribe.Transcriber, path string, timeout time.Dur
 	if err != nil {
 		return "", fmt.Errorf("convert to FLAC: %w", err)
 	}
-	defer cleanup()
+	defer func() {
+		if cleanupErr := cleanup(); cleanupErr != nil {
+			log.Printf("ffmpeg cleanup error for %s: %v", path, cleanupErr)
+		}
+	}()
 
 	transcript, err := client.Transcribe(ctx, &transcribe.AudioInput{
 		Reader:     flacReader,
