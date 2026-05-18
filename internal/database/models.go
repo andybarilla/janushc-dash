@@ -120,6 +120,29 @@ type ScribeSession struct {
 	RejectedBy   pgtype.UUID        `json:"rejected_by"`
 }
 
+type ScribeUsageEvent struct {
+	ID                      pgtype.UUID        `json:"id"`
+	SessionID               pgtype.UUID        `json:"session_id"`
+	EventType               string             `json:"event_type"`
+	Provider                string             `json:"provider"`
+	Operation               string             `json:"operation"`
+	ModelID                 pgtype.Text        `json:"model_id"`
+	ExternalJobID           pgtype.Text        `json:"external_job_id"`
+	AudioDurationSeconds    pgtype.Numeric     `json:"audio_duration_seconds"`
+	BillableDurationSeconds pgtype.Int4        `json:"billable_duration_seconds"`
+	InputTokens             pgtype.Int4        `json:"input_tokens"`
+	OutputTokens            pgtype.Int4        `json:"output_tokens"`
+	TotalTokens             pgtype.Int4        `json:"total_tokens"`
+	EstimatedCostMicros     int64              `json:"estimated_cost_micros"`
+	ActualCostMicros        pgtype.Int8        `json:"actual_cost_micros"`
+	Currency                string             `json:"currency"`
+	PricingSource           string             `json:"pricing_source"`
+	RateSnapshot            []byte             `json:"rate_snapshot"`
+	Metadata                []byte             `json:"metadata"`
+	CreatedAt               pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Tenant struct {
 	ID                    pgtype.UUID        `json:"id"`
 	Name                  string             `json:"name"`
