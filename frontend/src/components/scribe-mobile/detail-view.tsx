@@ -8,6 +8,7 @@ import type {
   StatusId,
 } from "@/components/scribe/types";
 import { isInPipeline } from "@/components/scribe/status";
+import { UsageCostCard } from "@/components/scribe/usage-cost-card";
 import {
   ExamBody,
   HpiBody,
@@ -105,6 +106,8 @@ export function MDetailView({
           <MAudioStrip sessionId={session.id} available={session.audio_available} />
         ) : null}
         {inPipeline ? <MPipelineTracker statusId={statusId} /> : null}
+
+        <UsageCostCard usage={session.usage} status={session.status} inPipeline={inPipeline} />
 
         {isRejected ? <MRejectedBanner /> : null}
         {isFailed ? (

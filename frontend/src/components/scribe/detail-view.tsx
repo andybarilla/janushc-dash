@@ -30,6 +30,7 @@ import { PipelineProgress } from "./pipeline-progress";
 import { SectionCard } from "./section-card";
 import { LabsTable, PlanBody } from "./section-bodies";
 import { TranscriptCard } from "./transcript-card";
+import { UsageCostCard } from "./usage-cost-card";
 import { fmtRelative } from "./format";
 
 interface Props {
@@ -178,6 +179,8 @@ export function DetailView({
         ) : null}
         {inPipeline ? <PipelineProgress status={status} /> : null}
       </div>
+
+      <UsageCostCard usage={session.usage} status={session.status} inPipeline={inPipeline} />
 
       {isRejected ? (
         <div className="janus-failure-banner">

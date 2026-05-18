@@ -717,6 +717,100 @@
   50%      { box-shadow: 0 0 0 8px rgba(44, 95, 125, 0.04); }
 }
 
+.janus-usage-card {
+  margin: 16px 28px 0;
+  padding: 16px;
+  background: var(--janus-white);
+  border: 1px solid var(--janus-border);
+  border-radius: var(--janus-radius-card);
+  box-shadow: var(--janus-shadow-sm);
+}
+.janus-usage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.janus-usage-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--janus-text-dark);
+}
+.janus-usage-basis {
+  padding: 3px 8px;
+  border-radius: var(--janus-radius-pill);
+  background: var(--janus-bg-light);
+  color: var(--janus-text-light);
+  font-size: 11px;
+  font-weight: 600;
+}
+.janus-usage-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.janus-usage-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  background: var(--janus-bg-light);
+  border-radius: 10px;
+}
+.janus-usage-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.janus-usage-row-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--janus-text-dark);
+}
+.janus-usage-row-detail {
+  font-size: 12px;
+  color: var(--janus-text-dark);
+}
+.janus-usage-row-meta {
+  font-size: 11px;
+  color: var(--janus-text-light);
+}
+.janus-usage-row-cost {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--janus-primary);
+  font-variant-numeric: tabular-nums;
+}
+.janus-usage-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--janus-border);
+}
+.janus-usage-total-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--janus-text-dark);
+}
+.janus-usage-total-cost {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--janus-primary);
+  font-variant-numeric: tabular-nums;
+}
+.janus-usage-placeholder {
+  margin: 0;
+  color: var(--janus-text-light);
+  font-size: 13px;
+}
+
 /* Detail body — scrollable */
 .janus-detail-body {
   flex: 1;
