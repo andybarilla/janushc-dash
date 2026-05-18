@@ -11,6 +11,39 @@ import type {
 
 export type SectionState = "pending" | "approved" | "stale";
 
+export type CostBasis = "estimated" | "actual" | "mixed";
+
+export interface TranscriptionUsage {
+  provider: string;
+  operation: string;
+  audio_duration_seconds?: number;
+  billable_duration_seconds?: number;
+  estimated_cost_micros: number;
+  actual_cost_micros?: number;
+  currency: string;
+}
+
+export interface LLMUsage {
+  provider: string;
+  operation: string;
+  model_id?: string;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  estimated_cost_micros: number;
+  actual_cost_micros?: number;
+  currency: string;
+}
+
+export interface ScribeUsageSummary {
+  transcription?: TranscriptionUsage;
+  llm?: LLMUsage;
+  total_estimated_cost_micros: number;
+  total_actual_cost_micros?: number;
+  currency: string;
+  cost_basis: CostBasis;
+}
+
 export interface SectionStateData {
   state: SectionState;
   content: SectionContent;
@@ -45,6 +78,7 @@ export interface ScribeSessionDetail extends ScribeSession {
   audio_available: boolean;
   sent_to_ehr_at?: string;
   rejected_at?: string;
+  usage?: ScribeUsageSummary;
 }
 
 interface CreateSessionRequest {
