@@ -137,7 +137,7 @@ func (p *Processor) Process(ctx context.Context, practiceID, patientID, transcri
 
 	output, err := parseAIOutput(completionResult.Text)
 	if err != nil {
-		message := fmt.Sprintf("parse output: %v (raw: %s)", err, completionResult.Text)
+		message := fmt.Sprintf("parse output: %v", err)
 		return ProcessResult{Usage: usage}, &ProcessError{Message: message, Usage: usage, Err: err}
 	}
 

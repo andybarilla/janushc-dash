@@ -105,9 +105,10 @@ func TestProcessorReturnsOutputAndUsage(t *testing.T) {
 }
 
 func TestProcessorParseErrorExposesUsage(t *testing.T) {
+	rawOutput := `not json with patient says chest pain`
 	processor := &Processor{
 		bedrock: fakeCompletionClient{result: bedrock.CompletionResult{
-			Text:         `not json`,
+			Text:         rawOutput,
 			ModelID:      "anthropic.claude-test",
 			InputTokens:  12,
 			OutputTokens: 8,
@@ -129,8 +130,11 @@ func TestProcessorParseErrorExposesUsage(t *testing.T) {
 	if processErr.Usage.TotalTokens != 20 {
 		t.Fatalf("unexpected error usage: %+v", processErr.Usage)
 	}
-	if !contains(processErr.Error(), "raw: not json") {
-		t.Fatalf("expected raw output in error, got: %s", processErr.Error())
+	if !contains(processErr.Error(), "parse output:") {
+		t.Fatalf("expected sanitized parse error, got: %s", processErr.Error())
+	}
+	if contains(processErr.Error(), rawOutput) || contains(processErr.Error(), "chest pain") {
+		t.Fatalf("expected raw output omitted from error, got: %s", processErr.Error())
 	}
 }
 
