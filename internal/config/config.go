@@ -8,6 +8,8 @@ import (
 	"github.com/joho/godotenv"
 )
 
+const defaultBedrockModelID = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
 type Config struct {
 	Port                string
 	DatabaseURL         string
@@ -61,7 +63,7 @@ func Load() (*Config, error) {
 		AthenaBaseURL:       getEnv("ATHENA_BASE_URL", "https://api.preview.platform.athenahealth.com"),
 		AthenaPracticeID:    getEnv("ATHENA_PRACTICE_ID", "195900"),
 		AWSRegion:           getEnv("AWS_REGION", "us-east-1"),
-		BedrockModelID:      getEnv("AWS_BEDROCK_MODEL_ID", "anthropic.claude-sonnet-4-20250514"),
+		BedrockModelID:      getEnv("AWS_BEDROCK_MODEL_ID", defaultBedrockModelID),
 		GoogleClientID:      getEnv("GOOGLE_CLIENT_ID", ""),
 		GoogleAllowedDomain: getEnv("GOOGLE_ALLOWED_DOMAIN", "janushc.com"),
 		ScribeAudioDir:      getEnv("SCRIBE_AUDIO_DIR", "tmp/scribe-audio"),

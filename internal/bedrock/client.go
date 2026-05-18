@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
@@ -11,16 +12,23 @@ import (
 
 type Client struct {
 	runtime *bedrockruntime.Client
+	region  string
 	modelID string
 }
 
 func NewClient(ctx context.Context, region, modelID string) (*Client, error) {
+	modelID = strings.TrimSpace(modelID)
+	if modelID == "" {
+		return nil, fmt.Errorf("bedrock model ID is empty; set AWS_BEDROCK_MODEL_ID")
+	}
+
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	if err != nil {
 		return nil, fmt.Errorf("load AWS config: %w", err)
 	}
 	return &Client{
 		runtime: bedrockruntime.NewFromConfig(cfg),
+		region:  region,
 		modelID: modelID,
 	}, nil
 }
@@ -47,7 +55,7 @@ func (c *Client) Complete(ctx context.Context, systemPrompt, userPrompt string, 
 		ContentType: &contentType,
 	})
 	if err != nil {
-		return "", fmt.Errorf("invoke model: %w", err)
+		return "", fmt.Errorf("invoke model %q in region %q: %w", c.modelID, c.region, err)
 	}
 
 	var result struct {
