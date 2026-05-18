@@ -24,6 +24,7 @@ type Config struct {
 	GoogleClientID      string
 	GoogleAllowedDomain string
 	ScribeAudioDir      string
+	AWSTranscribeBucket string
 }
 
 func Load() (*Config, error) {
@@ -64,6 +65,7 @@ func Load() (*Config, error) {
 		GoogleClientID:      getEnv("GOOGLE_CLIENT_ID", ""),
 		GoogleAllowedDomain: getEnv("GOOGLE_ALLOWED_DOMAIN", "janushc.com"),
 		ScribeAudioDir:      getEnv("SCRIBE_AUDIO_DIR", "tmp/scribe-audio"),
+		AWSTranscribeBucket: getEnv("AWS_TRANSCRIBE_BUCKET", ""),
 	}, nil
 }
 

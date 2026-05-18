@@ -1,6 +1,7 @@
 package scribe
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -22,14 +24,14 @@ import (
 )
 
 type Handler struct {
-	queries     *database.Queries
-	processor   *Processor
-	cfg         *config.Config
-	transcriber transcribe.Transcriber
+	queries   *database.Queries
+	processor *Processor
+	cfg       *config.Config
+	batch     *transcribe.BatchClient
 }
 
-func NewHandler(queries *database.Queries, processor *Processor, cfg *config.Config, transcriber transcribe.Transcriber) *Handler {
-	return &Handler{queries: queries, processor: processor, cfg: cfg, transcriber: transcriber}
+func NewHandler(queries *database.Queries, processor *Processor, cfg *config.Config, batch *transcribe.BatchClient) *Handler {
+	return &Handler{queries: queries, processor: processor, cfg: cfg, batch: batch}
 }
 
 const maxUploadSize = 100 << 20 // 100 MB
@@ -764,100 +766,144 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("scribe audio saved for session %s: %d bytes (ext=%s)", sessionID, audioBytes, ext)
 
-	// Convert to FLAC via ffmpeg
-	flacReader, cleanup, err := transcribe.ConvertToFLAC(r.Context(), file)
-	if err != nil {
-		log.Printf("scribe audio conversion error for session %s: %v", sessionID, err)
-		http.Error(w, "failed to convert audio", http.StatusInternalServerError)
-		return
-	}
-
-	// Transcribe the audio
-	transcript, err := h.transcriber.Transcribe(r.Context(), &transcribe.AudioInput{
-		Reader:     flacReader,
-		SampleRate: transcribe.DefaultSampleRate(),
-	})
-	// ffmpeg has exited by the time Transcribe returns (stdout EOF). Capture
-	// its exit error now so we can report it as the root cause when the
-	// transcript came back empty or transcription itself failed.
-	ffmpegErr := cleanup()
-	if ffmpegErr != nil {
-		log.Printf("scribe ffmpeg error for session %s: %v", sessionID, ffmpegErr)
-	}
-	if err != nil {
-		log.Printf("scribe transcription error for session %s: %v", sessionID, err)
+	if h.batch == nil || h.cfg.AWSTranscribeBucket == "" {
+		log.Printf("scribe batch not configured for session %s", sessionID)
 		_ = h.queries.UpdateScribeSessionError(r.Context(), database.UpdateScribeSessionErrorParams{
 			ID:           sessionUUID,
 			TenantID:     tenantUUID,
-			ErrorMessage: pgtype.Text{String: fmt.Sprintf("transcription failed: %v", err), Valid: true},
+			ErrorMessage: pgtype.Text{String: "batch transcription not configured (set AWS_TRANSCRIBE_BUCKET)", Valid: true},
 		})
-		http.Error(w, "transcription failed", http.StatusInternalServerError)
+		http.Error(w, "batch transcription not configured", http.StatusInternalServerError)
 		return
 	}
 
+	audioPath := h.sessionAudioPath(claims.TenantID, sessionID, ext)
+	go h.processSessionAsync(claims.TenantID, sessionID, audioPath, ext, session.PatientID)
+
+	// Return current session state immediately. Frontend polls for updates as
+	// the batch job moves through the transcribing → extracting → complete
+	// states.
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	_ = json.NewEncoder(w).Encode(toSessionResponse(session))
+}
+
+// processSessionAsync runs the full transcription + extraction pipeline in the
+// background after the upload handler returns. Status is communicated to the
+// frontend via the scribe_sessions row.
+func (h *Handler) processSessionAsync(tenantID, sessionID, audioPath, ext, patientID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	sessionUUID := pgtype.UUID{}
+	if err := sessionUUID.Scan(sessionID); err != nil {
+		log.Printf("scribe async invalid session ID %s: %v", sessionID, err)
+		return
+	}
+	tenantUUID := pgtype.UUID{}
+	if err := tenantUUID.Scan(tenantID); err != nil {
+		log.Printf("scribe async invalid tenant %s: %v", tenantID, err)
+		return
+	}
+	setError := func(msg string) {
+		_ = h.queries.UpdateScribeSessionError(ctx, database.UpdateScribeSessionErrorParams{
+			ID:           sessionUUID,
+			TenantID:     tenantUUID,
+			ErrorMessage: pgtype.Text{String: msg, Valid: true},
+		})
+	}
+
+	format, err := transcribe.MediaFormatForExtension(ext)
+	if err != nil {
+		log.Printf("scribe async media format error for session %s: %v", sessionID, err)
+		setError(fmt.Sprintf("unsupported audio format: %v", err))
+		return
+	}
+
+	bucket := h.cfg.AWSTranscribeBucket
+	inputKey := fmt.Sprintf("input/%s%s", sessionID, ext)
+	outputKey := fmt.Sprintf("output/%s.json", sessionID)
+	jobName := "janushc-scribe-" + sessionID
+
+	log.Printf("scribe async [%s] uploading audio to s3://%s/%s", sessionID, bucket, inputKey)
+	if err := h.batch.UploadFile(ctx, bucket, inputKey, audioPath); err != nil {
+		log.Printf("scribe async [%s] s3 upload error: %v", sessionID, err)
+		setError(fmt.Sprintf("upload audio to S3 failed: %v", err))
+		return
+	}
+
+	log.Printf("scribe async [%s] starting medical batch job %s", sessionID, jobName)
+	if err := h.batch.StartMedicalBatchJob(ctx, transcribe.BatchJobOptions{
+		JobName:      jobName,
+		MediaURI:     fmt.Sprintf("s3://%s/%s", bucket, inputKey),
+		MediaFormat:  format,
+		OutputBucket: bucket,
+		OutputKey:    outputKey,
+	}); err != nil {
+		log.Printf("scribe async [%s] start job error: %v", sessionID, err)
+		setError(fmt.Sprintf("start transcription job failed: %v", err))
+		return
+	}
+
+	job, err := h.batch.WaitMedicalBatchJob(ctx, jobName, 5*time.Second)
+	if err != nil {
+		log.Printf("scribe async [%s] wait job error: %v", sessionID, err)
+		setError(fmt.Sprintf("transcription job failed: %v", err))
+		return
+	}
+	log.Printf("scribe async [%s] job %s completed", sessionID, jobName)
+
+	transcriptURI := ""
+	if job != nil && job.Transcript != nil && job.Transcript.TranscriptFileUri != nil {
+		transcriptURI = *job.Transcript.TranscriptFileUri
+	}
+	transcriptJSON, err := h.batch.DownloadTranscriptJSON(ctx, bucket, outputKey, transcriptURI)
+	if err != nil {
+		log.Printf("scribe async [%s] download transcript error: %v", sessionID, err)
+		setError(fmt.Sprintf("download transcript failed: %v", err))
+		return
+	}
+
+	transcript, err := transcribe.ExtractBatchTranscriptText(transcriptJSON)
+	if err != nil {
+		log.Printf("scribe async [%s] parse transcript error: %v", sessionID, err)
+		setError(fmt.Sprintf("parse transcript failed: %v", err))
+		return
+	}
 	if transcript == "" {
-		errMsg := "transcription returned empty result"
-		if ffmpegErr != nil {
-			errMsg = fmt.Sprintf("audio conversion failed: %v", ffmpegErr)
-		}
-		log.Printf("scribe transcription empty result for session %s (%d bytes uploaded)", sessionID, audioBytes)
-		_ = h.queries.UpdateScribeSessionError(r.Context(), database.UpdateScribeSessionErrorParams{
-			ID:           sessionUUID,
-			TenantID:     tenantUUID,
-			ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
-		})
-		http.Error(w, errMsg, http.StatusInternalServerError)
+		log.Printf("scribe async [%s] transcript empty", sessionID)
+		setError("transcription returned empty result")
 		return
 	}
 
-	// Store transcript and mark processing
-	err = h.queries.UpdateScribeSessionProcessing(r.Context(), database.UpdateScribeSessionProcessingParams{
+	if err := h.queries.UpdateScribeSessionProcessing(ctx, database.UpdateScribeSessionProcessingParams{
 		ID:         sessionUUID,
 		TenantID:   tenantUUID,
 		Transcript: pgtype.Text{String: transcript, Valid: true},
-	})
-	if err != nil {
-		http.Error(w, "failed to update session", http.StatusInternalServerError)
+	}); err != nil {
+		log.Printf("scribe async [%s] save transcript error: %v", sessionID, err)
+		setError(fmt.Sprintf("save transcript failed: %v", err))
 		return
 	}
 
-	// Run the AI pipeline
-	output, err := h.processor.Process(r.Context(), h.cfg.AthenaPracticeID, session.PatientID, transcript)
+	output, err := h.processor.Process(ctx, h.cfg.AthenaPracticeID, patientID, transcript)
 	if err != nil {
-		log.Printf("scribe process error for session %s: %v", sessionID, err)
-		_ = h.queries.UpdateScribeSessionError(r.Context(), database.UpdateScribeSessionErrorParams{
-			ID:           sessionUUID,
-			TenantID:     tenantUUID,
-			ErrorMessage: pgtype.Text{String: err.Error(), Valid: true},
-		})
-		http.Error(w, "processing failed", http.StatusInternalServerError)
+		log.Printf("scribe async [%s] AI process error: %v", sessionID, err)
+		setError(err.Error())
 		return
 	}
 
-	// Store AI output
 	outputJSON, _ := json.Marshal(output)
-	err = h.queries.UpdateScribeSessionComplete(r.Context(), database.UpdateScribeSessionCompleteParams{
+	if err := h.queries.UpdateScribeSessionComplete(ctx, database.UpdateScribeSessionCompleteParams{
 		ID:       sessionUUID,
 		TenantID: tenantUUID,
 		AiOutput: outputJSON,
-	})
-	if err != nil {
-		http.Error(w, "failed to save results", http.StatusInternalServerError)
+	}); err != nil {
+		log.Printf("scribe async [%s] save AI output error: %v", sessionID, err)
+		setError(fmt.Sprintf("save AI output failed: %v", err))
 		return
 	}
-
-	// Re-fetch session to return updated state
-	updated, err := h.queries.GetScribeSession(r.Context(), database.GetScribeSessionParams{
-		ID:       sessionUUID,
-		TenantID: tenantUUID,
-	})
-	if err != nil {
-		http.Error(w, "failed to fetch updated session", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(toSessionResponse(updated))
+	log.Printf("scribe async [%s] complete", sessionID)
 }
 
 func (h *Handler) HandleEditSection(w http.ResponseWriter, r *http.Request) {

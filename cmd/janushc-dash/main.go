@@ -134,15 +134,21 @@ func main() {
 		log.Fatalf("failed to create bedrock client: %v", err)
 	}
 
-	// Create transcribe client
-	transcribeClient, err := transcribe.NewClient(context.Background(), cfg.AWSRegion)
+	// Create transcribe batch client (S3 + Transcribe Medical batch API). Used
+	// by the scribe upload handler for asynchronous transcription of recorded
+	// audio. AWS_TRANSCRIBE_BUCKET must point at a writable S3 bucket; without
+	// it, uploads will fail with a clear error from the handler.
+	transcribeBatchClient, err := transcribe.NewBatchClient(context.Background(), cfg.AWSRegion)
 	if err != nil {
-		log.Fatalf("failed to create transcribe client: %v", err)
+		log.Fatalf("failed to create transcribe batch client: %v", err)
+	}
+	if cfg.AWSTranscribeBucket == "" {
+		log.Printf("WARNING: AWS_TRANSCRIBE_BUCKET is not set; scribe audio uploads will fail until it is configured")
 	}
 
 	// Create scribe dependencies
 	scribeProcessor := scribe.NewProcessor(bedrockClient, athenaClient)
-	scribeHandler := scribe.NewHandler(queries, scribeProcessor, cfg, transcribeClient)
+	scribeHandler := scribe.NewHandler(queries, scribeProcessor, cfg, transcribeBatchClient)
 
 	// Start server
 	srv := server.New(cfg, pool, queries, authHandler, approvalHandler, usersHandler, scribeHandler)
