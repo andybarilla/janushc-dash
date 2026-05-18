@@ -27,6 +27,7 @@ import { StatusPill } from "./status-pill";
 import { AudioStrip } from "./audio-strip";
 import { PipelineProgress } from "./pipeline-progress";
 import { SectionCard } from "./section-card";
+import { LabsTable, PlanBody } from "./section-bodies";
 import { TranscriptCard } from "./transcript-card";
 import { fmtRelative } from "./format";
 
@@ -359,25 +360,6 @@ export function DetailView({
   );
 }
 
-function PlanBody({ body }: { body: string }) {
-  // The AI output stores the plan as free text. If it looks like a numbered or
-  // bulleted list, render it as one; otherwise fall back to a paragraph.
-  const lines = body
-    .split(/\r?\n+/)
-    .map((line) => line.replace(/^\s*(?:\d+[.)]|[-*])\s*/, "").trim())
-    .filter(Boolean);
-  if (lines.length <= 1) {
-    return <p>{body}</p>;
-  }
-  return (
-    <ol className="janus-plan-list">
-      {lines.map((line, i) => (
-        <li key={i}>{line}</li>
-      ))}
-    </ol>
-  );
-}
-
 function TextEditor({
   value,
   onChange,
@@ -488,29 +470,3 @@ function LabsEditor({
   );
 }
 
-function LabsTable({
-  rows,
-}: {
-  rows: { diagnosis: string; lab: string }[];
-}) {
-  return (
-    <table className="janus-labs-table">
-      <tbody>
-        {rows.map((row, i) => {
-          const m = row.diagnosis.match(/^(.+?)\s*\(([A-Z0-9.]+)\)\s*$/);
-          const name = m ? m[1] : row.diagnosis;
-          const code = m ? m[2] : null;
-          return (
-            <tr key={i}>
-              <td>
-                {name}
-                {code ? <span className="janus-dx-code">{code}</span> : null}
-              </td>
-              <td>{row.lab}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-  );
-}
