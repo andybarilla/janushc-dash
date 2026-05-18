@@ -4,6 +4,7 @@ import { Download, Upload } from "lucide-react";
 import {
   useAddFeedback,
   useApproveSection,
+  useDeleteScribeSession,
   useEditSection,
   useRejectSession,
   useRevokeSection,
@@ -57,6 +58,7 @@ function DesktopScribe() {
   const revokeMut = useRevokeSection();
   const sendMut = useSendToEHR();
   const rejectMut = useRejectSession();
+  const deleteMut = useDeleteScribeSession();
   const editMut = useEditSection();
   const addFeedbackMut = useAddFeedback();
 
@@ -154,6 +156,25 @@ function DesktopScribe() {
     rejectMut.mutate({ sessionId: selectedId });
   };
 
+  const handleDelete = () => {
+    if (!selectedId) return;
+    if (
+      !window.confirm(
+        "Delete this encounter and all related notes, approvals, feedback, and audio? This can't be undone.",
+      )
+    )
+      return;
+    deleteMut.mutate(
+      { sessionId: selectedId },
+      {
+        onSuccess: () => {
+          const next = sessions.find((s) => s.id !== selectedId);
+          navigate(next ? `/scribe/sessions/${next.id}` : "/scribe", { replace: true });
+        },
+      },
+    );
+  };
+
   const handleAddNote = (
     note: Omit<FeedbackNote, "id" | "at" | "author" | "authorInitials">,
   ) => {
@@ -227,6 +248,7 @@ function DesktopScribe() {
           onApprove={handleApprove}
           onApproveAll={handleApproveAll}
           onReject={handleReject}
+          onDelete={handleDelete}
           onOpenNotes={() => {
             setNotesDefaultSection(null);
             setNotesOpen(true);

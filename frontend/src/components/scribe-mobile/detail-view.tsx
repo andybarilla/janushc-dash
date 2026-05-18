@@ -32,6 +32,7 @@ interface Props {
   loading: boolean;
   canApprove: boolean;
   onBack: () => void;
+  onDelete: () => void;
   onApprove: (section: SectionKey) => void;
   onApproveAll: () => void;
   onSend: () => void;
@@ -54,6 +55,7 @@ export function MDetailView({
   loading,
   canApprove,
   onBack,
+  onDelete,
   onApprove,
   onApproveAll,
   onSend,
@@ -95,7 +97,7 @@ export function MDetailView({
 
   return (
     <>
-      <MDetailTopBar title={session.patient_id} onBack={onBack} />
+      <MDetailTopBar title={session.patient_id} onBack={onBack} onDelete={onDelete} />
       <div className="m-body">
         <MEncounterHeader session={session} statusId={statusId} />
 

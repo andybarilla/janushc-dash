@@ -9,6 +9,7 @@ import {
   RefreshCcw,
   Send,
   TriangleAlert,
+  Trash2,
   UserRound,
   X,
   Check,
@@ -41,6 +42,7 @@ interface Props {
   onApprove: (section: SectionKey) => void;
   onApproveAll: () => void;
   onReject: () => void;
+  onDelete: () => void;
   onSend: () => void;
   onSaveSection: (section: SectionKey, content: SectionContent) => void;
   onOpenNotes: () => void;
@@ -64,6 +66,7 @@ export function DetailView({
   onApprove,
   onApproveAll,
   onReject,
+  onDelete,
   onSend,
   onSaveSection,
   onOpenNotes,
@@ -128,7 +131,17 @@ export function DetailView({
               Encounter {session.encounter_id} · Dept {session.department_id}
             </p>
           </div>
-          <StatusPill status={status} large />
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <StatusPill status={status} large />
+            <button
+              type="button"
+              className="janus-btn janus-btn-danger-ghost janus-btn-sm"
+              onClick={onDelete}
+            >
+              <Trash2 />
+              Delete
+            </button>
+          </div>
         </div>
         <div className="janus-detail-meta-row">
           <span className="janus-meta-item">

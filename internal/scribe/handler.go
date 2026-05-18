@@ -381,6 +381,45 @@ func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
+func (h *Handler) HandleDelete(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	sessionID := chi.URLParam(r, "id")
+	sessionUUID := pgtype.UUID{}
+	if err := sessionUUID.Scan(sessionID); err != nil {
+		http.Error(w, "invalid session ID", http.StatusBadRequest)
+		return
+	}
+	tenantUUID := pgtype.UUID{}
+	if err := tenantUUID.Scan(claims.TenantID); err != nil {
+		http.Error(w, "invalid tenant context", http.StatusBadRequest)
+		return
+	}
+
+	rows, err := h.queries.DeleteScribeSession(r.Context(), database.DeleteScribeSessionParams{
+		ID:       sessionUUID,
+		TenantID: tenantUUID,
+	})
+	if err != nil {
+		http.Error(w, "failed to delete session", http.StatusInternalServerError)
+		return
+	}
+	if rows == 0 {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	if err := h.removeExistingSessionAudio(claims.TenantID, sessionID); err != nil {
+		log.Printf("failed to remove audio for deleted session %s: %v", sessionID, err)
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 	claims := auth.ClaimsFromContext(r.Context())
 	if claims == nil {

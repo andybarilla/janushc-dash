@@ -52,6 +52,10 @@ class ApiClient {
       throw err;
     }
 
+    if (res.status === 204) {
+      return undefined as T;
+    }
+
     return res.json();
   }
 

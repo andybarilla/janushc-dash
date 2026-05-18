@@ -5,6 +5,7 @@ import {
   LogOut,
   MoreHorizontal,
   Moon,
+  Trash2,
   Search,
   Sun,
 } from "lucide-react";
@@ -62,9 +63,10 @@ export function MInboxTopBar({
 interface DetailTopBarProps {
   title: string;
   onBack: () => void;
+  onDelete?: () => void;
 }
 
-export function MDetailTopBar({ title, onBack }: DetailTopBarProps) {
+export function MDetailTopBar({ title, onBack, onDelete }: DetailTopBarProps) {
   const { logout } = useAuth();
   const { theme, toggle: toggleTheme } = useTheme();
 
@@ -84,6 +86,15 @@ export function MDetailTopBar({ title, onBack }: DetailTopBarProps) {
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56 z-[200]">
+          {onDelete ? (
+            <>
+              <DropdownMenuItem onClick={onDelete} className="text-destructive">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete encounter
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          ) : null}
           <DropdownMenuItem onClick={toggleTheme}>
             {theme === "dark" ? (
               <Sun className="mr-2 h-4 w-4" />

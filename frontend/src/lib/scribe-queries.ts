@@ -122,6 +122,18 @@ export function useRejectSession() {
   });
 }
 
+export function useDeleteScribeSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sessionId }: { sessionId: string }) =>
+      api.fetch<void>(`/api/scribe/sessions/${sessionId}`, { method: "DELETE" }),
+    onSuccess: (_data, { sessionId }) => {
+      queryClient.removeQueries({ queryKey: ["scribeSessions", sessionId] });
+      queryClient.invalidateQueries({ queryKey: ["scribeSessions"] });
+    },
+  });
+}
+
 export function useApproveSection() {
   const queryClient = useQueryClient();
   return useMutation({

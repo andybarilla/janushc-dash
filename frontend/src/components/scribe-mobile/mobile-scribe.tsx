@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth";
 import {
   useAddFeedback,
   useApproveSection,
+  useDeleteScribeSession,
   useRevokeSection,
   useScribeSession,
   useScribeSessions,
@@ -79,6 +80,7 @@ export function MobileScribe() {
   const approveMut = useApproveSection();
   const revokeMut = useRevokeSection();
   const sendMut = useSendToEHR();
+  const deleteMut = useDeleteScribeSession();
   const addFeedbackMut = useAddFeedback();
 
   const approvals: Approvals = useMemo(() => {
@@ -110,6 +112,20 @@ export function MobileScribe() {
   const handleSend = () => {
     if (!selectedId || !canApprove) return;
     sendMut.mutate({ sessionId: selectedId });
+  };
+
+  const handleDelete = () => {
+    if (!selectedId) return;
+    if (
+      !window.confirm(
+        "Delete this encounter and all related notes, approvals, feedback, and audio? This can't be undone.",
+      )
+    )
+      return;
+    deleteMut.mutate(
+      { sessionId: selectedId },
+      { onSuccess: () => navigate("/scribe/inbox", { replace: true }) },
+    );
   };
 
   // location.key === "default" means this is the first entry in history (deep link
@@ -173,6 +189,7 @@ export function MobileScribe() {
           loading={!!selectedId && detailLoading && !selectedDetail}
           canApprove={canApprove}
           onBack={() => backTo("/scribe/inbox")}
+          onDelete={handleDelete}
           onApprove={handleApprove}
           onApproveAll={handleApproveAll}
           onSend={handleSend}

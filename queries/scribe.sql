@@ -11,6 +11,10 @@ SELECT id, tenant_id, user_id, patient_id, encounter_id, department_id, status,
 FROM scribe_sessions
 WHERE id = $1 AND tenant_id = $2;
 
+-- name: DeleteScribeSession :execrows
+DELETE FROM scribe_sessions
+WHERE id = $1 AND tenant_id = $2;
+
 -- name: MarkScribeSessionRejected :execrows
 UPDATE scribe_sessions
 SET rejected_at = now(), rejected_by = $3

@@ -71,6 +71,24 @@ func (q *Queries) CreateScribeSession(ctx context.Context, arg CreateScribeSessi
 	return i, err
 }
 
+const deleteScribeSession = `-- name: DeleteScribeSession :execrows
+DELETE FROM scribe_sessions
+WHERE id = $1 AND tenant_id = $2
+`
+
+type DeleteScribeSessionParams struct {
+	ID       pgtype.UUID `json:"id"`
+	TenantID pgtype.UUID `json:"tenant_id"`
+}
+
+func (q *Queries) DeleteScribeSession(ctx context.Context, arg DeleteScribeSessionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteScribeSession, arg.ID, arg.TenantID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getScribeSession = `-- name: GetScribeSession :one
 SELECT id, tenant_id, user_id, patient_id, encounter_id, department_id, status,
        transcript, ai_output, error_message, started_at, stopped_at, completed_at, created_at,
