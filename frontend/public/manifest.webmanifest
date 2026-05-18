@@ -4,7 +4,7 @@
   "description": "Janus Dash physician workflow automation",
   "start_url": "https://dash.janushc.com/",
   "scope": "https://dash.janushc.com/",
-  "display": "standalone",
+  "display": "browser",
   "orientation": "portrait",
   "background_color": "#e5e2de",
   "theme_color": "#666666",
