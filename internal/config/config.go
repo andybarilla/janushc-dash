@@ -30,7 +30,7 @@ func Load() (*Config, error) {
 	// Load .env file if present (ignore error if not found)
 	_ = godotenv.Load()
 
-	jwtExpiry, err := time.ParseDuration(getEnv("JWT_EXPIRY", "15m"))
+	jwtExpiry, err := time.ParseDuration(getEnv("JWT_EXPIRY", "8h"))
 	if err != nil {
 		return nil, fmt.Errorf("invalid JWT_EXPIRY: %w", err)
 	}
