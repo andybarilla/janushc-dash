@@ -1,76 +1,78 @@
 import { useState } from "react";
+import { useScribeSessions } from "@/lib/scribe-queries";
+import { MInboxView } from "./inbox-view";
+import type { MobileFilter } from "./filter-row";
+import { MDetailTopBar } from "./top-bar";
 
 type View = "inbox" | "detail";
 
 export function MobileScribe() {
+  const { data: sessions = [], isLoading } = useScribeSessions();
   const [view, setView] = useState<View>("inbox");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<MobileFilter>("all");
+
+  const selected = sessions.find((s) => s.id === selectedId) ?? null;
 
   return (
     <div className="m-app m-overlay janus-scope">
       {view === "inbox" ? (
-        <Placeholder
-          title="Inbox"
-          subtitle="Mobile Scribe — phase 2 shell"
-          actionLabel="Open a placeholder detail"
-          onAction={() => {
-            setSelectedId("placeholder");
-            setView("detail");
-          }}
-        />
+        isLoading && sessions.length === 0 ? (
+          <LoadingInbox />
+        ) : (
+          <MInboxView
+            sessions={sessions}
+            selectedId={selectedId}
+            filter={filter}
+            onFilter={setFilter}
+            onSelect={(id) => {
+              setSelectedId(id);
+              setView("detail");
+            }}
+          />
+        )
       ) : (
-        <Placeholder
-          title={`Detail (${selectedId})`}
-          subtitle="Back returns to the inbox"
-          actionLabel="← Back to inbox"
-          onAction={() => setView("inbox")}
+        <DetailPlaceholder
+          patientName={selected?.patient_id ?? "Encounter"}
+          onBack={() => setView("inbox")}
         />
       )}
     </div>
   );
 }
 
-function Placeholder({
-  title,
-  subtitle,
-  actionLabel,
-  onAction,
-}: {
-  title: string;
-  subtitle: string;
-  actionLabel: string;
-  onAction: () => void;
-}) {
+function LoadingInbox() {
   return (
     <div
       style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        padding: "60px 16px 40px",
-        gap: 12,
+        flex: 1,
+        display: "grid",
+        placeItems: "center",
+        color: "var(--janus-text-light)",
+        fontSize: 13,
       }}
     >
-      <h2 style={{ margin: 0, color: "var(--janus-primary)" }}>{title}</h2>
-      <p style={{ margin: 0, color: "var(--janus-text-light)" }}>{subtitle}</p>
-      <button
-        type="button"
-        onClick={onAction}
-        style={{
-          marginTop: 16,
-          padding: "10px 16px",
-          background: "var(--janus-primary)",
-          color: "var(--janus-white)",
-          border: "none",
-          borderRadius: "var(--janus-radius-pill)",
-          fontSize: 14,
-          fontWeight: 600,
-          cursor: "pointer",
-          alignSelf: "flex-start",
-        }}
-      >
-        {actionLabel}
-      </button>
+      Loading…
     </div>
+  );
+}
+
+function DetailPlaceholder({
+  patientName,
+  onBack,
+}: {
+  patientName: string;
+  onBack: () => void;
+}) {
+  return (
+    <>
+      <MDetailTopBar title={patientName} onBack={onBack} />
+      <div
+        className="m-body"
+        style={{ padding: 24, color: "var(--janus-text-light)" }}
+      >
+        Detail view arrives in phase 4.
+      </div>
+    </>
   );
 }
