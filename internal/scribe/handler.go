@@ -122,6 +122,38 @@ type sessionDetailResponse struct {
 	AIOutput       *ScribeOutput           `json:"ai_output,omitempty"`
 	Sections       map[string]sectionState `json:"sections"`
 	AudioAvailable bool                    `json:"audio_available"`
+	Usage          *usageSummaryResponse   `json:"usage,omitempty"`
+}
+
+type usageSummaryResponse struct {
+	Transcription            *transcriptionUsageResponse `json:"transcription,omitempty"`
+	LLM                      *llmUsageResponse           `json:"llm,omitempty"`
+	TotalEstimatedCostMicros int64                       `json:"total_estimated_cost_micros"`
+	TotalActualCostMicros    *int64                      `json:"total_actual_cost_micros,omitempty"`
+	Currency                 string                      `json:"currency"`
+	CostBasis                string                      `json:"cost_basis"`
+}
+
+type transcriptionUsageResponse struct {
+	Provider                string   `json:"provider"`
+	Operation               string   `json:"operation"`
+	AudioDurationSeconds    *float64 `json:"audio_duration_seconds,omitempty"`
+	BillableDurationSeconds *int64   `json:"billable_duration_seconds,omitempty"`
+	EstimatedCostMicros     int64    `json:"estimated_cost_micros"`
+	ActualCostMicros        *int64   `json:"actual_cost_micros,omitempty"`
+	Currency                string   `json:"currency"`
+}
+
+type llmUsageResponse struct {
+	Provider            string `json:"provider"`
+	Operation           string `json:"operation"`
+	ModelID             string `json:"model_id,omitempty"`
+	InputTokens         int64  `json:"input_tokens"`
+	OutputTokens        int64  `json:"output_tokens"`
+	TotalTokens         int64  `json:"total_tokens"`
+	EstimatedCostMicros int64  `json:"estimated_cost_micros"`
+	ActualCostMicros    *int64 `json:"actual_cost_micros,omitempty"`
+	Currency            string `json:"currency"`
 }
 
 var sectionKeys = []string{"hpi", "plan", "exam", "labs"}
@@ -501,6 +533,7 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	resp.ApprovedCount = approved
+	resp.Usage = loadUsageSummaryResponse(r.Context(), h.queries, sessionUUID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)

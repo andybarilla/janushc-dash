@@ -15,9 +15,18 @@ type fakeUsageEventCreator struct {
 	err error
 }
 
+type fakeUsageSummaryGetter struct {
+	row database.GetScribeUsageSummaryForSessionRow
+	err error
+}
+
 func (f *fakeUsageEventCreator) CreateScribeUsageEvent(ctx context.Context, arg database.CreateScribeUsageEventParams) (database.ScribeUsageEvent, error) {
 	f.arg = arg
 	return database.ScribeUsageEvent{}, f.err
+}
+
+func (f *fakeUsageSummaryGetter) GetScribeUsageSummaryForSession(ctx context.Context, sessionID pgtype.UUID) (database.GetScribeUsageSummaryForSessionRow, error) {
+	return f.row, f.err
 }
 
 func testSessionID(t *testing.T) pgtype.UUID {
@@ -127,6 +136,81 @@ func TestProcessErrorUsageCanBeRecorded(t *testing.T) {
 	}
 	if fake.arg.InputTokens.Int32 != 7 || fake.arg.OutputTokens.Int32 != 11 || fake.arg.TotalTokens.Int32 != 18 {
 		t.Fatalf("parse failure usage not recorded: %+v", fake.arg)
+	}
+}
+
+func TestToUsageSummaryResponseMapsPopulatedRow(t *testing.T) {
+	audioDuration := pgtype.Numeric{}
+	if err := audioDuration.Scan("12.4"); err != nil {
+		t.Fatalf("scan audio duration: %v", err)
+	}
+	row := database.GetScribeUsageSummaryForSessionRow{
+		EventCount:                           2,
+		TotalEstimatedCostMicros:             339720,
+		TranscriptionAudioDurationSeconds:    audioDuration,
+		TranscriptionBillableDurationSeconds: pgtype.Int8{Int64: 13, Valid: true},
+		TranscriptionEstimatedCostMicros:     300000,
+		TranscriptionProvider:                []byte("aws_transcribe_medical"),
+		TranscriptionOperation:               "medical_batch_transcription",
+		LlmInputTokens:                       8120,
+		LlmOutputTokens:                      1024,
+		LlmTotalTokens:                       9144,
+		LlmEstimatedCostMicros:               39720,
+		LlmProvider:                          "aws_bedrock_anthropic",
+		LlmOperation:                         []byte("scribe_extraction"),
+		LlmModelID:                           "claude-3-5-sonnet",
+		ActualEventCount:                     0,
+	}
+
+	got := toUsageSummaryResponse(row)
+	if got == nil {
+		t.Fatalf("toUsageSummaryResponse returned nil")
+	}
+	if got.TotalEstimatedCostMicros != 339720 || got.TotalActualCostMicros != nil || got.Currency != "USD" || got.CostBasis != "estimated" {
+		t.Fatalf("unexpected summary: %+v", got)
+	}
+	if got.Transcription == nil || got.Transcription.Provider != "aws_transcribe_medical" || got.Transcription.Operation != "medical_batch_transcription" || got.Transcription.EstimatedCostMicros != 300000 || got.Transcription.Currency != "USD" {
+		t.Fatalf("unexpected transcription: %+v", got.Transcription)
+	}
+	if got.Transcription.AudioDurationSeconds == nil || *got.Transcription.AudioDurationSeconds != 12.4 {
+		t.Fatalf("AudioDurationSeconds = %v, want 12.4", got.Transcription.AudioDurationSeconds)
+	}
+	if got.Transcription.BillableDurationSeconds == nil || *got.Transcription.BillableDurationSeconds != 13 {
+		t.Fatalf("BillableDurationSeconds = %v, want 13", got.Transcription.BillableDurationSeconds)
+	}
+	if got.LLM == nil || got.LLM.Provider != "aws_bedrock_anthropic" || got.LLM.Operation != "scribe_extraction" || got.LLM.ModelID != "claude-3-5-sonnet" {
+		t.Fatalf("unexpected llm identity: %+v", got.LLM)
+	}
+	if got.LLM.InputTokens != 8120 || got.LLM.OutputTokens != 1024 || got.LLM.TotalTokens != 9144 || got.LLM.EstimatedCostMicros != 39720 || got.LLM.Currency != "USD" {
+		t.Fatalf("unexpected llm usage: %+v", got.LLM)
+	}
+}
+
+func TestToUsageSummaryResponseOmitsUnavailableTranscriptionDuration(t *testing.T) {
+	got := toUsageSummaryResponse(database.GetScribeUsageSummaryForSessionRow{
+		EventCount:                       1,
+		TranscriptionProvider:            "aws_transcribe_medical",
+		TranscriptionOperation:           "medical_batch_transcription",
+		TranscriptionEstimatedCostMicros: 0,
+	})
+	if got == nil || got.Transcription == nil {
+		t.Fatalf("expected transcription summary: %+v", got)
+	}
+	if got.Transcription.AudioDurationSeconds != nil || got.Transcription.BillableDurationSeconds != nil {
+		t.Fatalf("duration fields should be nil: %+v", got.Transcription)
+	}
+}
+
+func TestToUsageSummaryResponseReturnsNilForNoEvents(t *testing.T) {
+	if got := toUsageSummaryResponse(database.GetScribeUsageSummaryForSessionRow{}); got != nil {
+		t.Fatalf("toUsageSummaryResponse = %+v, want nil", got)
+	}
+}
+
+func TestLoadUsageSummaryResponseReturnsNilOnQueryError(t *testing.T) {
+	got := loadUsageSummaryResponse(context.Background(), &fakeUsageSummaryGetter{err: errors.New("query failed")}, testSessionID(t))
+	if got != nil {
+		t.Fatalf("loadUsageSummaryResponse = %+v, want nil", got)
 	}
 }
 

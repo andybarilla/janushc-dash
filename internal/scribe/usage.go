@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"strconv"
 
@@ -14,6 +15,10 @@ import (
 
 type usageEventCreator interface {
 	CreateScribeUsageEvent(ctx context.Context, arg database.CreateScribeUsageEventParams) (database.ScribeUsageEvent, error)
+}
+
+type usageSummaryGetter interface {
+	GetScribeUsageSummaryForSession(ctx context.Context, sessionID pgtype.UUID) (database.GetScribeUsageSummaryForSessionRow, error)
 }
 
 type TranscriptionCostEstimate struct {
@@ -123,4 +128,81 @@ func CostBasis(totalEvents int32, actualEvents int32) string {
 		return "mixed"
 	}
 	return "estimated"
+}
+
+func loadUsageSummaryResponse(ctx context.Context, q usageSummaryGetter, sessionID pgtype.UUID) *usageSummaryResponse {
+	row, err := q.GetScribeUsageSummaryForSession(ctx, sessionID)
+	if err != nil {
+		log.Printf("scribe usage summary load error for session %s: %v", uuidToString(sessionID), err)
+		return nil
+	}
+	return toUsageSummaryResponse(row)
+}
+
+func toUsageSummaryResponse(row database.GetScribeUsageSummaryForSessionRow) *usageSummaryResponse {
+	if row.EventCount == 0 {
+		return nil
+	}
+	resp := &usageSummaryResponse{
+		TotalEstimatedCostMicros: row.TotalEstimatedCostMicros,
+		TotalActualCostMicros:    int8Ptr(row.TotalActualCostMicros),
+		Currency:                 "USD",
+		CostBasis:                CostBasis(row.EventCount, row.ActualEventCount),
+	}
+	transcriptionProvider, hasTranscriptionProvider := interfaceString(row.TranscriptionProvider)
+	transcriptionOperation, hasTranscriptionOperation := interfaceString(row.TranscriptionOperation)
+	if hasTranscriptionProvider && hasTranscriptionOperation {
+		resp.Transcription = &transcriptionUsageResponse{
+			Provider:                transcriptionProvider,
+			Operation:               transcriptionOperation,
+			AudioDurationSeconds:    numericFloat64Ptr(row.TranscriptionAudioDurationSeconds),
+			BillableDurationSeconds: int8Ptr(row.TranscriptionBillableDurationSeconds),
+			EstimatedCostMicros:     row.TranscriptionEstimatedCostMicros,
+			ActualCostMicros:        int8Ptr(row.TranscriptionActualCostMicros),
+			Currency:                "USD",
+		}
+	}
+	llmProvider, hasLLMProvider := interfaceString(row.LlmProvider)
+	llmOperation, hasLLMOperation := interfaceString(row.LlmOperation)
+	if hasLLMProvider && hasLLMOperation {
+		modelID, _ := interfaceString(row.LlmModelID)
+		resp.LLM = &llmUsageResponse{
+			Provider:            llmProvider,
+			Operation:           llmOperation,
+			ModelID:             modelID,
+			InputTokens:         row.LlmInputTokens,
+			OutputTokens:        row.LlmOutputTokens,
+			TotalTokens:         row.LlmTotalTokens,
+			EstimatedCostMicros: row.LlmEstimatedCostMicros,
+			ActualCostMicros:    int8Ptr(row.LlmActualCostMicros),
+			Currency:            "USD",
+		}
+	}
+	return resp
+}
+
+func int8Ptr(value pgtype.Int8) *int64 {
+	if !value.Valid {
+		return nil
+	}
+	return &value.Int64
+}
+
+func numericFloat64Ptr(value pgtype.Numeric) *float64 {
+	floatValue, err := value.Float64Value()
+	if err != nil || !floatValue.Valid {
+		return nil
+	}
+	return &floatValue.Float64
+}
+
+func interfaceString(value interface{}) (string, bool) {
+	switch v := value.(type) {
+	case string:
+		return v, v != ""
+	case []byte:
+		return string(v), len(v) > 0
+	default:
+		return "", false
+	}
 }
