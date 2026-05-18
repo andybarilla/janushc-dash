@@ -107,7 +107,7 @@ export function MDetailView({
         ) : null}
         {inPipeline ? <MPipelineTracker statusId={statusId} /> : null}
 
-        <UsageCostCard usage={session.usage} status={session.status} inPipeline={inPipeline} />
+        <UsageCostCard usage={session.usage} statusId={statusId} inPipeline={inPipeline} />
 
         {isRejected ? <MRejectedBanner /> : null}
         {isFailed ? (

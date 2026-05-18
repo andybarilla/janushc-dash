@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import type { CostBasis, ScribeUsageSummary } from "@/lib/scribe-queries";
+import type { StatusId } from "./types";
 import {
   formatAudioMinutes,
   formatCostBasisDescription,
@@ -12,7 +13,7 @@ import {
 
 interface UsageCostCardProps {
   usage?: ScribeUsageSummary;
-  status: string;
+  statusId: StatusId;
   inPipeline: boolean;
 }
 
@@ -40,10 +41,10 @@ function formatCost(
 
 export function UsageCostCard({
   usage,
-  status,
+  statusId,
   inPipeline,
 }: UsageCostCardProps): ReactElement {
-  const isFailedWithoutUsage = status === "failed" && !usage;
+  const isFailedWithoutUsage = statusId === "failed" && !usage;
 
   return (
     <section className="janus-usage-card" aria-labelledby="janus-usage-heading">

@@ -180,7 +180,7 @@ export function DetailView({
         {inPipeline ? <PipelineProgress status={status} /> : null}
       </div>
 
-      <UsageCostCard usage={session.usage} status={session.status} inPipeline={inPipeline} />
+      <UsageCostCard usage={session.usage} statusId={statusId} inPipeline={inPipeline} />
 
       {isRejected ? (
         <div className="janus-failure-banner">

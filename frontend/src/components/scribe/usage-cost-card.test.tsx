@@ -33,7 +33,7 @@ afterEach(() => {
 
 describe("UsageCostCard", () => {
   it("renders estimated usage rows and total", () => {
-    render(<UsageCostCard usage={estimatedUsage} status="completed" inPipeline={false} />);
+    render(<UsageCostCard usage={estimatedUsage} statusId="ready" inPipeline={false} />);
 
     expect(screen.getByRole("heading", { name: "Usage & Cost" })).toBeInTheDocument();
     expect(screen.getByText("Estimated usage")).toBeInTheDocument();
@@ -59,20 +59,20 @@ describe("UsageCostCard", () => {
     };
 
     const { rerender } = render(
-      <UsageCostCard usage={mixedUsage} status="completed" inPipeline={false} />,
+      <UsageCostCard usage={mixedUsage} statusId="ready" inPipeline={false} />,
     );
     expect(screen.getByText("Mixed actual/estimated usage")).toBeInTheDocument();
     expect(screen.getByText("Total mixed encounter cost")).toBeInTheDocument();
     expect(screen.getByText("$3.00 mixed")).toBeInTheDocument();
 
-    rerender(<UsageCostCard usage={actualUsage} status="completed" inPipeline={false} />);
+    rerender(<UsageCostCard usage={actualUsage} statusId="ready" inPipeline={false} />);
     expect(screen.getByText("Actual usage")).toBeInTheDocument();
     expect(screen.getByText("Total actual encounter cost")).toBeInTheDocument();
     expect(screen.getByText("$3.00 actual")).toBeInTheDocument();
   });
 
   it("renders a pipeline placeholder when usage is not available yet", () => {
-    render(<UsageCostCard status="processing" inPipeline={true} />);
+    render(<UsageCostCard statusId="transcribing" inPipeline={true} />);
 
     expect(
       screen.getByText("Usage will appear after transcription and AI extraction complete."),
@@ -88,7 +88,7 @@ describe("UsageCostCard", () => {
       },
     };
 
-    render(<UsageCostCard usage={usage} status="completed" inPipeline={false} />);
+    render(<UsageCostCard usage={usage} statusId="ready" inPipeline={false} />);
 
     expect(screen.getByText("duration unavailable")).toBeInTheDocument();
     expect(screen.queryByText("0.0 min audio")).not.toBeInTheDocument();
@@ -103,7 +103,7 @@ describe("UsageCostCard", () => {
       },
     };
 
-    render(<UsageCostCard usage={usage} status="completed" inPipeline={false} />);
+    render(<UsageCostCard usage={usage} statusId="ready" inPipeline={false} />);
 
     expect(screen.getByText("model unavailable")).toBeInTheDocument();
   });
@@ -123,7 +123,7 @@ describe("UsageCostCard", () => {
       cost_basis: "actual",
     };
 
-    render(<UsageCostCard usage={usage} status="completed" inPipeline={false} />);
+    render(<UsageCostCard usage={usage} statusId="ready" inPipeline={false} />);
 
     expect(screen.getByText("$2.48 actual")).toBeInTheDocument();
     expect(screen.getByText("$0.38 actual")).toBeInTheDocument();
@@ -131,7 +131,7 @@ describe("UsageCostCard", () => {
   });
 
   it("renders failed no-usage copy", () => {
-    render(<UsageCostCard status="failed" inPipeline={false} />);
+    render(<UsageCostCard statusId="failed" inPipeline={false} />);
 
     expect(screen.getByText("No usage captured for this failed run.")).toBeInTheDocument();
   });
