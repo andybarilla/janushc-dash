@@ -12,6 +12,53 @@
     <meta name="apple-mobile-web-app-title" content="Janus Dash" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>Janus Dash</title>
+    <style>
+      html,
+      body,
+      #root {
+        min-height: 100%;
+      }
+
+      body {
+        margin: 0;
+        background: #f8f9fa;
+      }
+
+      .janus-boot-fallback {
+        min-height: 100vh;
+        min-height: 100dvh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        box-sizing: border-box;
+        color: #333333;
+        background: #f8f9fa;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+
+      .janus-boot-card {
+        width: 100%;
+        max-width: 360px;
+        padding: 20px;
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        background: #ffffff;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        text-align: center;
+      }
+
+      .janus-boot-card strong {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 18px;
+      }
+
+      .janus-boot-card span {
+        color: #666666;
+        font-size: 14px;
+      }
+    </style>
     <script>
       (function () {
         try {
@@ -27,7 +74,14 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="janus-boot-fallback">
+        <div class="janus-boot-card">
+          <strong>Loading Janus Dash…</strong>
+          <span>If this message stays visible, the app bundle did not load.</span>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

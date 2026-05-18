@@ -139,12 +139,22 @@ func (s *Server) spaHandler(distDir string) http.HandlerFunc {
 		// Check if the file exists on disk; if not, serve index.html for SPA routing
 		fullPath := filepath.Join(distDir, path)
 		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-			http.ServeFile(w, r, filepath.Join(distDir, "index.html"))
+			serveIndex(w, r, distDir)
+			return
+		}
+
+		if path == "/" || path == "." || path == "/index.html" {
+			serveIndex(w, r, distDir)
 			return
 		}
 
 		fs.ServeHTTP(w, r)
 	}
+}
+
+func serveIndex(w http.ResponseWriter, r *http.Request, distDir string) {
+	w.Header().Set("Cache-Control", "no-store, max-age=0")
+	http.ServeFile(w, r, filepath.Join(distDir, "index.html"))
 }
 
 func (s *Server) Router() chi.Router {
