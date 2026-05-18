@@ -1,6 +1,134 @@
 package scribe
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/andybarilla/janushc-dash/internal/database"
+)
+
+type fakeUsageEventCreator struct {
+	arg database.CreateScribeUsageEventParams
+	err error
+}
+
+func (f *fakeUsageEventCreator) CreateScribeUsageEvent(ctx context.Context, arg database.CreateScribeUsageEventParams) (database.ScribeUsageEvent, error) {
+	f.arg = arg
+	return database.ScribeUsageEvent{}, f.err
+}
+
+func testSessionID(t *testing.T) pgtype.UUID {
+	t.Helper()
+	id := pgtype.UUID{}
+	if err := id.Scan("11111111-1111-1111-1111-111111111111"); err != nil {
+		t.Fatalf("scan session id: %v", err)
+	}
+	return id
+}
+
+func TestRecordTranscriptionUsageEventBuildsExpectedParams(t *testing.T) {
+	fake := &fakeUsageEventCreator{}
+	sessionID := testSessionID(t)
+
+	err := recordTranscriptionUsageEvent(context.Background(), fake, sessionID, "job-1", 12.4, true, 0.024)
+	if err != nil {
+		t.Fatalf("recordTranscriptionUsageEvent returned error: %v", err)
+	}
+
+	arg := fake.arg
+	if arg.SessionID != sessionID || arg.EventType != "transcription" || arg.Provider != "aws_transcribe_medical" || arg.Operation != "medical_batch_transcription" {
+		t.Fatalf("unexpected transcription identity params: %+v", arg)
+	}
+	if !arg.ExternalJobID.Valid || arg.ExternalJobID.String != "job-1" {
+		t.Fatalf("ExternalJobID = %+v, want job-1", arg.ExternalJobID)
+	}
+	if !arg.AudioDurationSeconds.Valid {
+		t.Fatalf("AudioDurationSeconds invalid")
+	}
+	if !arg.BillableDurationSeconds.Valid || arg.BillableDurationSeconds.Int32 != 13 {
+		t.Fatalf("BillableDurationSeconds = %+v, want 13", arg.BillableDurationSeconds)
+	}
+	if arg.EstimatedCostMicros != 5200 {
+		t.Fatalf("EstimatedCostMicros = %d, want 5200", arg.EstimatedCostMicros)
+	}
+	if string(arg.RateSnapshot) != `{"usd_per_minute":"0.024"}` || string(arg.Metadata) != `{}` {
+		t.Fatalf("unexpected json: rate=%s metadata=%s", arg.RateSnapshot, arg.Metadata)
+	}
+}
+
+func TestRecordTranscriptionUsageEventUnavailableDurationStoresNullsAndWarning(t *testing.T) {
+	fake := &fakeUsageEventCreator{}
+
+	err := recordTranscriptionUsageEvent(context.Background(), fake, testSessionID(t), "job-2", 0, false, 0.024)
+	if err != nil {
+		t.Fatalf("recordTranscriptionUsageEvent returned error: %v", err)
+	}
+
+	arg := fake.arg
+	if arg.AudioDurationSeconds.Valid || arg.BillableDurationSeconds.Valid {
+		t.Fatalf("duration fields should be null: audio=%+v billable=%+v", arg.AudioDurationSeconds, arg.BillableDurationSeconds)
+	}
+	if arg.EstimatedCostMicros != 0 {
+		t.Fatalf("EstimatedCostMicros = %d, want 0", arg.EstimatedCostMicros)
+	}
+	if string(arg.Metadata) != `{"warning":"duration_unavailable"}` {
+		t.Fatalf("Metadata = %s, want duration warning", arg.Metadata)
+	}
+}
+
+func TestRecordLLMUsageEventBuildsExpectedParams(t *testing.T) {
+	fake := &fakeUsageEventCreator{}
+	sessionID := testSessionID(t)
+	usage := LLMUsage{ModelID: "claude", InputTokens: 1000, OutputTokens: 2000, TotalTokens: 3000}
+
+	err := recordLLMUsageEvent(context.Background(), fake, sessionID, usage, 3.00, 15.00)
+	if err != nil {
+		t.Fatalf("recordLLMUsageEvent returned error: %v", err)
+	}
+
+	arg := fake.arg
+	if arg.SessionID != sessionID || arg.EventType != "llm" || arg.Provider != "aws_bedrock_anthropic" || arg.Operation != "scribe_extraction" {
+		t.Fatalf("unexpected llm identity params: %+v", arg)
+	}
+	if !arg.ModelID.Valid || arg.ModelID.String != "claude" {
+		t.Fatalf("ModelID = %+v, want claude", arg.ModelID)
+	}
+	if arg.InputTokens.Int32 != 1000 || arg.OutputTokens.Int32 != 2000 || arg.TotalTokens.Int32 != 3000 {
+		t.Fatalf("unexpected token params: input=%+v output=%+v total=%+v", arg.InputTokens, arg.OutputTokens, arg.TotalTokens)
+	}
+	if arg.EstimatedCostMicros != 33000 {
+		t.Fatalf("EstimatedCostMicros = %d, want 33000", arg.EstimatedCostMicros)
+	}
+	if string(arg.RateSnapshot) != `{"input_usd_per_million_tokens":"3","output_usd_per_million_tokens":"15"}` || string(arg.Metadata) != `{}` {
+		t.Fatalf("unexpected json: rate=%s metadata=%s", arg.RateSnapshot, arg.Metadata)
+	}
+}
+
+func TestRecordUsageEventReturnsInsertError(t *testing.T) {
+	insertErr := errors.New("insert failed")
+	fake := &fakeUsageEventCreator{err: insertErr}
+
+	err := recordLLMUsageEvent(context.Background(), fake, testSessionID(t), LLMUsage{InputTokens: 1, OutputTokens: 1, TotalTokens: 2}, 3, 15)
+	if !errors.Is(err, insertErr) {
+		t.Fatalf("recordLLMUsageEvent error = %v, want %v", err, insertErr)
+	}
+}
+
+func TestProcessErrorUsageCanBeRecorded(t *testing.T) {
+	fake := &fakeUsageEventCreator{}
+	processErr := &ProcessError{Message: "parse failed", Usage: LLMUsage{ModelID: "claude", InputTokens: 7, OutputTokens: 11, TotalTokens: 18}, Err: errors.New("json")}
+
+	err := recordLLMUsageEvent(context.Background(), fake, testSessionID(t), processErr.Usage, 3, 15)
+	if err != nil {
+		t.Fatalf("recordLLMUsageEvent returned error: %v", err)
+	}
+	if fake.arg.InputTokens.Int32 != 7 || fake.arg.OutputTokens.Int32 != 11 || fake.arg.TotalTokens.Int32 != 18 {
+		t.Fatalf("parse failure usage not recorded: %+v", fake.arg)
+	}
+}
 
 func TestCalculateTranscriptionCost(t *testing.T) {
 	estimate := CalculateTranscriptionCost(12.4, 0.024)

@@ -3,6 +3,7 @@ package scribe
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -200,6 +201,21 @@ func (h *Handler) findSessionAudioPath(tenantID, sessionID string) (string, erro
 func (h *Handler) sessionAudioAvailable(tenantID, sessionID string) bool {
 	_, err := h.findSessionAudioPath(tenantID, sessionID)
 	return err == nil
+}
+
+func (h *Handler) recordTranscriptionUsage(ctx context.Context, sessionID pgtype.UUID, sessionIDText string, jobName string, audioDurationSeconds float64, hasDuration bool) {
+	if err := recordTranscriptionUsageEvent(ctx, h.queries, sessionID, jobName, audioDurationSeconds, hasDuration, h.cfg.TranscribeMedicalUSDPerMinute); err != nil {
+		log.Printf("scribe usage transcription insert error for session %s: %v", sessionIDText, err)
+	}
+}
+
+func (h *Handler) recordLLMUsage(ctx context.Context, sessionID pgtype.UUID, sessionIDText string, usage LLMUsage) {
+	if usage.InputTokens == 0 && usage.OutputTokens == 0 && usage.TotalTokens == 0 {
+		return
+	}
+	if err := recordLLMUsageEvent(ctx, h.queries, sessionID, usage, h.cfg.BedrockInputUSDPerMillionTokens, h.cfg.BedrockOutputUSDPerMillionTokens); err != nil {
+		log.Printf("scribe usage llm insert error for session %s: %v", sessionIDText, err)
+	}
 }
 
 func audioContentType(path string) string {
@@ -722,6 +738,10 @@ func (h *Handler) HandleProcess(w http.ResponseWriter, r *http.Request) {
 	processResult, err := h.processor.Process(r.Context(), h.cfg.AthenaPracticeID, session.PatientID, req.Transcript)
 	if err != nil {
 		log.Printf("scribe process error for session %s: %v", sessionID, err)
+		var processErr *ProcessError
+		if errors.As(err, &processErr) {
+			h.recordLLMUsage(r.Context(), sessionUUID, sessionID, processErr.Usage)
+		}
 		_ = h.queries.UpdateScribeSessionError(r.Context(), database.UpdateScribeSessionErrorParams{
 			ID:           sessionUUID,
 			TenantID:     tenantUUID,
@@ -730,6 +750,8 @@ func (h *Handler) HandleProcess(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "processing failed", http.StatusInternalServerError)
 		return
 	}
+
+	h.recordLLMUsage(r.Context(), sessionUUID, sessionID, processResult.Usage)
 
 	// Store AI output
 	outputJSON, _ := json.Marshal(processResult.Output)
@@ -903,6 +925,13 @@ func (h *Handler) processSessionAsync(tenantID, sessionID, audioPath, ext, patie
 		return
 	}
 
+	audioDurationSeconds, hasDuration, err := transcribe.ExtractBatchTranscriptDurationSeconds(transcriptJSON)
+	if err != nil {
+		log.Printf("scribe async [%s] duration parse error: %v", sessionID, err)
+		hasDuration = false
+	}
+	h.recordTranscriptionUsage(ctx, sessionUUID, sessionID, jobName, audioDurationSeconds, hasDuration)
+
 	transcript, err := transcribe.ExtractBatchTranscriptText(transcriptJSON)
 	if err != nil {
 		log.Printf("scribe async [%s] parse transcript error: %v", sessionID, err)
@@ -928,9 +957,15 @@ func (h *Handler) processSessionAsync(tenantID, sessionID, audioPath, ext, patie
 	processResult, err := h.processor.Process(ctx, h.cfg.AthenaPracticeID, patientID, transcript)
 	if err != nil {
 		log.Printf("scribe async [%s] AI process error: %v", sessionID, err)
+		var processErr *ProcessError
+		if errors.As(err, &processErr) {
+			h.recordLLMUsage(ctx, sessionUUID, sessionID, processErr.Usage)
+		}
 		setError(err.Error())
 		return
 	}
+
+	h.recordLLMUsage(ctx, sessionUUID, sessionID, processResult.Usage)
 
 	outputJSON, _ := json.Marshal(processResult.Output)
 	if err := h.queries.UpdateScribeSessionComplete(ctx, database.UpdateScribeSessionCompleteParams{
