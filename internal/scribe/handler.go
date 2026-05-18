@@ -719,7 +719,7 @@ func (h *Handler) HandleProcess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Run the AI pipeline
-	output, err := h.processor.Process(r.Context(), h.cfg.AthenaPracticeID, session.PatientID, req.Transcript)
+	processResult, err := h.processor.Process(r.Context(), h.cfg.AthenaPracticeID, session.PatientID, req.Transcript)
 	if err != nil {
 		log.Printf("scribe process error for session %s: %v", sessionID, err)
 		_ = h.queries.UpdateScribeSessionError(r.Context(), database.UpdateScribeSessionErrorParams{
@@ -732,7 +732,7 @@ func (h *Handler) HandleProcess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Store AI output
-	outputJSON, _ := json.Marshal(output)
+	outputJSON, _ := json.Marshal(processResult.Output)
 	err = h.queries.UpdateScribeSessionComplete(r.Context(), database.UpdateScribeSessionCompleteParams{
 		ID:       sessionUUID,
 		TenantID: tenantUUID,
@@ -925,14 +925,14 @@ func (h *Handler) processSessionAsync(tenantID, sessionID, audioPath, ext, patie
 		return
 	}
 
-	output, err := h.processor.Process(ctx, h.cfg.AthenaPracticeID, patientID, transcript)
+	processResult, err := h.processor.Process(ctx, h.cfg.AthenaPracticeID, patientID, transcript)
 	if err != nil {
 		log.Printf("scribe async [%s] AI process error: %v", sessionID, err)
 		setError(err.Error())
 		return
 	}
 
-	outputJSON, _ := json.Marshal(output)
+	outputJSON, _ := json.Marshal(processResult.Output)
 	if err := h.queries.UpdateScribeSessionComplete(ctx, database.UpdateScribeSessionCompleteParams{
 		ID:       sessionUUID,
 		TenantID: tenantUUID,

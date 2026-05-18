@@ -22,8 +22,38 @@ type DiagnosisLab struct {
 	Lab       string `json:"lab"`
 }
 
+type LLMUsage struct {
+	ModelID      string
+	InputTokens  int32
+	OutputTokens int32
+	TotalTokens  int32
+}
+
+type ProcessResult struct {
+	Output ScribeOutput
+	Usage  LLMUsage
+}
+
+type ProcessError struct {
+	Message string
+	Usage   LLMUsage
+	Err     error
+}
+
+func (e *ProcessError) Error() string {
+	return e.Message
+}
+
+func (e *ProcessError) Unwrap() error {
+	return e.Err
+}
+
+type completionClient interface {
+	Complete(ctx context.Context, systemPrompt, userPrompt string, maxTokens int) (bedrock.CompletionResult, error)
+}
+
 type Processor struct {
-	bedrock *bedrock.Client
+	bedrock completionClient
 	emr     emr.EMR
 }
 
@@ -86,7 +116,7 @@ func parseAIOutput(raw string) (ScribeOutput, error) {
 	return output, nil
 }
 
-func (p *Processor) Process(ctx context.Context, practiceID, patientID, transcript string) (ScribeOutput, error) {
+func (p *Processor) Process(ctx context.Context, practiceID, patientID, transcript string) (ProcessResult, error) {
 	diagnoses, err := p.emr.GetActiveDiagnoses(ctx, practiceID, patientID)
 	if err != nil {
 		// Non-fatal: process without diagnoses, physical exam pre-population will be limited
@@ -94,17 +124,24 @@ func (p *Processor) Process(ctx context.Context, practiceID, patientID, transcri
 	}
 
 	userPrompt := buildUserPrompt(transcript, diagnoses)
-	raw, err := p.bedrock.Complete(ctx, systemPrompt, userPrompt, 4096)
+	completionResult, err := p.bedrock.Complete(ctx, systemPrompt, userPrompt, 4096)
 	if err != nil {
-		return ScribeOutput{}, fmt.Errorf("bedrock complete: %w", err)
+		return ProcessResult{}, fmt.Errorf("bedrock complete: %w", err)
+	}
+	usage := LLMUsage{
+		ModelID:      completionResult.ModelID,
+		InputTokens:  completionResult.InputTokens,
+		OutputTokens: completionResult.OutputTokens,
+		TotalTokens:  completionResult.InputTokens + completionResult.OutputTokens,
 	}
 
-	output, err := parseAIOutput(raw)
+	output, err := parseAIOutput(completionResult.Text)
 	if err != nil {
-		return ScribeOutput{}, fmt.Errorf("parse output: %w (raw: %s)", err, raw)
+		message := fmt.Sprintf("parse output: %v (raw: %s)", err, completionResult.Text)
+		return ProcessResult{Usage: usage}, &ProcessError{Message: message, Usage: usage, Err: err}
 	}
 
-	return output, nil
+	return ProcessResult{Output: output, Usage: usage}, nil
 }
 
 func (p *Processor) WriteToAthena(ctx context.Context, practiceID, encounterID string, output ScribeOutput) error {

@@ -1,8 +1,11 @@
 package scribe
 
 import (
+	"context"
+	"errors"
 	"testing"
 
+	"github.com/andybarilla/janushc-dash/internal/bedrock"
 	"github.com/andybarilla/janushc-dash/internal/emr"
 )
 
@@ -73,6 +76,104 @@ func TestParseAIOutput_InvalidJSON(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for invalid JSON")
 	}
+}
+
+func TestProcessorReturnsOutputAndUsage(t *testing.T) {
+	processor := &Processor{
+		bedrock: fakeCompletionClient{result: bedrock.CompletionResult{
+			Text:         `{"hpi":"Patient is stable.","assessment_plan":"Continue plan.","physical_exam":"Normal.","diagnoses_labs":[]}`,
+			ModelID:      "anthropic.claude-test",
+			InputTokens:  100,
+			OutputTokens: 50,
+		}},
+		emr: fakeProcessorEMR{},
+	}
+
+	result, err := processor.Process(context.Background(), "practice-1", "patient-1", "transcript")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Output.HPI != "Patient is stable." {
+		t.Fatalf("unexpected HPI: %s", result.Output.HPI)
+	}
+	if result.Usage.ModelID != "anthropic.claude-test" {
+		t.Fatalf("unexpected model ID: %s", result.Usage.ModelID)
+	}
+	if result.Usage.InputTokens != 100 || result.Usage.OutputTokens != 50 || result.Usage.TotalTokens != 150 {
+		t.Fatalf("unexpected usage: %+v", result.Usage)
+	}
+}
+
+func TestProcessorParseErrorExposesUsage(t *testing.T) {
+	processor := &Processor{
+		bedrock: fakeCompletionClient{result: bedrock.CompletionResult{
+			Text:         `not json`,
+			ModelID:      "anthropic.claude-test",
+			InputTokens:  12,
+			OutputTokens: 8,
+		}},
+		emr: fakeProcessorEMR{},
+	}
+
+	result, err := processor.Process(context.Background(), "practice-1", "patient-1", "transcript")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var processErr *ProcessError
+	if !errors.As(err, &processErr) {
+		t.Fatalf("expected ProcessError, got %T", err)
+	}
+	if result.Usage.TotalTokens != 20 {
+		t.Fatalf("unexpected result usage: %+v", result.Usage)
+	}
+	if processErr.Usage.TotalTokens != 20 {
+		t.Fatalf("unexpected error usage: %+v", processErr.Usage)
+	}
+	if !contains(processErr.Error(), "raw: not json") {
+		t.Fatalf("expected raw output in error, got: %s", processErr.Error())
+	}
+}
+
+type fakeCompletionClient struct {
+	result bedrock.CompletionResult
+	err    error
+}
+
+func (f fakeCompletionClient) Complete(ctx context.Context, systemPrompt, userPrompt string, maxTokens int) (bedrock.CompletionResult, error) {
+	return f.result, f.err
+}
+
+type fakeProcessorEMR struct{}
+
+func (fakeProcessorEMR) ListPatientOrders(ctx context.Context, practiceID, patientID, departmentID string, orderTypes []string) ([]emr.Order, error) {
+	return nil, nil
+}
+func (fakeProcessorEMR) ListDepartments(ctx context.Context, practiceID string) ([]emr.Department, error) {
+	return nil, nil
+}
+func (fakeProcessorEMR) ListDepartmentPatients(ctx context.Context, practiceID, departmentID string) ([]emr.Patient, error) {
+	return nil, nil
+}
+func (fakeProcessorEMR) GetPatientName(ctx context.Context, practiceID, patientID string) (string, error) {
+	return "", nil
+}
+func (fakeProcessorEMR) ApproveOrders(ctx context.Context, practiceID string, orderIDs []string) ([]string, error) {
+	return nil, nil
+}
+func (fakeProcessorEMR) GetActiveDiagnoses(ctx context.Context, practiceID, patientID string) ([]emr.Diagnosis, error) {
+	return nil, nil
+}
+func (fakeProcessorEMR) ListTodayEncounters(ctx context.Context, practiceID, departmentID string) ([]emr.Encounter, error) {
+	return nil, nil
+}
+func (fakeProcessorEMR) WriteEncounterHPI(ctx context.Context, practiceID, encounterID, hpiText string) error {
+	return nil
+}
+func (fakeProcessorEMR) WriteEncounterAssessmentPlan(ctx context.Context, practiceID, encounterID, apText string) error {
+	return nil
+}
+func (fakeProcessorEMR) WriteEncounterPhysicalExam(ctx context.Context, practiceID, encounterID, peText string) error {
+	return nil
 }
 
 func contains(s, substr string) bool {
