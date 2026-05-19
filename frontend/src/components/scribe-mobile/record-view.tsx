@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, Check, Mic, UploadCloud } from "lucide-react";
 import {
+  ACTIVE_RECORDING_DRAFT_ID,
+  RECORDING_CHUNK_MS,
+  createActiveRecordingDraft,
+  saveRecordingDraftChunk,
+  updateActiveRecordingDraftMetadata,
+} from "@/lib/recording-drafts";
+import {
   useCreateScribeSession,
   useUploadScribeAudio,
 } from "@/lib/scribe-queries";
@@ -57,12 +64,15 @@ export function MRecordView({ onBack, onSaved }: Props) {
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
   const [autoTranscribe, setAutoTranscribe] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [storageWarning, setStorageWarning] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const objectUrlRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
+  const draftIdRef = useRef<string | null>(null);
+  const nextChunkIndexRef = useRef(0);
 
   const createSession = useCreateScribeSession();
   const uploadAudio = useUploadScribeAudio();
@@ -73,6 +83,19 @@ export function MRecordView({ onBack, onSaved }: Props) {
     const id = window.setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => window.clearInterval(id);
   }, [phase]);
+
+  useEffect(() => {
+    if (phase !== "recording" || !draftIdRef.current) return;
+    void updateActiveRecordingDraftMetadata({
+      elapsedSeconds: seconds,
+      patientId: patientId.trim(),
+      departmentId: department,
+      autoTranscribe,
+      nextChunkIndex: nextChunkIndexRef.current,
+    }).catch(() => {
+      setStorageWarning("Recording is continuing, but local recovery storage is unavailable.");
+    });
+  }, [autoTranscribe, department, patientId, phase, seconds]);
 
   // Tear down stream / object URL when the view unmounts. The mounted flag is
   // re-armed on every mount so that StrictMode's dev-only mount/unmount/mount
@@ -110,6 +133,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
       return;
     }
     setError(null);
+    setStorageWarning(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = supportedMimeType();
@@ -118,11 +142,36 @@ export function MRecordView({ onBack, onSaved }: Props) {
         mimeType ? { mimeType } : undefined,
       );
       chunksRef.current = [];
+      draftIdRef.current = null;
+      nextChunkIndexRef.current = 0;
       streamRef.current = stream;
       mediaRecorderRef.current = recorder;
+      const type = recorder.mimeType || mimeType || "audio/webm";
+      try {
+        const draft = await createActiveRecordingDraft({
+          mimeType: type,
+          fileExtension: extensionFor(type),
+          patientId: patientId.trim(),
+          departmentId: department,
+          autoTranscribe,
+          elapsedSeconds: 0,
+        });
+        draftIdRef.current = ACTIVE_RECORDING_DRAFT_ID;
+        nextChunkIndexRef.current = draft.nextChunkIndex;
+      } catch {
+        setStorageWarning("Recording is continuing, but local recovery storage is unavailable.");
+      }
 
       recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunksRef.current.push(event.data);
+        if (event.data.size <= 0) return;
+        chunksRef.current.push(event.data);
+        const draftId = draftIdRef.current;
+        if (!draftId) return;
+        const chunkIndex = nextChunkIndexRef.current;
+        nextChunkIndexRef.current += 1;
+        void saveRecordingDraftChunk(draftId, chunkIndex, event.data).catch(() => {
+          setStorageWarning("Recording is continuing, but local recovery storage is unavailable.");
+        });
       };
       recorder.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
@@ -144,7 +193,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
         setRecordingUrl(url);
         setPhase("review");
       };
-      recorder.start();
+      recorder.start(RECORDING_CHUNK_MS);
       setSeconds(0);
       setPhase("recording");
     } catch (err) {
@@ -167,10 +216,13 @@ export function MRecordView({ onBack, onSaved }: Props) {
   const reset = () => {
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     objectUrlRef.current = null;
+    draftIdRef.current = null;
+    nextChunkIndexRef.current = 0;
     setRecordingUrl(null);
     setFile(null);
     setSeconds(0);
     setError(null);
+    setStorageWarning(null);
   };
 
   const handleSave = async () => {
@@ -257,6 +309,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
           seconds={seconds}
           patientId={patientId.trim() || "new session"}
           onStop={stopRecording}
+          storageWarning={storageWarning}
         /> : null}
 
         {phase === "review" ? <ReviewPhase
@@ -368,10 +421,12 @@ function RecordingPhase({
   seconds,
   patientId,
   onStop,
+  storageWarning,
 }: {
   seconds: number;
   patientId: string;
   onStop: () => void;
+  storageWarning: string | null;
 }) {
   return (
     <div className="m-record-center">
@@ -390,8 +445,9 @@ function RecordingPhase({
         <span className="rec-square" />
       </button>
       <div className="m-rec-detail">
-        Tap the square to stop. You'll be able to play it back before saving.
+        Recording is being saved locally as you go. Keep this page open for best results.
       </div>
+      {storageWarning ? <div className="m-rec-error">{storageWarning}</div> : null}
     </div>
   );
 }
