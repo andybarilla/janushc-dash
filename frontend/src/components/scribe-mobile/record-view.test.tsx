@@ -64,8 +64,19 @@ class FakeMediaRecorder {
   }
 }
 
-function renderRecordView(onSaved: (sessionId: string) => void = vi.fn()): void {
-  render(<MRecordView onBack={vi.fn()} onSaved={onSaved} />);
+function renderRecordView(
+  onSaved: (sessionId: string) => void = vi.fn(),
+  onBack: () => void = vi.fn(),
+): { onSaved: (sessionId: string) => void; onBack: () => void } {
+  render(<MRecordView onBack={onBack} onSaved={onSaved} />);
+  return { onSaved, onBack };
+}
+
+async function stopRecordingForReview(): Promise<void> {
+  const recorder = await startRecording();
+  recorder.ondataavailable?.({ data: new Blob(["audio"], { type: "audio/webm" }) } as BlobEvent);
+  recorder.stop();
+  await screen.findByText("Review recording");
 }
 
 async function startRecording(): Promise<FakeMediaRecorder> {
@@ -77,7 +88,10 @@ async function startRecording(): Promise<FakeMediaRecorder> {
   return FakeMediaRecorder.instances[0];
 }
 
+let trackStop: ReturnType<typeof vi.fn>;
+
 beforeEach(() => {
+  vi.clearAllMocks();
   FakeMediaRecorder.instances = [];
   FakeMediaRecorder.isTypeSupported.mockClear();
   mocks.createActiveRecordingDraft.mockResolvedValue({
@@ -105,11 +119,12 @@ beforeEach(() => {
     writable: true,
     value: FakeMediaRecorder,
   });
+  trackStop = vi.fn();
   Object.defineProperty(navigator, "mediaDevices", {
     configurable: true,
     value: {
       getUserMedia: vi.fn().mockResolvedValue({
-        getTracks: (): MediaStreamTrack[] => [{ stop: vi.fn() } as unknown as MediaStreamTrack],
+        getTracks: (): MediaStreamTrack[] => [{ stop: trackStop } as unknown as MediaStreamTrack],
       }),
     },
   });
@@ -277,5 +292,78 @@ describe("MRecordView recording drafts", () => {
     expect(await screen.findByText("Recording is continuing, but local recovery storage is unavailable.")).toBeInTheDocument();
     expect(screen.getByText("Recording is being saved locally as you go. Keep this page open for best results.")).toBeInTheDocument();
     expect(recorder.state).toBe("recording");
+  });
+
+  it("deletes the active draft after upload succeeds before reporting saved", async () => {
+    const onSaved = vi.fn();
+    const uploadAudio = vi.fn().mockResolvedValue(undefined);
+    mocks.useUploadScribeAudio.mockReturnValue({ mutateAsync: uploadAudio });
+    renderRecordView(onSaved);
+    fireEvent.change(await screen.findByLabelText("Patient"), { target: { value: "patient-1" } });
+    fireEvent.click(screen.getByLabelText("Start recording"));
+    await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
+    const recorder = FakeMediaRecorder.instances[0];
+    recorder.ondataavailable?.({ data: new Blob(["audio"], { type: "audio/webm" }) } as BlobEvent);
+    recorder.stop();
+    fireEvent.click(await screen.findByRole("button", { name: "Save & queue for processing" }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith("session-1"));
+    expect(uploadAudio).toHaveBeenCalled();
+    expect(mocks.deleteActiveRecordingDraft).toHaveBeenCalledTimes(1);
+    expect(uploadAudio.mock.invocationCallOrder[0]).toBeLessThan(mocks.deleteActiveRecordingDraft.mock.invocationCallOrder[0]);
+    expect(mocks.deleteActiveRecordingDraft.mock.invocationCallOrder[0]).toBeLessThan(onSaved.mock.invocationCallOrder[0]);
+  });
+
+  it("does not delete the active draft when upload fails and leaves review visible", async () => {
+    mocks.useUploadScribeAudio.mockReturnValue({ mutateAsync: vi.fn().mockRejectedValue(new Error("upload failed")) });
+    await stopRecordingForReview();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save & queue for processing" }));
+
+    expect(await screen.findByText("upload failed")).toBeInTheDocument();
+    expect(screen.getByText("Review recording")).toBeInTheDocument();
+    expect(mocks.deleteActiveRecordingDraft).not.toHaveBeenCalled();
+  });
+
+  it("deletes the active draft and navigates back when discarding from review", async () => {
+    const onBack = vi.fn();
+    renderRecordView(vi.fn(), onBack);
+    fireEvent.click(await screen.findByLabelText("Start recording"));
+    await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
+    FakeMediaRecorder.instances[0].ondataavailable?.({ data: new Blob(["audio"], { type: "audio/webm" }) } as BlobEvent);
+    FakeMediaRecorder.instances[0].stop();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Discard" }));
+
+    await waitFor(() => expect(mocks.deleteActiveRecordingDraft).toHaveBeenCalledTimes(1));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("deletes the active draft and navigates back without showing review when backing out while recording", async () => {
+    const onBack = vi.fn();
+    renderRecordView(vi.fn(), onBack);
+    fireEvent.click(await screen.findByLabelText("Start recording"));
+    await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
+    const recorder = FakeMediaRecorder.instances[0];
+
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+
+    await waitFor(() => expect(mocks.deleteActiveRecordingDraft).toHaveBeenCalledTimes(1));
+    expect(recorder.stop).toHaveBeenCalled();
+    expect(trackStop).toHaveBeenCalled();
+    expect(screen.queryByText("Review recording")).not.toBeInTheDocument();
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("deletes the previous draft before starting a replacement recording", async () => {
+    await stopRecordingForReview();
+
+    fireEvent.click(screen.getByRole("button", { name: "Re-record" }));
+
+    await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(2));
+    expect(mocks.deleteActiveRecordingDraft).toHaveBeenCalledTimes(1);
+    expect(mocks.deleteActiveRecordingDraft.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.createActiveRecordingDraft.mock.invocationCallOrder[1],
+    );
   });
 });

@@ -248,6 +248,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
     setSeconds(0);
     setError(null);
     setStorageWarning(null);
+    setActiveDraft(null);
     setIsRecoveredDraft(false);
   };
 
@@ -302,6 +303,11 @@ export function MRecordView({ onBack, onSaved }: Props) {
         department_id: department,
       });
       await uploadAudio.mutateAsync({ id: session.id, file, autoTranscribe });
+      try {
+        await deleteActiveRecordingDraft();
+      } catch (deleteError) {
+        console.warn("Unable to delete saved recording draft.", deleteError);
+      }
       reset();
       onSaved(session.id);
     } catch (err) {
@@ -310,12 +316,17 @@ export function MRecordView({ onBack, onSaved }: Props) {
     }
   };
 
-  const handleDiscard = () => {
+  const handleDiscard = async () => {
+    try {
+      await deleteActiveRecordingDraft();
+    } catch (deleteError) {
+      console.warn("Unable to delete discarded recording draft.", deleteError);
+    }
     reset();
     onBack();
   };
 
-  const handleBack = () => {
+  const handleBack = async () => {
     const recorder = mediaRecorderRef.current;
     if (recorder) {
       // We're discarding the recording, so don't transition to review when the
@@ -326,6 +337,11 @@ export function MRecordView({ onBack, onSaved }: Props) {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     mediaRecorderRef.current = null;
+    try {
+      await deleteActiveRecordingDraft();
+    } catch (deleteError) {
+      console.warn("Unable to delete discarded recording draft.", deleteError);
+    }
     reset();
     onBack();
   };
@@ -391,8 +407,15 @@ export function MRecordView({ onBack, onSaved }: Props) {
           isRecoveredDraft={isRecoveredDraft}
           onSave={handleSave}
           onReRecord={() => {
-            reset();
-            void startRecording();
+            void (async () => {
+              try {
+                await deleteActiveRecordingDraft();
+              } catch (deleteError) {
+                console.warn("Unable to delete replaced recording draft.", deleteError);
+              }
+              reset();
+              await startRecording();
+            })();
           }}
           onDiscard={handleDiscard}
         /> : null}
