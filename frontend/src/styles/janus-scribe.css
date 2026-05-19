@@ -1464,6 +1464,14 @@
   font-size: 12px;
   color: var(--janus-text-light);
 }
+.janus-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--janus-text-dark);
+  font-size: 13px;
+}
+.janus-checkbox-row input { accent-color: var(--janus-primary); }
 .janus-segmented-control {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

@@ -60,6 +60,7 @@ export function UploadModal({ open, onClose, onCreated }: Props) {
   const [recordingState, setRecordingState] = useState<RecordingState>("idle");
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
+  const [autoTranscribe, setAutoTranscribe] = useState(true);
   const [recordingError, setRecordingError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -193,7 +194,7 @@ export function UploadModal({ open, onClose, onCreated }: Props) {
       encounter_id: encounterId,
       department_id: departmentId,
     });
-    await uploadAudio.mutateAsync({ id: session.id, file });
+    await uploadAudio.mutateAsync({ id: session.id, file, autoTranscribe });
     onCreated?.(session.id);
     reset();
     onClose();
@@ -272,6 +273,22 @@ export function UploadModal({ open, onClose, onCreated }: Props) {
               value={departmentId}
               onChange={(e) => setDepartmentId(e.target.value)}
             />
+          </div>
+
+          <div>
+            <label className="janus-label" htmlFor="upload-auto-transcribe">
+              Processing
+            </label>
+            <label className="janus-checkbox-row" htmlFor="upload-auto-transcribe">
+              <input
+                id="upload-auto-transcribe"
+                type="checkbox"
+                checked={autoTranscribe}
+                onChange={(e) => setAutoTranscribe(e.target.checked)}
+                disabled={busy || recordingState === "recording"}
+              />
+              <span>Automatically transcribe after upload</span>
+            </label>
           </div>
 
           {audioSource === "upload" ? (
@@ -381,7 +398,7 @@ export function UploadModal({ open, onClose, onCreated }: Props) {
               !file
             }
           >
-            {busy ? "Processing…" : "Save & process"}
+            {busy ? "Processing…" : autoTranscribe ? "Save & process" : "Save recording"}
           </button>
         </div>
       </div>

@@ -299,3 +299,19 @@ func (q *Queries) UpdateScribeSessionProcessing(ctx context.Context, arg UpdateS
 	_, err := q.db.Exec(ctx, updateScribeSessionProcessing, arg.ID, arg.TenantID, arg.Transcript)
 	return err
 }
+
+const updateScribeSessionRecording = `-- name: UpdateScribeSessionRecording :exec
+UPDATE scribe_sessions
+SET status = 'recording'
+WHERE id = $1 AND tenant_id = $2
+`
+
+type UpdateScribeSessionRecordingParams struct {
+	ID       pgtype.UUID `json:"id"`
+	TenantID pgtype.UUID `json:"tenant_id"`
+}
+
+func (q *Queries) UpdateScribeSessionRecording(ctx context.Context, arg UpdateScribeSessionRecordingParams) error {
+	_, err := q.db.Exec(ctx, updateScribeSessionRecording, arg.ID, arg.TenantID)
+	return err
+}

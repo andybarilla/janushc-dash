@@ -78,6 +78,14 @@ type processRequest struct {
 	Transcript string `json:"transcript"`
 }
 
+func shouldAutoTranscribe(r *http.Request) bool {
+	value := strings.TrimSpace(strings.ToLower(r.FormValue("auto_transcribe")))
+	if value == "" {
+		return true
+	}
+	return value != "false" && value != "0" && value != "off" && value != "no"
+}
+
 func (r processRequest) validate() error {
 	if r.Transcript == "" {
 		return fmt.Errorf("transcript required")
@@ -859,6 +867,23 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("scribe audio saved for session %s: %d bytes (ext=%s)", sessionID, audioBytes, ext)
+
+	if !shouldAutoTranscribe(r) {
+		if err := h.queries.UpdateScribeSessionRecording(r.Context(), database.UpdateScribeSessionRecordingParams{
+			ID:       sessionUUID,
+			TenantID: tenantUUID,
+		}); err != nil {
+			log.Printf("scribe status update error for session %s: %v", sessionID, err)
+			http.Error(w, "failed to save recording", http.StatusInternalServerError)
+			return
+		}
+
+		session.Status = "recording"
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(toSessionResponse(session))
+		return
+	}
 
 	if h.batch == nil || h.cfg.AWSTranscribeBucket == "" {
 		log.Printf("scribe batch not configured for session %s", sessionID)

@@ -55,6 +55,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
   const [seconds, setSeconds] = useState(0);
   const [file, setFile] = useState<File | null>(null);
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
+  const [autoTranscribe, setAutoTranscribe] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -185,7 +186,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
           .replace(/[:.]/g, "-")}`,
         department_id: department,
       });
-      await uploadAudio.mutateAsync({ id: session.id, file });
+      await uploadAudio.mutateAsync({ id: session.id, file, autoTranscribe });
       reset();
       onSaved(session.id);
     } catch (err) {
@@ -245,6 +246,8 @@ export function MRecordView({ onBack, onSaved }: Props) {
           setPatientId={setPatientId}
           department={department}
           setDepartment={setDepartment}
+          autoTranscribe={autoTranscribe}
+          setAutoTranscribe={setAutoTranscribe}
           onStart={startRecording}
           supported={supported}
           error={error}
@@ -261,6 +264,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
           patientId={patientId.trim() || "new session"}
           department={department}
           recordingUrl={recordingUrl}
+          autoTranscribe={autoTranscribe}
           error={error}
           onSave={handleSave}
           onReRecord={() => {
@@ -284,6 +288,8 @@ interface IdleProps {
   setPatientId: (v: string) => void;
   department: string;
   setDepartment: (v: string) => void;
+  autoTranscribe: boolean;
+  setAutoTranscribe: (v: boolean) => void;
   onStart: () => void;
   supported: boolean;
   error: string | null;
@@ -294,6 +300,8 @@ function IdlePhase({
   setPatientId,
   department,
   setDepartment,
+  autoTranscribe,
+  setAutoTranscribe,
   onStart,
   supported,
   error,
@@ -320,6 +328,16 @@ function IdlePhase({
           <option value="dept-1">Department 1</option>
           <option value="dept-2">Department 2</option>
         </select>
+        <label className="field-label" htmlFor="m-rec-auto-transcribe">Processing</label>
+        <label className="m-record-toggle" htmlFor="m-rec-auto-transcribe">
+          <input
+            id="m-rec-auto-transcribe"
+            type="checkbox"
+            checked={autoTranscribe}
+            onChange={(e) => setAutoTranscribe(e.target.checked)}
+          />
+          <span>Automatically transcribe after upload</span>
+        </label>
       </div>
       <div className="m-record-center">
         <button
@@ -383,6 +401,7 @@ interface ReviewProps {
   patientId: string;
   department: string;
   recordingUrl: string | null;
+  autoTranscribe: boolean;
   error: string | null;
   onSave: () => void;
   onReRecord: () => void;
@@ -394,6 +413,7 @@ function ReviewPhase({
   patientId,
   department,
   recordingUrl,
+  autoTranscribe,
   error,
   onSave,
   onReRecord,
@@ -409,7 +429,7 @@ function ReviewPhase({
         <div className="m-rec-detail">
           {patientId} · {department}
           <br />
-          Saved on device. Ready to queue for transcription.
+          Saved on device. {autoTranscribe ? "Ready to queue for transcription." : "Ready to save without transcription."}
         </div>
         {recordingUrl ? (
           <div
@@ -431,7 +451,7 @@ function ReviewPhase({
       <div className="m-record-actions">
         <button type="button" className="m-record-save" onClick={onSave}>
           <UploadCloud />
-          Save & queue for processing
+          {autoTranscribe ? "Save & queue for processing" : "Save recording only"}
         </button>
         <div className="btn-row">
           <button type="button" className="m-record-secondary" onClick={onReRecord}>
@@ -469,7 +489,7 @@ function UploadingPhase({
       <div className="m-rec-detail">
         {patientId} · {fmt(seconds)}
         <br />
-        Once uploaded, transcription will start automatically.
+        Uploading recording…
       </div>
     </div>
   );

@@ -56,6 +56,11 @@ UPDATE scribe_sessions
 SET status = 'processing', transcript = $3
 WHERE id = $1 AND tenant_id = $2;
 
+-- name: UpdateScribeSessionRecording :exec
+UPDATE scribe_sessions
+SET status = 'recording'
+WHERE id = $1 AND tenant_id = $2;
+
 -- name: UpdateScribeSessionComplete :exec
 UPDATE scribe_sessions
 SET status = 'complete', ai_output = $3, completed_at = now()

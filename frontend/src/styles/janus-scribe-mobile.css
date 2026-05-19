@@ -1411,6 +1411,15 @@
   margin-bottom: 16px;
 }
 .m-record-form .field:focus { outline: none; border-color: var(--janus-primary); }
+.m-record-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  color: var(--janus-text-dark);
+  font-size: 14px;
+}
+.m-record-toggle input { accent-color: var(--janus-primary); }
 
 .m-record-center {
   flex: 1;

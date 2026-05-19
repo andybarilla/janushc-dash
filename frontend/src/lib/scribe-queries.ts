@@ -267,9 +267,18 @@ export function useAddFeedback() {
 export function useUploadScribeAudio() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, file }: { id: string; file: File }) => {
+    mutationFn: ({
+      id,
+      file,
+      autoTranscribe = true,
+    }: {
+      id: string;
+      file: File;
+      autoTranscribe?: boolean;
+    }) => {
       const formData = new FormData();
       formData.append("audio", file);
+      formData.append("auto_transcribe", String(autoTranscribe));
       return api.upload<ScribeSession>(
         `/api/scribe/sessions/${id}/upload`,
         formData
