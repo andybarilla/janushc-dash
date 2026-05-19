@@ -88,6 +88,16 @@ function invocationCallOrderAt(mock: { mock: { invocationCallOrder: number[] } }
   return callOrder;
 }
 
+function deferredVoid(): { promise: Promise<void>; resolve: () => void; reject: (error: Error) => void } {
+  let resolvePromise: () => void = () => undefined;
+  let rejectPromise: (error: Error) => void = () => undefined;
+  const promise = new Promise<void>((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+  return { promise, resolve: resolvePromise, reject: rejectPromise };
+}
+
 async function stopRecordingForReview(): Promise<void> {
   const recorder = await startRecording();
   recorder.ondataavailable?.({ data: new Blob(["audio"], { type: "audio/webm" }) } as BlobEvent);
@@ -387,5 +397,55 @@ describe("MRecordView recording drafts", () => {
     expect(invocationCallOrderAt(mocks.deleteActiveRecordingDraft, 0)).toBeLessThan(
       invocationCallOrderAt(mocks.createActiveRecordingDraft, 1),
     );
+  });
+
+  it("returns to idle with a microphone error when re-record cannot start", async () => {
+    await stopRecordingForReview();
+    vi.mocked(navigator.mediaDevices.getUserMedia).mockRejectedValueOnce(new Error("microphone blocked"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Re-record" }));
+
+    expect(await screen.findByText("microphone blocked")).toBeInTheDocument();
+    expect(screen.getByLabelText("Start recording")).toBeInTheDocument();
+    expect(screen.queryByText("Review recording")).not.toBeInTheDocument();
+  });
+
+  it("waits for an in-flight chunk save before deleting on discard", async () => {
+    const pendingChunkSave = deferredVoid();
+    mocks.saveRecordingDraftChunk.mockReturnValueOnce(pendingChunkSave.promise);
+    const onBack = vi.fn();
+    renderRecordView(vi.fn(), onBack);
+    fireEvent.click(await screen.findByLabelText("Start recording"));
+    await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
+    const recorder = recorderAt(0);
+    recorder.ondataavailable?.({ data: new Blob(["audio"], { type: "audio/webm" }) } as BlobEvent);
+    recorder.stop();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Discard" }));
+
+    await waitFor(() => expect(mocks.saveRecordingDraftChunk).toHaveBeenCalledTimes(1));
+    expect(mocks.deleteActiveRecordingDraft).not.toHaveBeenCalled();
+    pendingChunkSave.resolve();
+    await waitFor(() => expect(mocks.deleteActiveRecordingDraft).toHaveBeenCalledTimes(1));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not show a storage warning when a late chunk save rejects after discard", async () => {
+    const pendingChunkSave = deferredVoid();
+    mocks.saveRecordingDraftChunk.mockReturnValueOnce(pendingChunkSave.promise);
+    const onBack = vi.fn();
+    renderRecordView(vi.fn(), onBack);
+    fireEvent.click(await screen.findByLabelText("Start recording"));
+    await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
+    const recorder = recorderAt(0);
+    recorder.ondataavailable?.({ data: new Blob(["audio"], { type: "audio/webm" }) } as BlobEvent);
+    recorder.stop();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Discard" }));
+    pendingChunkSave.reject(new Error("quota"));
+
+    await waitFor(() => expect(mocks.deleteActiveRecordingDraft).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText("Recording is continuing, but local recovery storage is unavailable.")).not.toBeInTheDocument();
+    expect(onBack).toHaveBeenCalledTimes(1);
   });
 });

@@ -80,6 +80,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
   const mountedRef = useRef(true);
   const draftIdRef = useRef<string | null>(null);
   const nextChunkIndexRef = useRef(0);
+  const pendingDraftWritesRef = useRef<Set<Promise<void>>>(new Set());
 
   const createSession = useCreateScribeSession();
   const uploadAudio = useUploadScribeAudio();
@@ -109,16 +110,24 @@ export function MRecordView({ onBack, onSaved }: Props) {
   }, [phase]);
 
   useEffect(() => {
-    if (phase !== "recording" || !draftIdRef.current) return;
-    void updateActiveRecordingDraftMetadata({
+    const draftId = draftIdRef.current;
+    if (phase !== "recording" || !draftId) return;
+    const writePromise = updateActiveRecordingDraftMetadata({
       elapsedSeconds: seconds,
       patientId: patientId.trim(),
       departmentId: department,
       autoTranscribe,
       nextChunkIndex: nextChunkIndexRef.current,
-    }).catch(() => {
-      setStorageWarning("Recording is continuing, but local recovery storage is unavailable.");
-    });
+    })
+      .catch(() => {
+        if (mountedRef.current && draftIdRef.current === draftId) {
+          setStorageWarning("Recording is continuing, but local recovery storage is unavailable.");
+        }
+      })
+      .finally(() => {
+        pendingDraftWritesRef.current.delete(writePromise);
+      });
+    pendingDraftWritesRef.current.add(writePromise);
   }, [autoTranscribe, department, patientId, phase, seconds]);
 
   // Tear down stream / object URL when the view unmounts. The mounted flag is
@@ -130,9 +139,11 @@ export function MRecordView({ onBack, onSaved }: Props) {
     return () => {
       mountedRef.current = false;
       const recorder = mediaRecorderRef.current;
+      draftIdRef.current = null;
       if (recorder) {
-        // Drop the onstop callback so a late stop event doesn't set state on an
-        // unmounted component.
+        // Drop callbacks so late recorder events don't set state on an
+        // unmounted component or enqueue draft writes after discard.
+        recorder.ondataavailable = null;
         recorder.onstop = null;
         if (recorder.state === "recording") recorder.stop();
       }
@@ -151,10 +162,10 @@ export function MRecordView({ onBack, onSaved }: Props) {
     !!navigator.mediaDevices?.getUserMedia &&
     typeof MediaRecorder !== "undefined";
 
-  const startRecording = async () => {
+  const startRecording = async (): Promise<boolean> => {
     if (!supported) {
       setError("Recording is not supported in this browser.");
-      return;
+      return false;
     }
     setError(null);
     setStorageWarning(null);
@@ -193,9 +204,16 @@ export function MRecordView({ onBack, onSaved }: Props) {
         if (!draftId) return;
         const chunkIndex = nextChunkIndexRef.current;
         nextChunkIndexRef.current += 1;
-        void saveRecordingDraftChunk(draftId, chunkIndex, event.data).catch(() => {
-          setStorageWarning("Recording is continuing, but local recovery storage is unavailable.");
-        });
+        const writePromise = saveRecordingDraftChunk(draftId, chunkIndex, event.data)
+          .catch(() => {
+            if (mountedRef.current && draftIdRef.current === draftId) {
+              setStorageWarning("Recording is continuing, but local recovery storage is unavailable.");
+            }
+          })
+          .finally(() => {
+            pendingDraftWritesRef.current.delete(writePromise);
+          });
+        pendingDraftWritesRef.current.add(writePromise);
       };
       recorder.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
@@ -221,6 +239,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
       recorder.start(RECORDING_CHUNK_MS);
       setSeconds(0);
       setPhase("recording");
+      return true;
     } catch (err) {
       setError(
         err instanceof Error
@@ -230,12 +249,20 @@ export function MRecordView({ onBack, onSaved }: Props) {
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       mediaRecorderRef.current = null;
+      setPhase("idle");
+      return false;
     }
   };
 
   const stopRecording = () => {
     const recorder = mediaRecorderRef.current;
     if (recorder?.state === "recording") recorder.stop();
+  };
+
+  const deleteDraftAfterPendingWrites = async (): Promise<void> => {
+    draftIdRef.current = null;
+    await Promise.allSettled(Array.from(pendingDraftWritesRef.current));
+    await deleteActiveRecordingDraft();
   };
 
   const reset = () => {
@@ -281,7 +308,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
 
   const handleDiscardRecoveredDraft = async () => {
     try {
-      await deleteActiveRecordingDraft();
+      await deleteDraftAfterPendingWrites();
     } finally {
       setActiveDraft(null);
       reset();
@@ -304,7 +331,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
       });
       await uploadAudio.mutateAsync({ id: session.id, file, autoTranscribe });
       try {
-        await deleteActiveRecordingDraft();
+        await deleteDraftAfterPendingWrites();
       } catch (deleteError) {
         console.warn("Unable to delete saved recording draft.", deleteError);
       }
@@ -318,7 +345,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
 
   const handleDiscard = async () => {
     try {
-      await deleteActiveRecordingDraft();
+      await deleteDraftAfterPendingWrites();
     } catch (deleteError) {
       console.warn("Unable to delete discarded recording draft.", deleteError);
     }
@@ -330,7 +357,8 @@ export function MRecordView({ onBack, onSaved }: Props) {
     const recorder = mediaRecorderRef.current;
     if (recorder) {
       // We're discarding the recording, so don't transition to review when the
-      // stop event fires asynchronously.
+      // stop event fires asynchronously or enqueue more draft writes.
+      recorder.ondataavailable = null;
       recorder.onstop = null;
       if (recorder.state === "recording") recorder.stop();
     }
@@ -338,7 +366,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
     streamRef.current = null;
     mediaRecorderRef.current = null;
     try {
-      await deleteActiveRecordingDraft();
+      await deleteDraftAfterPendingWrites();
     } catch (deleteError) {
       console.warn("Unable to delete discarded recording draft.", deleteError);
     }
@@ -409,11 +437,12 @@ export function MRecordView({ onBack, onSaved }: Props) {
           onReRecord={() => {
             void (async () => {
               try {
-                await deleteActiveRecordingDraft();
+                await deleteDraftAfterPendingWrites();
               } catch (deleteError) {
                 console.warn("Unable to delete replaced recording draft.", deleteError);
               }
               reset();
+              setPhase("idle");
               await startRecording();
             })();
           }}
