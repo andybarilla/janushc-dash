@@ -6,6 +6,10 @@ import {
   createActiveRecordingDraft,
   saveRecordingDraftChunk,
   updateActiveRecordingDraftMetadata,
+  getActiveRecordingDraft,
+  buildRecordingDraftBlob,
+  deleteActiveRecordingDraft,
+  type RecordingDraftMetadata,
 } from "@/lib/recording-drafts";
 import {
   useCreateScribeSession,
@@ -65,6 +69,9 @@ export function MRecordView({ onBack, onSaved }: Props) {
   const [autoTranscribe, setAutoTranscribe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
+  const [activeDraft, setActiveDraft] = useState<RecordingDraftMetadata | null>(null);
+  const [isCheckingDraft, setIsCheckingDraft] = useState(true);
+  const [isRecoveredDraft, setIsRecoveredDraft] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -76,6 +83,23 @@ export function MRecordView({ onBack, onSaved }: Props) {
 
   const createSession = useCreateScribeSession();
   const uploadAudio = useUploadScribeAudio();
+
+  useEffect(() => {
+    let isCurrent = true;
+    void getActiveRecordingDraft()
+      .then((draft) => {
+        if (isCurrent) setActiveDraft(draft);
+      })
+      .catch(() => {
+        if (isCurrent) setError("Unable to check for interrupted recordings.");
+      })
+      .finally(() => {
+        if (isCurrent) setIsCheckingDraft(false);
+      });
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
 
   // Timer ticks once per second during recording.
   useEffect(() => {
@@ -191,6 +215,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
         const url = URL.createObjectURL(blob);
         objectUrlRef.current = url;
         setRecordingUrl(url);
+        setIsRecoveredDraft(false);
         setPhase("review");
       };
       recorder.start(RECORDING_CHUNK_MS);
@@ -223,6 +248,44 @@ export function MRecordView({ onBack, onSaved }: Props) {
     setSeconds(0);
     setError(null);
     setStorageWarning(null);
+    setIsRecoveredDraft(false);
+  };
+
+  const handleRecoverDraft = async () => {
+    if (!activeDraft) return;
+    setError(null);
+    try {
+      const blob = await buildRecordingDraftBlob(activeDraft.draftId, activeDraft.mimeType);
+      if (blob.size <= 0) throw new Error("No saved audio chunks were found for this interrupted recording.");
+      const recoveredFile = new File(
+        [blob],
+        `mobile-recording-recovered.${activeDraft.fileExtension}`,
+        { type: activeDraft.mimeType },
+      );
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+      const url = URL.createObjectURL(blob);
+      objectUrlRef.current = url;
+      setPatientId(activeDraft.patientId);
+      setDepartment(activeDraft.departmentId);
+      setAutoTranscribe(activeDraft.autoTranscribe);
+      setSeconds(activeDraft.elapsedSeconds);
+      setFile(recoveredFile);
+      setRecordingUrl(url);
+      setIsRecoveredDraft(true);
+      setPhase("review");
+    } catch (err) {
+      setError(apiErrorMessage(err) ?? "Unable to recover interrupted recording.");
+    }
+  };
+
+  const handleDiscardRecoveredDraft = async () => {
+    try {
+      await deleteActiveRecordingDraft();
+    } finally {
+      setActiveDraft(null);
+      reset();
+      setPhase("idle");
+    }
   };
 
   const handleSave = async () => {
@@ -293,7 +356,13 @@ export function MRecordView({ onBack, onSaved }: Props) {
       </div>
 
       <div className="m-record-stage">
-        {phase === "idle" ? <IdlePhase
+        {phase === "idle" && !isCheckingDraft && activeDraft ? <RecoveryDraftPhase
+          error={error}
+          onRecover={handleRecoverDraft}
+          onDiscard={handleDiscardRecoveredDraft}
+        /> : null}
+
+        {phase === "idle" && !isCheckingDraft && !activeDraft ? <IdlePhase
           patientId={patientId}
           setPatientId={setPatientId}
           department={department}
@@ -319,6 +388,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
           recordingUrl={recordingUrl}
           autoTranscribe={autoTranscribe}
           error={error}
+          isRecoveredDraft={isRecoveredDraft}
           onSave={handleSave}
           onReRecord={() => {
             reset();
@@ -417,6 +487,34 @@ function IdlePhase({
   );
 }
 
+function RecoveryDraftPhase({
+  error,
+  onRecover,
+  onDiscard,
+}: {
+  error: string | null;
+  onRecover: () => void;
+  onDiscard: () => void;
+}) {
+  return (
+    <div className="m-record-center">
+      <div className="m-saved-title">Interrupted recording found</div>
+      <div className="m-rec-detail">
+        We saved audio from a previous recording on this device. Review and save it, or discard it.
+      </div>
+      {error ? <div className="m-rec-error">{error}</div> : null}
+      <div className="m-record-actions">
+        <button type="button" className="m-record-save" onClick={onRecover}>
+          Recover recording
+        </button>
+        <button type="button" className="m-record-secondary danger" onClick={onDiscard}>
+          Discard
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function RecordingPhase({
   seconds,
   patientId,
@@ -462,6 +560,7 @@ interface ReviewProps {
   onSave: () => void;
   onReRecord: () => void;
   onDiscard: () => void;
+  isRecoveredDraft: boolean;
 }
 
 function ReviewPhase({
@@ -471,6 +570,7 @@ function ReviewPhase({
   recordingUrl,
   autoTranscribe,
   error,
+  isRecoveredDraft,
   onSave,
   onReRecord,
   onDiscard,
@@ -487,6 +587,11 @@ function ReviewPhase({
           <br />
           Saved on device. {autoTranscribe ? "Ready to queue for transcription." : "Ready to save without transcription."}
         </div>
+        {isRecoveredDraft ? (
+          <div className="m-rec-detail">
+            Recovered from local device storage. Please review before saving.
+          </div>
+        ) : null}
         {recordingUrl ? (
           <div
             className="m-audio"

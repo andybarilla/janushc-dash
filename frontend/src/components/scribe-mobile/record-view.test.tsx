@@ -10,6 +10,9 @@ const mocks = vi.hoisted(() => ({
   createActiveRecordingDraft: vi.fn(),
   saveRecordingDraftChunk: vi.fn(),
   updateActiveRecordingDraftMetadata: vi.fn(),
+  getActiveRecordingDraft: vi.fn(),
+  buildRecordingDraftBlob: vi.fn(),
+  deleteActiveRecordingDraft: vi.fn(),
   useCreateScribeSession: vi.fn(),
   useUploadScribeAudio: vi.fn(),
 }));
@@ -23,6 +26,9 @@ vi.mock("@/lib/recording-drafts", async () => {
     createActiveRecordingDraft: mocks.createActiveRecordingDraft,
     saveRecordingDraftChunk: mocks.saveRecordingDraftChunk,
     updateActiveRecordingDraftMetadata: mocks.updateActiveRecordingDraftMetadata,
+    getActiveRecordingDraft: mocks.getActiveRecordingDraft,
+    buildRecordingDraftBlob: mocks.buildRecordingDraftBlob,
+    deleteActiveRecordingDraft: mocks.deleteActiveRecordingDraft,
   };
 });
 
@@ -58,13 +64,13 @@ class FakeMediaRecorder {
   }
 }
 
-function renderRecordView(): void {
-  render(<MRecordView onBack={vi.fn()} onSaved={vi.fn()} />);
+function renderRecordView(onSaved: (sessionId: string) => void = vi.fn()): void {
+  render(<MRecordView onBack={vi.fn()} onSaved={onSaved} />);
 }
 
 async function startRecording(): Promise<FakeMediaRecorder> {
   renderRecordView();
-  fireEvent.change(screen.getByLabelText("Patient"), { target: { value: "patient-1" } });
+  fireEvent.change(await screen.findByLabelText("Patient"), { target: { value: "patient-1" } });
   fireEvent.click(screen.getByLabelText("Start recording"));
   await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
   await waitFor(() => expect(FakeMediaRecorder.instances[0].start).toHaveBeenCalled());
@@ -88,8 +94,11 @@ beforeEach(() => {
   });
   mocks.saveRecordingDraftChunk.mockResolvedValue(undefined);
   mocks.updateActiveRecordingDraftMetadata.mockResolvedValue(undefined);
-  mocks.useCreateScribeSession.mockReturnValue({ mutateAsync: vi.fn() });
-  mocks.useUploadScribeAudio.mockReturnValue({ mutateAsync: vi.fn() });
+  mocks.getActiveRecordingDraft.mockResolvedValue(null);
+  mocks.buildRecordingDraftBlob.mockResolvedValue(new Blob(["recovered"], { type: "audio/webm" }));
+  mocks.deleteActiveRecordingDraft.mockResolvedValue(undefined);
+  mocks.useCreateScribeSession.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ id: "session-1" }) });
+  mocks.useUploadScribeAudio.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue(undefined) });
 
   Object.defineProperty(globalThis, "MediaRecorder", {
     configurable: true,
@@ -116,6 +125,108 @@ afterEach(() => {
 });
 
 describe("MRecordView recording drafts", () => {
+  it("shows recovery controls when an active draft exists", async () => {
+    mocks.getActiveRecordingDraft.mockResolvedValueOnce({
+      draftId: ACTIVE_RECORDING_DRAFT_ID,
+      mimeType: "audio/webm",
+      fileExtension: "webm",
+      patientId: "patient-2",
+      departmentId: "dept-2",
+      autoTranscribe: false,
+      startedAt: "2026-05-19T00:00:00.000Z",
+      updatedAt: "2026-05-19T00:01:15.000Z",
+      elapsedSeconds: 75,
+      nextChunkIndex: 3,
+    });
+
+    renderRecordView();
+
+    expect(await screen.findByText("Interrupted recording found")).toBeInTheDocument();
+    expect(screen.getByText("We saved audio from a previous recording on this device. Review and save it, or discard it.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Recover recording" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Discard" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Start recording")).not.toBeInTheDocument();
+  });
+
+  it("recovers an active draft into review state", async () => {
+    const recoveredBlob = new Blob(["recovered"], { type: "audio/webm" });
+    const uploadAudio = vi.fn().mockResolvedValue(undefined);
+    mocks.getActiveRecordingDraft.mockResolvedValueOnce({
+      draftId: ACTIVE_RECORDING_DRAFT_ID,
+      mimeType: "audio/webm",
+      fileExtension: "webm",
+      patientId: "patient-2",
+      departmentId: "dept-2",
+      autoTranscribe: false,
+      startedAt: "2026-05-19T00:00:00.000Z",
+      updatedAt: "2026-05-19T00:01:15.000Z",
+      elapsedSeconds: 75,
+      nextChunkIndex: 3,
+    });
+    mocks.buildRecordingDraftBlob.mockResolvedValueOnce(recoveredBlob);
+    mocks.useUploadScribeAudio.mockReturnValue({ mutateAsync: uploadAudio });
+
+    renderRecordView();
+    fireEvent.click(await screen.findByRole("button", { name: "Recover recording" }));
+
+    expect(await screen.findByText("Recovered from local device storage. Please review before saving.")).toBeInTheDocument();
+    expect(mocks.buildRecordingDraftBlob).toHaveBeenCalledWith(ACTIVE_RECORDING_DRAFT_ID, "audio/webm");
+    expect(URL.createObjectURL).toHaveBeenCalledWith(recoveredBlob);
+    expect(screen.getByText("Recorded 01:15")).toBeInTheDocument();
+    expect(screen.getByText(/patient-2 · dept-2/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save recording only" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save recording only" }));
+    await waitFor(() => expect(uploadAudio).toHaveBeenCalled());
+    const uploadedFile = uploadAudio.mock.calls[0][0].file as File;
+    expect(uploadedFile.name).toBe("mobile-recording-recovered.webm");
+    expect(uploadedFile.type).toBe("audio/webm");
+  });
+
+  it("discards an active draft and returns to normal idle controls", async () => {
+    mocks.getActiveRecordingDraft.mockResolvedValueOnce({
+      draftId: ACTIVE_RECORDING_DRAFT_ID,
+      mimeType: "audio/webm",
+      fileExtension: "webm",
+      patientId: "patient-2",
+      departmentId: "dept-2",
+      autoTranscribe: true,
+      startedAt: "2026-05-19T00:00:00.000Z",
+      updatedAt: "2026-05-19T00:01:15.000Z",
+      elapsedSeconds: 75,
+      nextChunkIndex: 3,
+    });
+
+    renderRecordView();
+    fireEvent.click(await screen.findByRole("button", { name: "Discard" }));
+
+    await waitFor(() => expect(mocks.deleteActiveRecordingDraft).toHaveBeenCalled());
+    expect(await screen.findByLabelText("Start recording")).toBeInTheDocument();
+    expect(screen.queryByText("Interrupted recording found")).not.toBeInTheDocument();
+  });
+
+  it("keeps discard available when recovering a draft fails", async () => {
+    mocks.getActiveRecordingDraft.mockResolvedValueOnce({
+      draftId: ACTIVE_RECORDING_DRAFT_ID,
+      mimeType: "audio/webm",
+      fileExtension: "webm",
+      patientId: "patient-2",
+      departmentId: "dept-2",
+      autoTranscribe: true,
+      startedAt: "2026-05-19T00:00:00.000Z",
+      updatedAt: "2026-05-19T00:01:15.000Z",
+      elapsedSeconds: 75,
+      nextChunkIndex: 3,
+    });
+    mocks.buildRecordingDraftBlob.mockRejectedValueOnce(new Error("draft chunks unavailable"));
+
+    renderRecordView();
+    fireEvent.click(await screen.findByRole("button", { name: "Recover recording" }));
+
+    expect(await screen.findByText("draft chunks unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Discard" })).toBeInTheDocument();
+  });
+
   it("creates an active draft with recording metadata when recording starts", async () => {
     await startRecording();
 
