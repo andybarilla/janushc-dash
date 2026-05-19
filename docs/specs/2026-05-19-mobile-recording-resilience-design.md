@@ -58,6 +58,8 @@ Storage model:
 
 Security/privacy note:
 - This stores PHI-bearing audio locally in browser storage until saved or discarded.
+- Each local draft metadata record is bound to the authenticated user id; recovery UI is only shown when the draft owner matches the current user, and mismatched or ownerless active drafts are deleted/hidden.
+- Explicit logout attempts to clear the active local draft without blocking logout.
 - Add UI copy explaining that an interrupted recording is temporarily stored on this device and should be saved or discarded.
 - Delete the draft after successful save or explicit discard.
 

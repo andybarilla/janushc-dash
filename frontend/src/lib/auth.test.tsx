@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   getToken: vi.fn(),
   setToken: vi.fn(),
+  deleteActiveRecordingDraft: vi.fn(),
 }));
 
 vi.mock("./api", () => ({
@@ -16,6 +17,10 @@ vi.mock("./api", () => ({
     getToken: mocks.getToken,
     setToken: mocks.setToken,
   },
+}));
+
+vi.mock("./recording-drafts", () => ({
+  deleteActiveRecordingDraft: mocks.deleteActiveRecordingDraft,
 }));
 
 function AuthActions(): ReactElement {
@@ -43,7 +48,9 @@ beforeEach(() => {
   mocks.fetch.mockReset();
   mocks.getToken.mockReset();
   mocks.setToken.mockReset();
+  mocks.deleteActiveRecordingDraft.mockReset();
   mocks.getToken.mockReturnValue(null);
+  mocks.deleteActiveRecordingDraft.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -70,6 +77,7 @@ describe("AuthProvider", () => {
     renderAuthProvider(queryClient);
     fireEvent.click(screen.getByRole("button", { name: "Logout" }));
 
+    expect(mocks.deleteActiveRecordingDraft).toHaveBeenCalled();
     expect(mocks.setToken).toHaveBeenCalledWith(null);
     expect(queryClient.getQueryData(["managedUsers"])).toBeUndefined();
   });

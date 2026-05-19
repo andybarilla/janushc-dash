@@ -5,6 +5,7 @@ export const ACTIVE_RECORDING_DRAFT_ID = "active-mobile-recording";
 
 export interface RecordingDraftMetadata {
   draftId: string;
+  ownerUserId: string;
   mimeType: string;
   fileExtension: string;
   patientId: string;

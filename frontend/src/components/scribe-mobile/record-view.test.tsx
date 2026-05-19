@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   deleteActiveRecordingDraft: vi.fn(),
   useCreateScribeSession: vi.fn(),
   useUploadScribeAudio: vi.fn(),
+  useAuth: vi.fn(),
 }));
 
 vi.mock("@/lib/recording-drafts", async () => {
@@ -35,6 +36,10 @@ vi.mock("@/lib/recording-drafts", async () => {
 vi.mock("@/lib/scribe-queries", () => ({
   useCreateScribeSession: mocks.useCreateScribeSession,
   useUploadScribeAudio: mocks.useUploadScribeAudio,
+}));
+
+vi.mock("@/lib/auth", () => ({
+  useAuth: mocks.useAuth,
 }));
 
 type DataHandler = ((event: BlobEvent) => void) | null;
@@ -123,6 +128,7 @@ beforeEach(() => {
   FakeMediaRecorder.isTypeSupported.mockClear();
   mocks.createActiveRecordingDraft.mockResolvedValue({
     draftId: ACTIVE_RECORDING_DRAFT_ID,
+    ownerUserId: "user-1",
     mimeType: "audio/webm;codecs=opus",
     fileExtension: "webm",
     patientId: "patient-1",
@@ -140,6 +146,7 @@ beforeEach(() => {
   mocks.deleteActiveRecordingDraft.mockResolvedValue(undefined);
   mocks.useCreateScribeSession.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ id: "session-1" }) });
   mocks.useUploadScribeAudio.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue(undefined) });
+  mocks.useAuth.mockReturnValue({ user: { id: "user-1", email: "doctor@example.com", name: "Doctor", role: "doctor" } });
 
   Object.defineProperty(globalThis, "MediaRecorder", {
     configurable: true,
@@ -170,6 +177,7 @@ describe("MRecordView recording drafts", () => {
   it("shows recovery controls when an active draft exists", async () => {
     mocks.getActiveRecordingDraft.mockResolvedValueOnce({
       draftId: ACTIVE_RECORDING_DRAFT_ID,
+      ownerUserId: "user-1",
       mimeType: "audio/webm",
       fileExtension: "webm",
       patientId: "patient-2",
@@ -190,11 +198,34 @@ describe("MRecordView recording drafts", () => {
     expect(screen.queryByLabelText("Start recording")).not.toBeInTheDocument();
   });
 
+  it("does not show recovery controls for another user's active draft and deletes it", async () => {
+    mocks.getActiveRecordingDraft.mockResolvedValueOnce({
+      draftId: ACTIVE_RECORDING_DRAFT_ID,
+      ownerUserId: "user-2",
+      mimeType: "audio/webm",
+      fileExtension: "webm",
+      patientId: "patient-2",
+      departmentId: "dept-2",
+      autoTranscribe: false,
+      startedAt: "2026-05-19T00:00:00.000Z",
+      updatedAt: "2026-05-19T00:01:15.000Z",
+      elapsedSeconds: 75,
+      nextChunkIndex: 3,
+    });
+
+    renderRecordView();
+
+    expect(await screen.findByLabelText("Start recording")).toBeInTheDocument();
+    expect(screen.queryByText("Interrupted recording found")).not.toBeInTheDocument();
+    await waitFor(() => expect(mocks.deleteActiveRecordingDraft).toHaveBeenCalledTimes(1));
+  });
+
   it("recovers an active draft into review state", async () => {
     const recoveredBlob = new Blob(["recovered"], { type: "audio/webm" });
     const uploadAudio = vi.fn().mockResolvedValue(undefined);
     mocks.getActiveRecordingDraft.mockResolvedValueOnce({
       draftId: ACTIVE_RECORDING_DRAFT_ID,
+      ownerUserId: "user-1",
       mimeType: "audio/webm",
       fileExtension: "webm",
       patientId: "patient-2",
@@ -232,6 +263,7 @@ describe("MRecordView recording drafts", () => {
   it("discards an active draft and returns to normal idle controls", async () => {
     mocks.getActiveRecordingDraft.mockResolvedValueOnce({
       draftId: ACTIVE_RECORDING_DRAFT_ID,
+      ownerUserId: "user-1",
       mimeType: "audio/webm",
       fileExtension: "webm",
       patientId: "patient-2",
@@ -254,6 +286,7 @@ describe("MRecordView recording drafts", () => {
   it("keeps discard available when recovering a draft fails", async () => {
     mocks.getActiveRecordingDraft.mockResolvedValueOnce({
       draftId: ACTIVE_RECORDING_DRAFT_ID,
+      ownerUserId: "user-1",
       mimeType: "audio/webm",
       fileExtension: "webm",
       patientId: "patient-2",
@@ -277,6 +310,7 @@ describe("MRecordView recording drafts", () => {
     await startRecording();
 
     expect(mocks.createActiveRecordingDraft).toHaveBeenCalledWith({
+      ownerUserId: "user-1",
       mimeType: "audio/webm;codecs=opus",
       fileExtension: "webm",
       patientId: "patient-1",
@@ -284,6 +318,16 @@ describe("MRecordView recording drafts", () => {
       autoTranscribe: true,
       elapsedSeconds: 0,
     });
+  });
+
+  it("does not create a recovery draft when no authenticated user id is available", async () => {
+    mocks.useAuth.mockReturnValue({ user: null });
+
+    const recorder = await startRecording();
+
+    expect(mocks.createActiveRecordingDraft).not.toHaveBeenCalled();
+    expect(await screen.findByText("Recording is continuing, but local recovery storage is unavailable.")).toBeInTheDocument();
+    expect(recorder.state).toBe("recording");
   });
 
   it("starts MediaRecorder with the recording chunk timeslice", async () => {

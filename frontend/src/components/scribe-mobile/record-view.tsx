@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, Check, Mic, UploadCloud } from "lucide-react";
+import { useAuth } from "@/lib/auth";
 import {
   ACTIVE_RECORDING_DRAFT_ID,
   RECORDING_CHUNK_MS,
@@ -84,12 +85,35 @@ export function MRecordView({ onBack, onSaved }: Props) {
 
   const createSession = useCreateScribeSession();
   const uploadAudio = useUploadScribeAudio();
+  const { user } = useAuth();
+  const currentUserId = user?.id ?? null;
 
   useEffect(() => {
     let isCurrent = true;
+    if (!currentUserId) {
+      setActiveDraft(null);
+      setIsCheckingDraft(false);
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    setIsCheckingDraft(true);
     void getActiveRecordingDraft()
       .then((draft) => {
-        if (isCurrent) setActiveDraft(draft);
+        if (!isCurrent) return;
+        if (!draft) {
+          setActiveDraft(null);
+          return;
+        }
+        if (draft.ownerUserId === currentUserId) {
+          setActiveDraft(draft);
+          return;
+        }
+        setActiveDraft(null);
+        void deleteActiveRecordingDraft().catch((deleteError) => {
+          console.warn("Unable to delete recording draft for a different user.", deleteError);
+        });
       })
       .catch(() => {
         if (isCurrent) setError("Unable to check for interrupted recordings.");
@@ -100,7 +124,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
     return () => {
       isCurrent = false;
     };
-  }, []);
+  }, [currentUserId]);
 
   // Timer ticks once per second during recording.
   useEffect(() => {
@@ -182,18 +206,23 @@ export function MRecordView({ onBack, onSaved }: Props) {
       streamRef.current = stream;
       mediaRecorderRef.current = recorder;
       const type = recorder.mimeType || mimeType || "audio/webm";
-      try {
-        const draft = await createActiveRecordingDraft({
-          mimeType: type,
-          fileExtension: extensionFor(type),
-          patientId: patientId.trim(),
-          departmentId: department,
-          autoTranscribe,
-          elapsedSeconds: 0,
-        });
-        draftIdRef.current = ACTIVE_RECORDING_DRAFT_ID;
-        nextChunkIndexRef.current = draft.nextChunkIndex;
-      } catch {
+      if (currentUserId) {
+        try {
+          const draft = await createActiveRecordingDraft({
+            ownerUserId: currentUserId,
+            mimeType: type,
+            fileExtension: extensionFor(type),
+            patientId: patientId.trim(),
+            departmentId: department,
+            autoTranscribe,
+            elapsedSeconds: 0,
+          });
+          draftIdRef.current = ACTIVE_RECORDING_DRAFT_ID;
+          nextChunkIndexRef.current = draft.nextChunkIndex;
+        } catch {
+          setStorageWarning("Recording is continuing, but local recovery storage is unavailable.");
+        }
+      } else {
         setStorageWarning("Recording is continuing, but local recovery storage is unavailable.");
       }
 

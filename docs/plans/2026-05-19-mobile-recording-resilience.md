@@ -330,7 +330,8 @@ Only create this commit if files changed after Task 4.
 - Recover reconstructs the Blob/File from ordered chunks and restores patient, department, auto-transcribe, elapsed seconds, and review flow.
 - Draft is deleted after successful upload/save.
 - Draft is not deleted after upload/save failure.
-- Draft is deleted after explicit discard, back discard, or re-record replacement.
+- Draft is deleted after explicit discard, back discard, re-record replacement, or explicit logout best-effort cleanup.
+- Draft recovery is only offered to the authenticated user whose id matches the draft owner.
 - No wake lock code is added.
 - No auth refresh behavior is changed.
 - `cd frontend && npm test` passes.
@@ -343,6 +344,7 @@ Risks:
 - Mobile browsers may still suspend recording before a 10-second chunk is emitted; maximum unrecovered tail is approximately the timeslice.
 - IndexedDB Blob support varies in very old browsers; target modern mobile browsers should support it.
 - Storing PHI-bearing audio locally increases privacy responsibility; UI copy must clearly tell users to save or discard recovered recordings.
+- Local PHI drafts are bound to the authenticated user id, mismatched/ownerless drafts are not recoverable by the current user, and explicit logout attempts active draft cleanup.
 
 Rollback:
 1. Revert commits from Tasks 1-4.

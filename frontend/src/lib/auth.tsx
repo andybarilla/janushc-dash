@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
+import { deleteActiveRecordingDraft } from "./recording-drafts";
 
 interface User {
   id: string;
@@ -35,6 +36,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [queryClient]);
 
   const logout = useCallback(() => {
+    void deleteActiveRecordingDraft().catch((error) => {
+      console.warn("Unable to delete active recording draft during logout.", error);
+    });
     api.setToken(null);
     queryClient.clear();
     setIsAuthenticated(false);

@@ -181,6 +181,7 @@ describe("recording draft storage", () => {
     installFakeIndexedDB();
 
     const metadata = await createActiveRecordingDraft({
+      ownerUserId: "user-1",
       mimeType: "audio/webm",
       fileExtension: "webm",
       patientId: "patient-1",
@@ -196,6 +197,7 @@ describe("recording draft storage", () => {
     );
     await expect(getActiveRecordingDraft()).resolves.toMatchObject({
       draftId: ACTIVE_RECORDING_DRAFT_ID,
+      ownerUserId: "user-1",
       patientId: "patient-1",
     });
   });
@@ -209,6 +211,7 @@ describe("recording draft storage", () => {
   it("deletes active metadata and chunks", async () => {
     installFakeIndexedDB();
     const metadata = await createActiveRecordingDraft({
+      ownerUserId: "user-1",
       mimeType: "audio/webm",
       fileExtension: "webm",
       patientId: "patient-1",
@@ -231,6 +234,7 @@ describe("recording draft storage", () => {
     await expect((await buildRecordingDraftBlob(ACTIVE_RECORDING_DRAFT_ID, "audio/webm")).text()).resolves.toBe("");
     await expect(
       createActiveRecordingDraft({
+        ownerUserId: "user-1",
         mimeType: "audio/webm",
         fileExtension: "webm",
         patientId: "patient-1",
