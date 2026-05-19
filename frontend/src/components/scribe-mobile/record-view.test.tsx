@@ -72,6 +72,22 @@ function renderRecordView(
   return { onSaved, onBack };
 }
 
+function recorderAt(index: number): FakeMediaRecorder {
+  const recorder = FakeMediaRecorder.instances[index];
+  if (!recorder) {
+    throw new Error(`Expected media recorder at index ${index}`);
+  }
+  return recorder;
+}
+
+function invocationCallOrderAt(mock: { mock: { invocationCallOrder: number[] } }, index: number): number {
+  const callOrder = mock.mock.invocationCallOrder[index];
+  if (callOrder === undefined) {
+    throw new Error(`Expected invocation call order at index ${index}`);
+  }
+  return callOrder;
+}
+
 async function stopRecordingForReview(): Promise<void> {
   const recorder = await startRecording();
   recorder.ondataavailable?.({ data: new Blob(["audio"], { type: "audio/webm" }) } as BlobEvent);
@@ -84,8 +100,9 @@ async function startRecording(): Promise<FakeMediaRecorder> {
   fireEvent.change(await screen.findByLabelText("Patient"), { target: { value: "patient-1" } });
   fireEvent.click(screen.getByLabelText("Start recording"));
   await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
-  await waitFor(() => expect(FakeMediaRecorder.instances[0].start).toHaveBeenCalled());
-  return FakeMediaRecorder.instances[0];
+  const recorder = recorderAt(0);
+  await waitFor(() => expect(recorder.start).toHaveBeenCalled());
+  return recorder;
 }
 
 let trackStop: ReturnType<typeof vi.fn>;
@@ -193,7 +210,11 @@ describe("MRecordView recording drafts", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Save recording only" }));
     await waitFor(() => expect(uploadAudio).toHaveBeenCalled());
-    const uploadedFile = uploadAudio.mock.calls[0][0].file as File;
+    const firstUploadCall = uploadAudio.mock.calls[0];
+    if (!firstUploadCall) {
+      throw new Error("Expected upload audio to be called");
+    }
+    const uploadedFile = firstUploadCall[0].file as File;
     expect(uploadedFile.name).toBe("mobile-recording-recovered.webm");
     expect(uploadedFile.type).toBe("audio/webm");
   });
@@ -302,7 +323,7 @@ describe("MRecordView recording drafts", () => {
     fireEvent.change(await screen.findByLabelText("Patient"), { target: { value: "patient-1" } });
     fireEvent.click(screen.getByLabelText("Start recording"));
     await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
-    const recorder = FakeMediaRecorder.instances[0];
+    const recorder = recorderAt(0);
     recorder.ondataavailable?.({ data: new Blob(["audio"], { type: "audio/webm" }) } as BlobEvent);
     recorder.stop();
     fireEvent.click(await screen.findByRole("button", { name: "Save & queue for processing" }));
@@ -310,8 +331,8 @@ describe("MRecordView recording drafts", () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith("session-1"));
     expect(uploadAudio).toHaveBeenCalled();
     expect(mocks.deleteActiveRecordingDraft).toHaveBeenCalledTimes(1);
-    expect(uploadAudio.mock.invocationCallOrder[0]).toBeLessThan(mocks.deleteActiveRecordingDraft.mock.invocationCallOrder[0]);
-    expect(mocks.deleteActiveRecordingDraft.mock.invocationCallOrder[0]).toBeLessThan(onSaved.mock.invocationCallOrder[0]);
+    expect(invocationCallOrderAt(uploadAudio, 0)).toBeLessThan(invocationCallOrderAt(mocks.deleteActiveRecordingDraft, 0));
+    expect(invocationCallOrderAt(mocks.deleteActiveRecordingDraft, 0)).toBeLessThan(invocationCallOrderAt(onSaved, 0));
   });
 
   it("does not delete the active draft when upload fails and leaves review visible", async () => {
@@ -330,8 +351,9 @@ describe("MRecordView recording drafts", () => {
     renderRecordView(vi.fn(), onBack);
     fireEvent.click(await screen.findByLabelText("Start recording"));
     await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
-    FakeMediaRecorder.instances[0].ondataavailable?.({ data: new Blob(["audio"], { type: "audio/webm" }) } as BlobEvent);
-    FakeMediaRecorder.instances[0].stop();
+    const recorder = recorderAt(0);
+    recorder.ondataavailable?.({ data: new Blob(["audio"], { type: "audio/webm" }) } as BlobEvent);
+    recorder.stop();
 
     fireEvent.click(await screen.findByRole("button", { name: "Discard" }));
 
@@ -344,7 +366,7 @@ describe("MRecordView recording drafts", () => {
     renderRecordView(vi.fn(), onBack);
     fireEvent.click(await screen.findByLabelText("Start recording"));
     await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
-    const recorder = FakeMediaRecorder.instances[0];
+    const recorder = recorderAt(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Home" }));
 
@@ -362,8 +384,8 @@ describe("MRecordView recording drafts", () => {
 
     await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(2));
     expect(mocks.deleteActiveRecordingDraft).toHaveBeenCalledTimes(1);
-    expect(mocks.deleteActiveRecordingDraft.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.createActiveRecordingDraft.mock.invocationCallOrder[1],
+    expect(invocationCallOrderAt(mocks.deleteActiveRecordingDraft, 0)).toBeLessThan(
+      invocationCallOrderAt(mocks.createActiveRecordingDraft, 1),
     );
   });
 });
