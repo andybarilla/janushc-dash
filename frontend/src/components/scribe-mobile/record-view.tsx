@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, Check, Mic, UploadCloud } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
@@ -18,6 +18,18 @@ import {
 } from "@/lib/scribe-queries";
 
 type Phase = "idle" | "recording" | "review" | "uploading";
+
+type WakeLockSentinelLike = {
+  readonly released?: boolean;
+  release: () => Promise<void>;
+  addEventListener: (type: "release", listener: () => void) => void;
+};
+
+type WakeLockNavigator = Navigator & {
+  wakeLock?: {
+    request: (type: "screen") => Promise<WakeLockSentinelLike>;
+  };
+};
 
 const RECORDING_MIME_TYPES = [
   "audio/webm;codecs=opus",
@@ -68,6 +80,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
   const [autoTranscribe, setAutoTranscribe] = useState(true);
+  const [keepAwake, setKeepAwake] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [activeDraft, setActiveDraft] = useState<RecordingDraftMetadata | null>(null);
@@ -82,11 +95,44 @@ export function MRecordView({ onBack, onSaved }: Props) {
   const draftIdRef = useRef<string | null>(null);
   const nextChunkIndexRef = useRef(0);
   const pendingDraftWritesRef = useRef<Set<Promise<void>>>(new Set());
+  const wakeLockRef = useRef<WakeLockSentinelLike | null>(null);
+  const wakeLockWantedRef = useRef(false);
 
   const createSession = useCreateScribeSession();
   const uploadAudio = useUploadScribeAudio();
   const { user } = useAuth();
   const currentUserId = user?.id ?? null;
+
+  const releaseWakeLock = useCallback(() => {
+    wakeLockWantedRef.current = false;
+    const wakeLock = wakeLockRef.current;
+    wakeLockRef.current = null;
+    if (wakeLock && !wakeLock.released) {
+      void wakeLock.release().catch((wakeLockError) => {
+        console.warn("Unable to release screen wake lock.", wakeLockError);
+      });
+    }
+  }, []);
+
+  const requestWakeLock = useCallback(async () => {
+    const wakeLockApi = (navigator as WakeLockNavigator).wakeLock;
+    if (!keepAwake || !wakeLockApi || wakeLockRef.current) return;
+
+    wakeLockWantedRef.current = true;
+    try {
+      const wakeLock = await wakeLockApi.request("screen");
+      if (!mountedRef.current || !wakeLockWantedRef.current) {
+        if (!wakeLock.released) await wakeLock.release();
+        return;
+      }
+      wakeLockRef.current = wakeLock;
+      wakeLock.addEventListener("release", () => {
+        if (wakeLockRef.current === wakeLock) wakeLockRef.current = null;
+      });
+    } catch (wakeLockError) {
+      console.warn("Unable to keep the screen awake during recording.", wakeLockError);
+    }
+  }, [keepAwake]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -134,6 +180,24 @@ export function MRecordView({ onBack, onSaved }: Props) {
   }, [phase]);
 
   useEffect(() => {
+    if (phase !== "recording" || !keepAwake) {
+      releaseWakeLock();
+      return;
+    }
+
+    wakeLockWantedRef.current = true;
+    void requestWakeLock();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void requestWakeLock();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      releaseWakeLock();
+    };
+  }, [keepAwake, phase, releaseWakeLock, requestWakeLock]);
+
+  useEffect(() => {
     const draftId = draftIdRef.current;
     if (phase !== "recording" || !draftId) return;
     const writePromise = updateActiveRecordingDraftMetadata({
@@ -171,6 +235,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
         recorder.onstop = null;
         if (recorder.state === "recording") recorder.stop();
       }
+      releaseWakeLock();
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       mediaRecorderRef.current = null;
@@ -179,7 +244,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
         objectUrlRef.current = null;
       }
     };
-  }, []);
+  }, [releaseWakeLock]);
 
   const supported =
     typeof navigator !== "undefined" &&
@@ -295,6 +360,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
   };
 
   const reset = () => {
+    releaseWakeLock();
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     objectUrlRef.current = null;
     draftIdRef.current = null;
@@ -391,6 +457,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
       recorder.onstop = null;
       if (recorder.state === "recording") recorder.stop();
     }
+    releaseWakeLock();
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     mediaRecorderRef.current = null;
@@ -442,6 +509,8 @@ export function MRecordView({ onBack, onSaved }: Props) {
           setDepartment={setDepartment}
           autoTranscribe={autoTranscribe}
           setAutoTranscribe={setAutoTranscribe}
+          keepAwake={keepAwake}
+          setKeepAwake={setKeepAwake}
           onStart={startRecording}
           supported={supported}
           error={error}
@@ -494,6 +563,8 @@ interface IdleProps {
   setDepartment: (v: string) => void;
   autoTranscribe: boolean;
   setAutoTranscribe: (v: boolean) => void;
+  keepAwake: boolean;
+  setKeepAwake: (v: boolean) => void;
   onStart: () => void;
   supported: boolean;
   error: string | null;
@@ -506,6 +577,8 @@ function IdlePhase({
   setDepartment,
   autoTranscribe,
   setAutoTranscribe,
+  keepAwake,
+  setKeepAwake,
   onStart,
   supported,
   error,
@@ -541,6 +614,16 @@ function IdlePhase({
             onChange={(e) => setAutoTranscribe(e.target.checked)}
           />
           <span>Automatically transcribe after upload</span>
+        </label>
+        <label className="field-label" htmlFor="m-rec-keep-awake">Recording</label>
+        <label className="m-record-toggle" htmlFor="m-rec-keep-awake">
+          <input
+            id="m-rec-keep-awake"
+            type="checkbox"
+            checked={keepAwake}
+            onChange={(e) => setKeepAwake(e.target.checked)}
+          />
+          <span>Keep screen awake while recording</span>
         </label>
       </div>
       <div className="m-record-center">

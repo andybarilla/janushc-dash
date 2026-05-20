@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "JanusHC Recorder Spike",
+    "slug": "janushc-recorder-spike",
+    "scheme": "janushcrecorder",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "ios": {
+      "bundleIdentifier": "com.janushc.recorder.spike",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "JanusHC records visit audio so it can be transcribed and summarized for clinician review.",
+        "UIBackgroundModes": [
+          "audio"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.janushc.recorder.spike",
+      "permissions": [
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_MICROPHONE",
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-av",
+        {
+          "microphonePermission": "JanusHC records visit audio so it can be transcribed and summarized for clinician review."
+        }
+      ]
+    ],
+    "extra": {
+      "apiBaseUrl": "http://localhost:8080",
+      "eas": {
+        "projectId": "c140e7c5-2100-4b74-a1b6-4469c7ee92c8"
+      }
+    }
+  }
+}

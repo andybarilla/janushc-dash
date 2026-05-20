@@ -306,6 +306,51 @@ describe("MRecordView recording drafts", () => {
     expect(screen.getByRole("button", { name: "Discard" })).toBeInTheDocument();
   });
 
+  it("defaults to keeping the screen awake while recording", async () => {
+    renderRecordView();
+
+    expect(await screen.findByLabelText("Keep screen awake while recording")).toBeChecked();
+  });
+
+  it("requests a screen wake lock by default while recording and releases it when stopped", async () => {
+    const release = vi.fn().mockResolvedValue(undefined);
+    const request = vi.fn().mockResolvedValue({
+      released: false,
+      release,
+      addEventListener: vi.fn(),
+    });
+    Object.defineProperty(navigator, "wakeLock", {
+      configurable: true,
+      value: { request },
+    });
+
+    const recorder = await startRecording();
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith("screen"));
+    recorder.stop();
+    await screen.findByText("Review recording");
+    await waitFor(() => expect(release).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not request a screen wake lock when keep awake is disabled", async () => {
+    const request = vi.fn().mockResolvedValue({
+      released: false,
+      release: vi.fn().mockResolvedValue(undefined),
+      addEventListener: vi.fn(),
+    });
+    Object.defineProperty(navigator, "wakeLock", {
+      configurable: true,
+      value: { request },
+    });
+    renderRecordView();
+    fireEvent.click(await screen.findByLabelText("Keep screen awake while recording"));
+    fireEvent.change(screen.getByLabelText("Patient"), { target: { value: "patient-1" } });
+    fireEvent.click(screen.getByLabelText("Start recording"));
+
+    await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it("creates an active draft with recording metadata when recording starts", async () => {
     await startRecording();
 
