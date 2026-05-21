@@ -16,6 +16,7 @@ import {
   useCreateScribeSession,
   useUploadScribeAudio,
 } from "@/lib/scribe-queries";
+import { defaultDepartmentId, departments } from "@/lib/departments";
 
 type Phase = "idle" | "recording" | "review" | "uploading";
 
@@ -75,7 +76,7 @@ interface Props {
 export function MRecordView({ onBack, onSaved }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [patientId, setPatientId] = useState("");
-  const [department, setDepartment] = useState("dept-1");
+  const [department, setDepartment] = useState(defaultDepartmentId);
   const [seconds, setSeconds] = useState(0);
   const [file, setFile] = useState<File | null>(null);
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
@@ -602,8 +603,11 @@ function IdlePhase({
           value={department}
           onChange={(e) => setDepartment(e.target.value)}
         >
-          <option value="dept-1">Department 1</option>
-          <option value="dept-2">Department 2</option>
+          {departments.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
         </select>
         <label className="field-label" htmlFor="m-rec-auto-transcribe">Processing</label>
         <label className="m-record-toggle" htmlFor="m-rec-auto-transcribe">
