@@ -264,6 +264,20 @@ export function useAddFeedback() {
   });
 }
 
+export function useSubmitTranscript() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, transcript }: { id: string; transcript: string }) =>
+      api.fetch<ScribeSession>(`/api/scribe/sessions/${id}/process`, {
+        method: "POST",
+        body: JSON.stringify({ transcript }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["scribeSessions"] });
+    },
+  });
+}
+
 export function useUploadScribeAudio() {
   const queryClient = useQueryClient();
   return useMutation({

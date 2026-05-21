@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
-import { Download, Upload } from "lucide-react";
+import { ClipboardList, Mic } from "lucide-react";
 import {
   useAddFeedback,
   useApproveSection,
@@ -70,6 +70,7 @@ function DesktopScribe() {
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesDefaultSection, setNotesDefaultSection] = useState<SectionKey | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadSource, setUploadSource] = useState<"record" | "paste">("record");
 
   // Auto-select the first session when the list loads and nothing is in the URL.
   useEffect(() => {
@@ -207,19 +208,18 @@ function DesktopScribe() {
           <button
             type="button"
             className="janus-btn janus-btn-secondary janus-btn-sm"
-            disabled
-            title="Coming soon"
+            onClick={() => { setUploadSource("record"); setUploadOpen(true); }}
           >
-            <Download />
-            Export today's batch
+            <Mic />
+            Record
           </button>
           <button
             type="button"
             className="janus-btn janus-btn-secondary janus-btn-sm"
-            onClick={() => setUploadOpen(true)}
+            onClick={() => { setUploadSource("paste"); setUploadOpen(true); }}
           >
-            <Upload />
-            Upload audio
+            <ClipboardList />
+            Paste transcript
           </button>
         </div>
       </div>
@@ -275,6 +275,7 @@ function DesktopScribe() {
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
         onCreated={(id) => navigate(`/scribe/sessions/${id}`)}
+        initialSource={uploadSource}
       />
 
       {sessionsLoading && sessions.length === 0 ? null : null}

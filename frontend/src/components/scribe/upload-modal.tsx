@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, RotateCcw, Square, Upload, X } from "lucide-react";
+import { ClipboardList, Mic, RotateCcw, Square, X } from "lucide-react";
 import {
   useCreateScribeSession,
+  useSubmitTranscript,
   useUploadScribeAudio,
 } from "@/lib/scribe-queries";
 
@@ -17,9 +18,10 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onCreated?: (sessionId: string) => void;
+  initialSource?: AudioSource;
 }
 
-type AudioSource = "upload" | "record";
+type AudioSource = "record" | "paste";
 
 type RecordingState = "idle" | "recording" | "recorded";
 
@@ -51,16 +53,17 @@ function apiErrorMessage(error: unknown) {
   return null;
 }
 
-export function UploadModal({ open, onClose, onCreated }: Props) {
+export function UploadModal({ open, onClose, onCreated, initialSource = "record" }: Props) {
   const [patientId, setPatientId] = useState("");
   const [encounterId, setEncounterId] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [audioSource, setAudioSource] = useState<AudioSource>("upload");
+  const [audioSource, setAudioSource] = useState<AudioSource>(initialSource);
   const [recordingState, setRecordingState] = useState<RecordingState>("idle");
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
   const [autoTranscribe, setAutoTranscribe] = useState(true);
+  const [transcript, setTranscript] = useState("");
   const [recordingError, setRecordingError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -69,6 +72,11 @@ export function UploadModal({ open, onClose, onCreated }: Props) {
 
   const createSession = useCreateScribeSession();
   const uploadAudio = useUploadScribeAudio();
+  const submitTranscript = useSubmitTranscript();
+
+  useEffect(() => {
+    if (open) setAudioSource(initialSource);
+  }, [open, initialSource]);
 
   useEffect(() => {
     if (!open) return;
@@ -89,7 +97,7 @@ export function UploadModal({ open, onClose, onCreated }: Props) {
 
   if (!open) return null;
 
-  const busy = createSession.isPending || uploadAudio.isPending;
+  const busy = createSession.isPending || uploadAudio.isPending || submitTranscript.isPending;
   const recordingSupported =
     typeof navigator !== "undefined" &&
     !!navigator.mediaDevices?.getUserMedia &&
@@ -97,6 +105,7 @@ export function UploadModal({ open, onClose, onCreated }: Props) {
   const error =
     apiErrorMessage(createSession.error) ||
     apiErrorMessage(uploadAudio.error) ||
+    apiErrorMessage(submitTranscript.error) ||
     recordingError ||
     null;
 
@@ -116,7 +125,8 @@ export function UploadModal({ open, onClose, onCreated }: Props) {
     setEncounterId("");
     setDepartmentId("");
     setFile(null);
-    setAudioSource("upload");
+    setTranscript("");
+    setAudioSource(initialSource);
     clearRecording();
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -124,9 +134,8 @@ export function UploadModal({ open, onClose, onCreated }: Props) {
   const handleSourceChange = (source: AudioSource) => {
     setAudioSource(source);
     setRecordingError(null);
-    if (source === "upload") {
+    if (source === "paste") {
       clearRecording();
-    } else {
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
@@ -188,16 +197,30 @@ export function UploadModal({ open, onClose, onCreated }: Props) {
   };
 
   const handleSubmit = async () => {
-    if (!patientId || !encounterId || !departmentId || !file) return;
-    const session = await createSession.mutateAsync({
-      patient_id: patientId,
-      encounter_id: encounterId,
-      department_id: departmentId,
-    });
-    await uploadAudio.mutateAsync({ id: session.id, file, autoTranscribe });
-    onCreated?.(session.id);
-    reset();
-    onClose();
+    if (!patientId || !encounterId || !departmentId) return;
+    if (audioSource === "paste") {
+      if (!transcript.trim()) return;
+      const session = await createSession.mutateAsync({
+        patient_id: patientId,
+        encounter_id: encounterId,
+        department_id: departmentId,
+      });
+      await submitTranscript.mutateAsync({ id: session.id, transcript });
+      onCreated?.(session.id);
+      reset();
+      onClose();
+    } else {
+      if (!file) return;
+      const session = await createSession.mutateAsync({
+        patient_id: patientId,
+        encounter_id: encounterId,
+        department_id: departmentId,
+      });
+      await uploadAudio.mutateAsync({ id: session.id, file, autoTranscribe });
+      onCreated?.(session.id);
+      reset();
+      onClose();
+    }
   };
 
   return (
@@ -209,8 +232,10 @@ export function UploadModal({ open, onClose, onCreated }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="janus-modal-head">
-          <Upload style={{ width: 18, height: 18, color: "var(--janus-primary)" }} />
-          <h3>Add encounter audio</h3>
+          {audioSource === "paste"
+            ? <ClipboardList style={{ width: 18, height: 18, color: "var(--janus-primary)" }} />
+            : <Mic style={{ width: 18, height: 18, color: "var(--janus-primary)" }} />}
+          <h3>{audioSource === "paste" ? "Add encounter transcript" : "Add encounter audio"}</h3>
           <button
             type="button"
             className="janus-icon-btn"
@@ -225,19 +250,19 @@ export function UploadModal({ open, onClose, onCreated }: Props) {
           <div className="janus-segmented-control" role="tablist" aria-label="Audio source">
             <button
               type="button"
-              className={audioSource === "upload" ? "active" : ""}
-              onClick={() => handleSourceChange("upload")}
-              disabled={busy || recordingState === "recording"}
-            >
-              Upload file
-            </button>
-            <button
-              type="button"
               className={audioSource === "record" ? "active" : ""}
               onClick={() => handleSourceChange("record")}
               disabled={busy || recordingState === "recording"}
             >
               Record in browser
+            </button>
+            <button
+              type="button"
+              className={audioSource === "paste" ? "active" : ""}
+              onClick={() => handleSourceChange("paste")}
+              disabled={busy || recordingState === "recording"}
+            >
+              Paste transcript
             </button>
           </div>
 
@@ -275,43 +300,15 @@ export function UploadModal({ open, onClose, onCreated }: Props) {
             />
           </div>
 
-          <div>
-            <label className="janus-label" htmlFor="upload-auto-transcribe">
-              Processing
-            </label>
-            <label className="janus-checkbox-row" htmlFor="upload-auto-transcribe">
+          {audioSource === "record" ? (
+            <div className="janus-recording-panel">
               <input
-                id="upload-auto-transcribe"
-                type="checkbox"
-                checked={autoTranscribe}
-                onChange={(e) => setAutoTranscribe(e.target.checked)}
-                disabled={busy || recordingState === "recording"}
-              />
-              <span>Automatically transcribe after upload</span>
-            </label>
-          </div>
-
-          {audioSource === "upload" ? (
-            <div>
-              <label className="janus-label" htmlFor="upload-file">
-                Audio file
-              </label>
-              <input
-                id="upload-file"
                 ref={fileInputRef}
                 type="file"
                 accept={ACCEPTED_FORMATS}
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                className="janus-file-input"
+                style={{ display: "none" }}
               />
-              {file ? (
-                <div className="janus-help-text">
-                  {file.name} ({(file.size / 1024 / 1024).toFixed(1)} MB)
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="janus-recording-panel">
               <div className="janus-recording-status">
                 <span className={recordingState === "recording" ? "is-recording" : ""} />
                 <strong>{formatDuration(recordingSeconds)}</strong>
@@ -330,7 +327,7 @@ export function UploadModal({ open, onClose, onCreated }: Props) {
               ) : null}
               {!recordingSupported ? (
                 <div className="janus-error-text">
-                  Browser recording is not supported in this browser. Please upload an audio file instead.
+                  Browser recording is not supported in this browser.
                 </div>
               ) : null}
               <div className="janus-recording-actions">
@@ -345,15 +342,27 @@ export function UploadModal({ open, onClose, onCreated }: Props) {
                     Stop
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    className="janus-btn janus-btn-primary janus-btn-sm"
-                    onClick={startRecording}
-                    disabled={!recordingSupported || busy}
-                  >
-                    <Mic />
-                    {recordingState === "recorded" ? "Record again" : "Start recording"}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className="janus-btn janus-btn-primary janus-btn-sm"
+                      onClick={startRecording}
+                      disabled={!recordingSupported || busy}
+                    >
+                      <Mic />
+                      {recordingState === "recorded" ? "Record again" : "Start recording"}
+                    </button>
+                    {recordingState === "idle" ? (
+                      <button
+                        type="button"
+                        className="janus-btn janus-btn-ghost janus-btn-sm"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={busy}
+                      >
+                        or upload an audio file
+                      </button>
+                    ) : null}
+                  </>
                 )}
                 {recordingState === "recorded" ? (
                   <button
@@ -367,14 +376,50 @@ export function UploadModal({ open, onClose, onCreated }: Props) {
                   </button>
                 ) : null}
               </div>
-              {file ? (
+              {file && recordingState !== "recorded" ? (
                 <div className="janus-help-text">
                   {file.name} ({(file.size / 1024 / 1024).toFixed(1)} MB)
                 </div>
               ) : null}
+              <div>
+                <label className="janus-label" htmlFor="upload-auto-transcribe">
+                  Processing
+                </label>
+                <label className="janus-checkbox-row" htmlFor="upload-auto-transcribe">
+                  <input
+                    id="upload-auto-transcribe"
+                    type="checkbox"
+                    checked={autoTranscribe}
+                    onChange={(e) => setAutoTranscribe(e.target.checked)}
+                    disabled={busy || recordingState === "recording"}
+                  />
+                  <span>Automatically transcribe after upload</span>
+                </label>
+              </div>
             </div>
-          )}
-          {error ? <div className="janus-error-text">Audio failed: {error}</div> : null}
+          ) : null}
+          {audioSource === "paste" ? (
+            <div>
+              <label className="janus-label" htmlFor="upload-transcript">
+                Transcript
+              </label>
+              <textarea
+                id="upload-transcript"
+                className="janus-input"
+                value={transcript}
+                onChange={(e) => setTranscript(e.target.value)}
+                placeholder="Paste the encounter transcript here…"
+                rows={8}
+                disabled={busy}
+                style={{ resize: "vertical", fontFamily: "inherit" }}
+              />
+            </div>
+          ) : null}
+          {error ? (
+            <div className="janus-error-text">
+              {audioSource === "paste" ? `Processing failed: ${error}` : `Audio failed: ${error}`}
+            </div>
+          ) : null}
         </div>
         <div className="janus-modal-foot">
           <button
@@ -395,10 +440,14 @@ export function UploadModal({ open, onClose, onCreated }: Props) {
               !patientId ||
               !encounterId ||
               !departmentId ||
-              !file
+              (audioSource === "paste" ? !transcript.trim() : !file)
             }
           >
-            {busy ? "Processing…" : autoTranscribe ? "Save & process" : "Save recording"}
+            {busy
+              ? "Processing…"
+              : audioSource === "paste" || autoTranscribe
+                ? "Save & process"
+                : "Save audio"}
           </button>
         </div>
       </div>
