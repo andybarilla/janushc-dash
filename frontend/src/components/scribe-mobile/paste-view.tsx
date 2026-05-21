@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { useCreateScribeSession, useSubmitTranscript } from "@/lib/scribe-queries";
+import { defaultDepartmentId, departments } from "@/lib/departments";
 
 function apiErrorMessage(error: unknown): string | null {
   if (error instanceof Error) return error.message;
@@ -18,7 +19,7 @@ interface Props {
 
 export function MPasteView({ onBack, onSaved }: Props) {
   const [patientId, setPatientId] = useState("");
-  const [department, setDepartment] = useState("dept-1");
+  const [department, setDepartment] = useState(defaultDepartmentId);
   const [transcript, setTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -81,8 +82,11 @@ export function MPasteView({ onBack, onSaved }: Props) {
             onChange={(e) => setDepartment(e.target.value)}
             disabled={busy}
           >
-            <option value="dept-1">Department 1</option>
-            <option value="dept-2">Department 2</option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
           </select>
           <label className="field-label" htmlFor="m-paste-transcript">Transcript</label>
           <textarea

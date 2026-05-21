@@ -5,6 +5,7 @@ import {
   useSubmitTranscript,
   useUploadScribeAudio,
 } from "@/lib/scribe-queries";
+import { defaultDepartmentId, departments } from "@/lib/departments";
 
 const ACCEPTED_FORMATS = ".mp3,.m4a,.wav,.webm,.ogg";
 const RECORDING_MIME_TYPES = [
@@ -56,7 +57,7 @@ function apiErrorMessage(error: unknown) {
 export function UploadModal({ open, onClose, onCreated, initialSource = "record" }: Props) {
   const [patientId, setPatientId] = useState("");
   const [encounterId, setEncounterId] = useState("");
-  const [departmentId, setDepartmentId] = useState("");
+  const [departmentId, setDepartmentId] = useState(defaultDepartmentId);
   const [file, setFile] = useState<File | null>(null);
   const [audioSource, setAudioSource] = useState<AudioSource>(initialSource);
   const [recordingState, setRecordingState] = useState<RecordingState>("idle");
@@ -123,7 +124,7 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
   const reset = () => {
     setPatientId("");
     setEncounterId("");
-    setDepartmentId("");
+    setDepartmentId(defaultDepartmentId);
     setFile(null);
     setTranscript("");
     setAudioSource(initialSource);
@@ -197,7 +198,7 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
   };
 
   const handleSubmit = async () => {
-    if (!patientId || !encounterId || !departmentId) return;
+    if (!patientId || !encounterId) return;
     if (audioSource === "paste") {
       if (!transcript.trim()) return;
       const session = await createSession.mutateAsync({
@@ -290,14 +291,20 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
           </div>
           <div>
             <label className="janus-label" htmlFor="upload-department">
-              Department ID
+              Department
             </label>
-            <input
+            <select
               id="upload-department"
               className="janus-input"
               value={departmentId}
               onChange={(e) => setDepartmentId(e.target.value)}
-            />
+            >
+              {departments.map((department) => (
+                <option key={department.id} value={department.id}>
+                  {department.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           {audioSource === "record" ? (
@@ -439,7 +446,6 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
               recordingState === "recording" ||
               !patientId ||
               !encounterId ||
-              !departmentId ||
               (audioSource === "paste" ? !transcript.trim() : !file)
             }
           >
