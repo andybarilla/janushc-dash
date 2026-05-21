@@ -5,6 +5,7 @@ import {
   CheckCheck,
   ChevronRight,
   CircleDot,
+  ClipboardList,
   Inbox,
   Loader,
   Mic,
@@ -22,6 +23,7 @@ interface Props {
   sessions: ScribeSession[];
   providerName: string;
   onRecord: () => void;
+  onPaste: () => void;
   onOpenInbox: (filter: MobileFilter) => void;
   onOpenEncounter: (id: string) => void;
 }
@@ -66,6 +68,7 @@ export function MHomeView({
   sessions,
   providerName,
   onRecord,
+  onPaste,
   onOpenInbox,
   onOpenEncounter,
 }: Props) {
@@ -139,6 +142,19 @@ export function MHomeView({
             <div className="cta-text">
               <span className="cta-title">Record a session</span>
               <span className="cta-sub">Saved on device, uploaded when synced</span>
+            </div>
+            <ChevronRight className="cta-arrow" />
+          </div>
+        </button>
+
+        <button type="button" className="m-home-cta" onClick={onPaste}>
+          <div className="cta-row">
+            <div className="cta-mic">
+              <ClipboardList />
+            </div>
+            <div className="cta-text">
+              <span className="cta-title">Paste a transcript</span>
+              <span className="cta-sub">Process an existing text transcript</span>
             </div>
             <ChevronRight className="cta-arrow" />
           </div>

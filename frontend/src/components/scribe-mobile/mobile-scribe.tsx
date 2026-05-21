@@ -22,6 +22,7 @@ import { MInboxView } from "./inbox-view";
 import { MDetailView } from "./detail-view";
 import { MFeedbackSheet } from "./feedback-sheet";
 import { MRecordView } from "./record-view";
+import { MPasteView } from "./paste-view";
 import type { MobileFilter } from "./filter-row";
 
 const FILTER_VALUES: readonly MobileFilter[] = [
@@ -55,6 +56,7 @@ export function MobileScribe() {
   const navigate = useNavigate();
   const location = useLocation();
   const recordMatch = useMatch("/scribe/record");
+  const pasteMatch = useMatch("/scribe/paste");
   const inboxMatch = useMatch("/scribe/inbox");
   const detailMatch = useMatch("/scribe/sessions/:sessionId");
   const selectedId = detailMatch?.params.sessionId ?? null;
@@ -139,9 +141,10 @@ export function MobileScribe() {
 
   const providerName = user?.name?.trim() || "Provider";
 
-  let view: "home" | "record" | "inbox" | "detail" = "home";
+  let view: "home" | "record" | "paste" | "inbox" | "detail" = "home";
   if (detailMatch) view = "detail";
   else if (recordMatch) view = "record";
+  else if (pasteMatch) view = "paste";
   else if (inboxMatch) view = "inbox";
 
   return (
@@ -154,6 +157,7 @@ export function MobileScribe() {
             sessions={sessions}
             providerName={providerName}
             onRecord={() => navigate("/scribe/record")}
+            onPaste={() => navigate("/scribe/paste")}
             onOpenInbox={(f) => {
               const search = f === "all" ? "" : `?filter=${f}`;
               navigate(`/scribe/inbox${search}`);
@@ -165,6 +169,11 @@ export function MobileScribe() {
         <MRecordView
           onBack={() => backTo("/scribe")}
           onSaved={() => navigate("/scribe")}
+        />
+      ) : view === "paste" ? (
+        <MPasteView
+          onBack={() => backTo("/scribe")}
+          onSaved={(id) => navigate(`/scribe/sessions/${id}`)}
         />
       ) : view === "inbox" ? (
         isLoading && sessions.length === 0 ? (
