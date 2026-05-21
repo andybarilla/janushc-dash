@@ -152,7 +152,7 @@ Request/response shapes:
 [
   {
     "id": "uuid",
-    "email": "courtney@janushc.com",
+    "email": "drcrance@janushc.com",
     "name": "Courtney Crance",
     "role": "physician",
     "created_at": "2026-05-14T...Z"
