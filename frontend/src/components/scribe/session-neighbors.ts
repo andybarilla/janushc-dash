@@ -10,7 +10,7 @@ export function findNeighbors(
   const i = orderedIds.indexOf(currentId);
   if (i === -1) return { prev: null, next: null };
   return {
-    prev: i > 0 ? orderedIds[i - 1] : null,
-    next: i < orderedIds.length - 1 ? orderedIds[i + 1] : null,
+    prev: orderedIds[i - 1] ?? null,
+    next: orderedIds[i + 1] ?? null,
   };
 }
