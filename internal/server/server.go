@@ -19,6 +19,7 @@ import (
 	"github.com/andybarilla/janushc-dash/internal/auth"
 	"github.com/andybarilla/janushc-dash/internal/config"
 	"github.com/andybarilla/janushc-dash/internal/database"
+	"github.com/andybarilla/janushc-dash/internal/mobile"
 	"github.com/andybarilla/janushc-dash/internal/scribe"
 	"github.com/andybarilla/janushc-dash/internal/users"
 )
@@ -32,9 +33,10 @@ type Server struct {
 	approvalHandler *approval.Handler
 	usersHandler    *users.Handler
 	scribeHandler   *scribe.Handler
+	mobileHandler   *mobile.Handler
 }
 
-func New(cfg *config.Config, db *pgxpool.Pool, queries *database.Queries, authHandler *auth.Handler, approvalHandler *approval.Handler, usersHandler *users.Handler, scribeHandler *scribe.Handler) *Server {
+func New(cfg *config.Config, db *pgxpool.Pool, queries *database.Queries, authHandler *auth.Handler, approvalHandler *approval.Handler, usersHandler *users.Handler, scribeHandler *scribe.Handler, mobileHandler *mobile.Handler) *Server {
 	s := &Server{
 		cfg:             cfg,
 		db:              db,
@@ -44,6 +46,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, queries *database.Queries, authHa
 		approvalHandler: approvalHandler,
 		usersHandler:    usersHandler,
 		scribeHandler:   scribeHandler,
+		mobileHandler:   mobileHandler,
 	}
 	s.setupMiddleware()
 	s.routes()
@@ -82,6 +85,11 @@ func (s *Server) routes() {
 
 	// Public routes
 	s.router.Post("/api/auth/google", s.authHandler.HandleGoogleLogin)
+
+	// Mobile recorder spike (issue #7). Unauthenticated placeholder; see
+	// internal/mobile and docs/mobile-recorder-spike.md.
+	s.router.With(middleware.Timeout(5*time.Minute)).
+		Post("/api/mobile/recordings", s.mobileHandler.HandleCreateRecording)
 
 	// Protected routes
 	s.router.Group(func(r chi.Router) {

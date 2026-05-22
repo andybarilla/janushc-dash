@@ -27,6 +27,8 @@ type Config struct {
 	GoogleClientID                   string
 	GoogleAllowedDomain              string
 	ScribeAudioDir                   string
+	MobileRecordingsDir              string
+	MobileSpikeToken                 string
 	AWSTranscribeBucket              string
 	TranscribeMedicalUSDPerMinute    float64
 	BedrockInputUSDPerMillionTokens  float64
@@ -83,6 +85,8 @@ func Load() (*Config, error) {
 		GoogleClientID:                   getEnv("GOOGLE_CLIENT_ID", ""),
 		GoogleAllowedDomain:              getEnv("GOOGLE_ALLOWED_DOMAIN", "janushc.com"),
 		ScribeAudioDir:                   getEnv("SCRIBE_AUDIO_DIR", "tmp/scribe-audio"),
+		MobileRecordingsDir:              getEnv("MOBILE_RECORDINGS_DIR", "tmp/mobile-recordings"),
+		MobileSpikeToken:                 getEnv("MOBILE_SPIKE_TOKEN", ""),
 		AWSTranscribeBucket:              getEnv("AWS_TRANSCRIBE_BUCKET", ""),
 		TranscribeMedicalUSDPerMinute:    transcribeMedicalUSDPerMinute,
 		BedrockInputUSDPerMillionTokens:  bedrockInputUSDPerMillionTokens,
