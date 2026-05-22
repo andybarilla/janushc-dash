@@ -4,7 +4,7 @@ import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Button, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 type SavedRecording = {
   uri: string;
@@ -173,7 +173,8 @@ export default function RecorderSpike() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       <Text style={styles.title}>Recording reliability spike</Text>
       <Text style={styles.note}>Test on real iOS/Android devices: start recording, lock the phone for 30–60 minutes, unlock, stop, and confirm duration/file size.</Text>
 
@@ -189,6 +190,7 @@ export default function RecorderSpike() {
         autoCorrect={false}
         keyboardType="url"
         placeholder="http://192.168.x.x:8080"
+        placeholderTextColor="#94a3b8"
       />
       <Text style={styles.hint}>Point at the deployed API, e.g. https://dash.janushc.com.</Text>
 
@@ -201,15 +203,16 @@ export default function RecorderSpike() {
         autoCorrect={false}
         secureTextEntry
         placeholder="MOBILE_SPIKE_TOKEN value"
+        placeholderTextColor="#94a3b8"
       />
       <Text style={styles.hint}>Must match MOBILE_SPIKE_TOKEN on the server.</Text>
 
       <View style={styles.row}>
-        <Text>Consent confirmed</Text>
+        <Text style={styles.body}>Consent confirmed</Text>
         <Switch value={consentConfirmed} onValueChange={setConsentConfirmed} />
       </View>
       <View style={styles.row}>
-        <Text>Keep screen awake fallback</Text>
+        <Text style={styles.body}>Keep screen awake fallback</Text>
         <Switch value={keepAwake} onValueChange={setKeepAwake} />
       </View>
 
@@ -220,8 +223,8 @@ export default function RecorderSpike() {
       {saved.map((item) => (
         <View key={item.uri} style={styles.card}>
           <Text style={styles.cardTitle}>{item.patientLabel}</Text>
-          <Text>{formatDuration(item.durationMillis)} • {item.sizeBytes ?? 'unknown'} bytes</Text>
-          <Text selectable>{item.uri}</Text>
+          <Text style={styles.body}>{formatDuration(item.durationMillis)} • {item.sizeBytes ?? 'unknown'} bytes</Text>
+          <Text style={styles.body} selectable>{item.uri}</Text>
           <Button title="Upload to spike endpoint" onPress={() => uploadRecording(item).catch((error) => Alert.alert('Upload error', String(error)))} />
         </View>
       ))}
@@ -230,15 +233,25 @@ export default function RecorderSpike() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 24, gap: 16 },
-  title: { fontSize: 24, fontWeight: '700' },
-  subtitle: { fontSize: 18, fontWeight: '700', marginTop: 16 },
+  // Explicit light theme + status-bar inset: the app does not support dark
+  // mode, and Android 15 draws edge-to-edge, so without these the content
+  // renders dark-on-dark and tucks under the status bar.
+  screen: { flex: 1, backgroundColor: '#ffffff' },
+  container: {
+    paddingHorizontal: 24,
+    paddingTop: Constants.statusBarHeight + 24,
+    paddingBottom: 48,
+    gap: 16,
+  },
+  title: { fontSize: 24, fontWeight: '700', color: '#0f172a' },
+  subtitle: { fontSize: 18, fontWeight: '700', marginTop: 16, color: '#0f172a' },
   note: { color: '#475569', lineHeight: 20 },
   hint: { color: '#64748b', fontSize: 12, marginTop: -8 },
-  label: { fontWeight: '600' },
-  input: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 12 },
+  label: { fontWeight: '600', color: '#0f172a' },
+  body: { color: '#1e293b' },
+  input: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 12, color: '#0f172a' },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  timer: { fontSize: 48, textAlign: 'center', fontVariant: ['tabular-nums'] },
-  card: { gap: 8, padding: 12, borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8 },
-  cardTitle: { fontWeight: '700' },
+  timer: { fontSize: 48, textAlign: 'center', fontVariant: ['tabular-nums'], color: '#0f172a' },
+  card: { gap: 8, padding: 12, borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, backgroundColor: '#ffffff' },
+  cardTitle: { fontWeight: '700', color: '#0f172a' },
 });
