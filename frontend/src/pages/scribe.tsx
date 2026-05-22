@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useMatch, useNavigate } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { useMatch, useNavigate, useSearchParams } from "react-router-dom";
 import { ClipboardList, Mic } from "lucide-react";
 import {
   useAddFeedback,
@@ -16,16 +16,18 @@ import {
 import { useAuth } from "@/lib/auth";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { MobileScribe } from "@/components/scribe-mobile/mobile-scribe";
-import {
-  SessionList,
-  buildEntries,
-  type ListFilter,
-} from "@/components/scribe/session-list";
-import { DetailView } from "@/components/scribe/detail-view";
+import { InboxTable } from "@/components/scribe/inbox-table";
+import { ReviewScreen } from "@/components/scribe/review-screen";
 import { NotesDrawer } from "@/components/scribe/notes-drawer";
 import { StatsStrip, type StatsValues } from "@/components/scribe/stats-strip";
 import { UploadModal } from "@/components/scribe/upload-modal";
 import { deriveStatusId, isInPipeline } from "@/components/scribe/status";
+import {
+  buildEntries,
+  filterEntries,
+  type ListFilter,
+} from "@/components/scribe/scribe-filters";
+import { findNeighbors } from "@/components/scribe/session-neighbors";
 import type {
   Approvals,
   FeedbackNote,
@@ -41,6 +43,15 @@ const EMPTY_APPROVALS: Approvals = {
 };
 
 const SECTION_KEYS: SectionKey[] = ["hpi", "plan", "exam", "labs"];
+
+const VALID_FILTERS: ListFilter[] = [
+  "all",
+  "ready",
+  "in_pipeline",
+  "sent",
+  "attention",
+  "rejected",
+];
 
 export default function ScribePage() {
   const isMobile = useIsMobile();
@@ -64,26 +75,26 @@ function DesktopScribe() {
 
   const sessionMatch = useMatch("/scribe/sessions/:sessionId");
   const selectedId = sessionMatch?.params.sessionId ?? null;
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<ListFilter>("all");
-  const [dateRange, setDateRange] = useState("today");
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const query = searchParams.get("q") ?? "";
+  const dateRange = searchParams.get("range") ?? "today";
+  const rawFilter = searchParams.get("filter");
+  const filter: ListFilter = VALID_FILTERS.includes(rawFilter as ListFilter)
+    ? (rawFilter as ListFilter)
+    : "all";
+
   const [notesOpen, setNotesOpen] = useState(false);
-  const [notesDefaultSection, setNotesDefaultSection] = useState<SectionKey | null>(null);
+  const [notesDefaultSection, setNotesDefaultSection] =
+    useState<SectionKey | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadSource, setUploadSource] = useState<"record" | "paste">("record");
 
-  // Auto-select the first session when the list loads and nothing is in the URL.
-  useEffect(() => {
-    if (selectedId) return;
-    const first = sessions[0];
-    if (first) {
-      navigate(`/scribe/sessions/${first.id}`, { replace: true });
-    }
-  }, [sessions, selectedId, navigate]);
-
-  // Poll the selected session more aggressively while it's in-flight.
-  const { data: selectedDetail, isLoading: detailLoading } =
-    useScribeSession(selectedId ?? "");
+  const {
+    data: selectedDetail,
+    isLoading: detailLoading,
+    isError: detailError,
+  } = useScribeSession(selectedId ?? "");
 
   const entries = useMemo(() => buildEntries(sessions), [sessions]);
 
@@ -120,13 +131,32 @@ function DesktopScribe() {
       labs: sections.labs?.state === "approved",
     };
   }, [selectedDetail]);
+
   const { data: notes = [] } = useSessionFeedback(selectedId ?? "");
 
-  const handleSelect = (id: string) => {
-    navigate(`/scribe/sessions/${id}`);
-    setNotesOpen(false);
-    setNotesDefaultSection(null);
+  const orderedIds = useMemo(
+    () => filterEntries(entries, filter, query).map((e) => e.session.id),
+    [entries, filter, query],
+  );
+  const neighbors = selectedId
+    ? findNeighbors(orderedIds, selectedId)
+    : { prev: null, next: null };
+
+  const setParam = (key: string, value: string, defaultValue: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (value === defaultValue) next.delete(key);
+    else next.set(key, value);
+    setSearchParams(next, { replace: true });
   };
+
+  const gotoSession = (id: string) =>
+    navigate({
+      pathname: `/scribe/sessions/${id}`,
+      search: searchParams.toString(),
+    });
+
+  const gotoInbox = () =>
+    navigate({ pathname: "/scribe", search: searchParams.toString() });
 
   const handleApprove = (section: SectionKey) => {
     if (!selectedId || !canApprove) return;
@@ -169,8 +199,7 @@ function DesktopScribe() {
       { sessionId: selectedId },
       {
         onSuccess: () => {
-          const next = sessions.find((s) => s.id !== selectedId);
-          navigate(next ? `/scribe/sessions/${next.id}` : "/scribe", { replace: true });
+          gotoInbox();
         },
       },
     );
@@ -197,54 +226,18 @@ function DesktopScribe() {
 
   return (
     <div className="janus-scribe-page">
-      <div className="janus-page-header">
-        <div>
-          <h1>Scribe</h1>
-          <p className="janus-page-subtitle">
-            Review AI-extracted encounter notes before sending to the EHR.
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            type="button"
-            className="janus-btn janus-btn-secondary janus-btn-sm"
-            onClick={() => { setUploadSource("record"); setUploadOpen(true); }}
-          >
-            <Mic />
-            Record
-          </button>
-          <button
-            type="button"
-            className="janus-btn janus-btn-secondary janus-btn-sm"
-            onClick={() => { setUploadSource("paste"); setUploadOpen(true); }}
-          >
-            <ClipboardList />
-            Paste transcript
-          </button>
-        </div>
-      </div>
-
-      <StatsStrip stats={stats} />
-
-      <div className="janus-workspace">
-        <SessionList
-          entries={entries}
-          selectedId={selectedId}
-          onSelect={handleSelect}
-          query={query}
-          onQuery={setQuery}
-          filter={filter}
-          onFilter={setFilter}
-          dateRange={dateRange}
-          onDateRange={setDateRange}
-        />
-        <DetailView
+      {selectedId ? (
+        <ReviewScreen
           session={selectedDetail ?? null}
           statusId={statusId}
           approvals={approvals}
           notes={notes}
-          loading={!!selectedId && detailLoading && !selectedDetail}
+          loading={detailLoading && !selectedDetail}
+          notFound={detailError}
           canApprove={canApprove}
+          onBack={gotoInbox}
+          onPrev={neighbors.prev ? () => gotoSession(neighbors.prev!) : null}
+          onNext={neighbors.next ? () => gotoSession(neighbors.next!) : null}
           onApprove={handleApprove}
           onApproveAll={handleApproveAll}
           onReject={handleReject}
@@ -262,23 +255,71 @@ function DesktopScribe() {
             window.alert("Retry is not yet implemented.");
           }}
         />
-        <NotesDrawer
-          open={notesOpen}
-          notes={notes}
-          onClose={() => setNotesOpen(false)}
-          onAddNote={handleAddNote}
-          defaultSection={notesDefaultSection}
-        />
-      </div>
+      ) : (
+        <>
+          <div className="janus-page-header">
+            <div>
+              <h1>Scribe</h1>
+              <p className="janus-page-subtitle">
+                Review AI-extracted encounter notes before sending to the EHR.
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                className="janus-btn janus-btn-secondary janus-btn-sm"
+                onClick={() => {
+                  setUploadSource("record");
+                  setUploadOpen(true);
+                }}
+              >
+                <Mic />
+                Record
+              </button>
+              <button
+                type="button"
+                className="janus-btn janus-btn-secondary janus-btn-sm"
+                onClick={() => {
+                  setUploadSource("paste");
+                  setUploadOpen(true);
+                }}
+              >
+                <ClipboardList />
+                Paste transcript
+              </button>
+            </div>
+          </div>
+
+          <StatsStrip stats={stats} />
+
+          <InboxTable
+            entries={entries}
+            query={query}
+            onQuery={(q) => setParam("q", q, "")}
+            filter={filter}
+            onFilter={(f) => setParam("filter", f, "all")}
+            dateRange={dateRange}
+            onDateRange={(r) => setParam("range", r, "today")}
+            onOpen={gotoSession}
+            loading={sessionsLoading && sessions.length === 0}
+          />
+        </>
+      )}
+
+      <NotesDrawer
+        open={notesOpen}
+        notes={notes}
+        onClose={() => setNotesOpen(false)}
+        onAddNote={handleAddNote}
+        defaultSection={notesDefaultSection}
+      />
 
       <UploadModal
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
-        onCreated={(id) => navigate(`/scribe/sessions/${id}`)}
+        onCreated={gotoSession}
         initialSource={uploadSource}
       />
-
-      {sessionsLoading && sessions.length === 0 ? null : null}
     </div>
   );
 }
