@@ -166,6 +166,12 @@ type llmUsageResponse struct {
 
 var sectionKeys = []string{"hpi", "plan", "exam", "labs"}
 
+// requiredSendSections are the sections written to the EHR and therefore
+// required to be approved before sending. labs is reference-only (the AI's
+// suggested diagnosis/lab pairs are not written to athena) and does not gate
+// sending. See docs/plans/2026-05-30-scribe-ehr-writeback.md.
+var requiredSendSections = []string{"hpi", "plan", "exam"}
+
 func isValidSection(s string) bool {
 	for _, k := range sectionKeys {
 		if k == s {
@@ -635,7 +641,7 @@ func allSectionsReadyToSend(
 	editRows []database.GetSessionSectionEditsRow,
 ) bool {
 	states := buildSectionStates(approvalRows, editRows)
-	for _, k := range sectionKeys {
+	for _, k := range requiredSendSections {
 		if states[k].state != "approved" {
 			return false
 		}
@@ -1230,6 +1236,13 @@ func (h *Handler) HandleSend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session is not ready to send", http.StatusBadRequest)
 		return
 	}
+	// A session is marked sent only after a successful EHR write, so a set
+	// timestamp means a prior send succeeded — block re-sending. A failed send
+	// leaves it unmarked and therefore retryable.
+	if session.SentToEhrAt.Valid {
+		http.Error(w, "session already sent", http.StatusConflict)
+		return
+	}
 
 	approvalRows, err := h.queries.GetSessionSectionStates(r.Context(), sessionUUID)
 	if err != nil {
@@ -1246,37 +1259,32 @@ func (h *Handler) HandleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Mark sent first — the UPDATE is the gate against double-sends.
-	// 0 rows affected means already sent by a concurrent request.
-	n, err := h.queries.MarkScribeSessionSent(r.Context(), database.MarkScribeSessionSentParams{
-		ID:          sessionUUID,
-		TenantID:    tenantUUID,
-		SentToEhrBy: userUUID,
-	})
-	if err != nil {
-		http.Error(w, "failed to mark session as sent", http.StatusInternalServerError)
-		return
-	}
-	if n == 0 {
-		http.Error(w, "session already sent", http.StatusConflict)
-		return
-	}
-
-	// Call athena after marking. If athena fails, the session remains marked sent
-	// in the DB — do not roll back. A timeout means athena may have received the
-	// write; rolling back and retrying risks a duplicate note in the EMR.
-	// Manual resolution required on persistent failure; that's preferable to a double-send.
+	// Write to the EHR before marking sent. On failure the session stays
+	// unmarked and the provider can retry; the section writes are idempotent
+	// (replace mode), so a retry safely re-PUTs all sections rather than
+	// duplicating. Write the provider-reviewed content: the AI output with each
+	// section overridden by its latest edit — writing raw AiOutput would drop
+	// the provider's corrections.
 	if session.AiOutput != nil {
-		// Write the provider-reviewed content: the AI output with each section
-		// overridden by its latest edit. editRows was loaded above for the
-		// readiness check. Writing raw AiOutput here would drop the provider's
-		// corrections.
 		output := effectiveOutput(session.AiOutput, editRows)
 		if writeErr := h.processor.WriteToAthena(r.Context(), h.cfg.AthenaPracticeID, session.EncounterID, output); writeErr != nil {
-			log.Printf("scribe send: athena write error for session %s (marked sent, manual review needed): %v", uuidToString(sessionUUID), writeErr)
+			log.Printf("scribe send: athena write error for session %s (not marked sent, retryable): %v", uuidToString(sessionUUID), writeErr)
 			http.Error(w, "sent to EHR failed — contact support", http.StatusInternalServerError)
 			return
 		}
+	}
+
+	// Mark sent only after the write succeeds. A concurrent send may have marked
+	// it first (0 rows affected); that is fine — the content is idempotent and
+	// is now in the EHR either way.
+	if _, err := h.queries.MarkScribeSessionSent(r.Context(), database.MarkScribeSessionSentParams{
+		ID:          sessionUUID,
+		TenantID:    tenantUUID,
+		SentToEhrBy: userUUID,
+	}); err != nil {
+		log.Printf("scribe send: written to EHR but failed to mark sent for session %s: %v", uuidToString(sessionUUID), err)
+		http.Error(w, "written to EHR but failed to record send — contact support", http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")

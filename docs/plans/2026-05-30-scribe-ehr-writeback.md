@@ -35,9 +35,11 @@ UI sections (`sectionKeys`): `hpi, plan, exam, labs` → `ScribeOutput.{HPI, Ass
   - Whether scribe's combined A&P maps to the single `/assessment` section (docs list both "Assessment" and "Assessment and Plan").
   - `replacesectionnote=true` replaces the section note (chosen for retry idempotency) — confirm this is the desired behavior vs append, and that it does not clobber provider-typed section notes.
 
-### Phase 3 — decide the two gaps
-- `labs`: write to a real endpoint (orders/problems — out of currently verified scope) or stop gating send on it.
-- Partial-write: per-section sent tracking, or rely on GET-then-PUT being idempotent to allow retry. Reconsider the mark-sent-before-write ordering now that writes are real.
+### Phase 3 — the two gaps — DECIDED + backend done
+- **labs: reference-only, dropped from send gate.** Added `requiredSendSections = [hpi, plan, exam]`; `allSectionsReadyToSend` checks only those. labs stays editable/approvable for the provider but no longer blocks send and is not written to the EHR. Order entry deferred.
+- **Partial-write: mark-sent-after + idempotent retry.** `HandleSend` now writes to athena first, then marks sent only on success. A failed send leaves the session unmarked and retryable; the section writes are idempotent (`replace`), so a retry re-PUTs safely. Up-front `SentToEhrAt.Valid → 409` blocks re-sending a succeeded session. Concurrent first-sends both write idempotently; one wins the mark (0-rows is treated as success). Safety depends on `replace` actually replacing — on the Phase 4 list.
+
+**Remaining for Decision A (frontend):** the Send button still requires all four sections (`approvedCount === 4` in `review-screen.tsx` + mobile `detail-view.tsx`). To match the backend, the frontend must require only hpi/plan/exam approved while keeping labs optionally approvable.
 
 ### Phase 4 — sandbox end-to-end
 - Lorem ipsum content against an OPEN sandbox encounter (the one external dependency). Prereq: a checked-in sandbox patient with a writable `encounterid`.
