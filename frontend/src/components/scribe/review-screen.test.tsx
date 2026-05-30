@@ -112,4 +112,16 @@ describe("ReviewScreen", () => {
     expect(textarea).toBeInTheDocument();
     expect((textarea as HTMLTextAreaElement).rows).toBe(18);
   });
+
+  it("enables Send when hpi/plan/exam are approved even if labs is not", () => {
+    const approved: Approvals = { hpi: true, plan: true, exam: true, labs: false };
+    render(<ReviewScreen {...baseProps()} approvals={approved} />);
+    expect(screen.getByRole("button", { name: /Send to EHR/ })).not.toBeDisabled();
+  });
+
+  it("keeps Send disabled when a required section is not approved", () => {
+    const approved: Approvals = { hpi: true, plan: false, exam: true, labs: true };
+    render(<ReviewScreen {...baseProps()} approvals={approved} />);
+    expect(screen.getByRole("button", { name: /Send to EHR/ })).toBeDisabled();
+  });
 });

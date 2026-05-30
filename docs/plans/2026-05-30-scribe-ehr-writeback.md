@@ -39,7 +39,7 @@ UI sections (`sectionKeys`): `hpi, plan, exam, labs` → `ScribeOutput.{HPI, Ass
 - **labs: reference-only, dropped from send gate.** Added `requiredSendSections = [hpi, plan, exam]`; `allSectionsReadyToSend` checks only those. labs stays editable/approvable for the provider but no longer blocks send and is not written to the EHR. Order entry deferred.
 - **Partial-write: mark-sent-after + idempotent retry.** `HandleSend` now writes to athena first, then marks sent only on success. A failed send leaves the session unmarked and retryable; the section writes are idempotent (`replace`), so a retry re-PUTs safely. Up-front `SentToEhrAt.Valid → 409` blocks re-sending a succeeded session. Concurrent first-sends both write idempotently; one wins the mark (0-rows is treated as success). Safety depends on `replace` actually replacing — on the Phase 4 list.
 
-**Remaining for Decision A (frontend):** the Send button still requires all four sections (`approvedCount === 4` in `review-screen.tsx` + mobile `detail-view.tsx`). To match the backend, the frontend must require only hpi/plan/exam approved while keeping labs optionally approvable.
+**Decision A frontend — DONE.** Added `REQUIRED_SEND_SECTIONS = [hpi, plan, exam]` + `isReadyToSend()` to `status.ts` (mirrors backend). `review-screen.tsx` and mobile `detail-view.tsx` now gate Send on `isReadyToSend` instead of `approvedCount === 4`; labs stays approvable but optional. Approval pips still show all 4. Component tests + full `npm run build` green.
 
 ### Phase 4 — sandbox end-to-end
 - Lorem ipsum content against an OPEN sandbox encounter (the one external dependency). Prereq: a checked-in sandbox patient with a writable `encounterid`.
