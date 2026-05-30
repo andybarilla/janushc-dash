@@ -1,0 +1,7 @@
+procs:
+  web:
+    cmd: ["mise", "x", "--", "npm", "run", "dev"]
+    cwd: frontend
+  worker:
+    cmd: ["mise", "x", "--", "go", "run", "./cmd/janushc-dash"]
+
