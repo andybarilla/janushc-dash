@@ -1267,13 +1267,15 @@ func (h *Handler) HandleSend(w http.ResponseWriter, r *http.Request) {
 	// write; rolling back and retrying risks a duplicate note in the EMR.
 	// Manual resolution required on persistent failure; that's preferable to a double-send.
 	if session.AiOutput != nil {
-		var output ScribeOutput
-		if err := json.Unmarshal(session.AiOutput, &output); err == nil {
-			if writeErr := h.processor.WriteToAthena(r.Context(), h.cfg.AthenaPracticeID, session.EncounterID, output); writeErr != nil {
-				log.Printf("scribe send: athena write error for session %s (marked sent, manual review needed): %v", uuidToString(sessionUUID), writeErr)
-				http.Error(w, "sent to EHR failed — contact support", http.StatusInternalServerError)
-				return
-			}
+		// Write the provider-reviewed content: the AI output with each section
+		// overridden by its latest edit. editRows was loaded above for the
+		// readiness check. Writing raw AiOutput here would drop the provider's
+		// corrections.
+		output := effectiveOutput(session.AiOutput, editRows)
+		if writeErr := h.processor.WriteToAthena(r.Context(), h.cfg.AthenaPracticeID, session.EncounterID, output); writeErr != nil {
+			log.Printf("scribe send: athena write error for session %s (marked sent, manual review needed): %v", uuidToString(sessionUUID), writeErr)
+			http.Error(w, "sent to EHR failed — contact support", http.StatusInternalServerError)
+			return
 		}
 	}
 

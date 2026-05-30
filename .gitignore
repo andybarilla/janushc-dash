@@ -8,3 +8,6 @@ frontend/dist/
 frontend/.env.local
 .devcontainer/.env
 .superpowers/
+
+# Playwright MCP scratch (snapshots, downloads, console logs)
+.playwright-mcp/
