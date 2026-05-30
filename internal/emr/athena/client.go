@@ -97,3 +97,22 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body io.Rea
 
 	return c.httpClient.Do(req)
 }
+
+// doForm sends a form-urlencoded request. athenahealth's proprietary write
+// endpoints (POST/PUT) take application/x-www-form-urlencoded bodies, with
+// complex parameters passed as JSON-encoded string values.
+func (c *Client) doForm(ctx context.Context, method, path string, form url.Values) (*http.Response, error) {
+	token, err := c.getToken()
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	return c.httpClient.Do(req)
+}
