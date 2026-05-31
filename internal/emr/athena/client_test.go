@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestClientGetToken(t *testing.T) {
@@ -99,8 +100,19 @@ func TestListTodayEncounters(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"access_token":"test-token","expires_in":3600}`))
 		case r.URL.Path == "/v1/195900/appointments/booked":
-			if r.URL.Query().Get("departmentid") != "1" {
-				t.Errorf("expected departmentid=1, got %q", r.URL.Query().Get("departmentid"))
+			q := r.URL.Query()
+			if q.Get("departmentid") != "1" {
+				t.Errorf("expected departmentid=1, got %q", q.Get("departmentid"))
+			}
+			today := time.Now().Format("01/02/2006")
+			if q.Get("startdate") != today {
+				t.Errorf("expected startdate=%q, got %q", today, q.Get("startdate"))
+			}
+			if q.Get("enddate") != today {
+				t.Errorf("expected enddate=%q, got %q", today, q.Get("enddate"))
+			}
+			if q.Get("startdate") != q.Get("enddate") {
+				t.Errorf("expected startdate and enddate to be equal, got %q and %q", q.Get("startdate"), q.Get("enddate"))
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"appointments":[
