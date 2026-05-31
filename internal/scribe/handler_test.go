@@ -2,12 +2,14 @@ package scribe
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 
 	"github.com/andybarilla/janushc-dash/internal/config"
 	"github.com/andybarilla/janushc-dash/internal/database"
+	"github.com/andybarilla/janushc-dash/internal/emr"
 )
 
 func TestValidateCreateRequest_Valid(t *testing.T) {
@@ -291,7 +294,7 @@ func TestSaveSessionAudio_PersistsAndRewinds(t *testing.T) {
 	}
 	defer file.Close()
 
-	h := NewHandler(nil, nil, &config.Config{ScribeAudioDir: t.TempDir()}, nil)
+	h := NewHandler(nil, nil, &config.Config{ScribeAudioDir: t.TempDir()}, nil, nil)
 	if _, err := h.saveSessionAudio(file, "tenant-1", "session-1", ext); err != nil {
 		t.Fatalf("saveSessionAudio: %v", err)
 	}
@@ -389,5 +392,120 @@ func TestValidateCreateFeedbackRequest_EmptyBody(t *testing.T) {
 	req := createFeedbackRequest{Section: "hpi", Category: "good", Body: "   "}
 	if err := req.validate(); err == nil {
 		t.Error("expected error for empty body")
+	}
+}
+
+type fakeEMR struct {
+	departments []emr.Department
+	encounters  []emr.Encounter
+	err         error
+}
+
+func (f fakeEMR) ListDepartments(ctx context.Context, practiceID string) ([]emr.Department, error) {
+	return f.departments, f.err
+}
+func (f fakeEMR) ListTodayEncounters(ctx context.Context, practiceID, departmentID string) ([]emr.Encounter, error) {
+	return f.encounters, f.err
+}
+func (f fakeEMR) ListPatientOrders(ctx context.Context, practiceID, patientID, departmentID string, orderTypes []string) ([]emr.Order, error) {
+	return nil, nil
+}
+func (f fakeEMR) ListDepartmentPatients(ctx context.Context, practiceID, departmentID string) ([]emr.Patient, error) {
+	return nil, nil
+}
+func (f fakeEMR) GetPatientName(ctx context.Context, practiceID, patientID string) (string, error) {
+	return "", nil
+}
+func (f fakeEMR) ApproveOrders(ctx context.Context, practiceID string, orderIDs []string) ([]string, error) {
+	return nil, nil
+}
+func (f fakeEMR) GetActiveDiagnoses(ctx context.Context, practiceID, patientID string) ([]emr.Diagnosis, error) {
+	return nil, nil
+}
+func (f fakeEMR) WriteEncounterHPI(ctx context.Context, practiceID, encounterID, hpiText string) error {
+	return nil
+}
+func (f fakeEMR) WriteEncounterAssessmentPlan(ctx context.Context, practiceID, encounterID, apText string) error {
+	return nil
+}
+func (f fakeEMR) WriteEncounterPhysicalExam(ctx context.Context, practiceID, encounterID, peText string) error {
+	return nil
+}
+
+func TestShouldAutoTranscribe(t *testing.T) {
+	cases := []struct {
+		value string
+		want  bool
+	}{
+		{"", true},           // absent → default true
+		{"true", true},
+		{"1", true},
+		{"yes", true},
+		{"on", true},
+		{"false", false},
+		{"0", false},
+		{"off", false},
+		{"no", false},
+		{"FALSE", false},     // case-insensitive
+		{"OFF", false},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest(http.MethodPost, "/upload", strings.NewReader("auto_transcribe="+tc.value))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		got := shouldAutoTranscribe(req)
+		if got != tc.want {
+			t.Errorf("shouldAutoTranscribe(%q) = %v, want %v", tc.value, got, tc.want)
+		}
+	}
+}
+
+func TestHandleListDepartments(t *testing.T) {
+	h := &Handler{
+		cfg: &config.Config{AthenaPracticeID: "195900"},
+		emr: fakeEMR{departments: []emr.Department{{ID: "1", Name: "Primary Care"}}},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/scribe/departments", nil)
+	w := httptest.NewRecorder()
+	h.HandleListDepartments(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"Primary Care"`) {
+		t.Errorf("expected department in body, got %s", w.Body.String())
+	}
+}
+
+func TestHandleListEncounters(t *testing.T) {
+	h := &Handler{
+		cfg: &config.Config{AthenaPracticeID: "195900"},
+		emr: fakeEMR{encounters: []emr.Encounter{
+			{ID: "900", PatientID: "55", PatientName: "Ada Lovelace", DepartmentID: "1", Date: "05/31/2026"},
+		}},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/scribe/encounters?department_id=1", nil)
+	w := httptest.NewRecorder()
+	h.HandleListEncounters(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `"encounter_id":"900"`) || !strings.Contains(body, `"patient_name":"Ada Lovelace"`) {
+		t.Errorf("unexpected body: %s", body)
+	}
+}
+
+func TestHandleListEncounters_MissingDepartment(t *testing.T) {
+	h := &Handler{cfg: &config.Config{AthenaPracticeID: "195900"}, emr: fakeEMR{}}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/scribe/encounters", nil)
+	w := httptest.NewRecorder()
+	h.HandleListEncounters(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
 	}
 }

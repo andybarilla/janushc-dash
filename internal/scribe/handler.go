@@ -21,6 +21,7 @@ import (
 	"github.com/andybarilla/janushc-dash/internal/auth"
 	"github.com/andybarilla/janushc-dash/internal/config"
 	"github.com/andybarilla/janushc-dash/internal/database"
+	"github.com/andybarilla/janushc-dash/internal/emr"
 	"github.com/andybarilla/janushc-dash/internal/transcribe"
 )
 
@@ -29,10 +30,11 @@ type Handler struct {
 	processor *Processor
 	cfg       *config.Config
 	batch     *transcribe.BatchClient
+	emr       emr.EMR
 }
 
-func NewHandler(queries *database.Queries, processor *Processor, cfg *config.Config, batch *transcribe.BatchClient) *Handler {
-	return &Handler{queries: queries, processor: processor, cfg: cfg, batch: batch}
+func NewHandler(queries *database.Queries, processor *Processor, cfg *config.Config, batch *transcribe.BatchClient, emrClient emr.EMR) *Handler {
+	return &Handler{queries: queries, processor: processor, cfg: cfg, batch: batch, emr: emrClient}
 }
 
 const maxUploadSize = 100 << 20 // 100 MB
@@ -361,6 +363,67 @@ type feedbackResponse struct {
 	Author         string `json:"author"`
 	AuthorInitials string `json:"authorInitials"`
 	At             string `json:"at"`
+}
+
+type departmentResponse struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+func (h *Handler) HandleListDepartments(w http.ResponseWriter, r *http.Request) {
+	depts, err := h.emr.ListDepartments(r.Context(), h.cfg.AthenaPracticeID)
+	if err != nil {
+		log.Printf("scribe: list departments: %v", err)
+		http.Error(w, "failed to list departments", http.StatusBadGateway)
+		return
+	}
+
+	out := make([]departmentResponse, 0, len(depts))
+	for _, d := range depts {
+		out = append(out, departmentResponse{ID: d.ID, Name: d.Name})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
+}
+
+type encounterResponse struct {
+	EncounterID  string `json:"encounter_id"`
+	PatientID    string `json:"patient_id"`
+	PatientName  string `json:"patient_name"`
+	DepartmentID string `json:"department_id"`
+	Date         string `json:"date"`
+	StartTime    string `json:"start_time"`
+}
+
+func (h *Handler) HandleListEncounters(w http.ResponseWriter, r *http.Request) {
+	departmentID := r.URL.Query().Get("department_id")
+	if departmentID == "" {
+		http.Error(w, "department_id required", http.StatusBadRequest)
+		return
+	}
+
+	encs, err := h.emr.ListTodayEncounters(r.Context(), h.cfg.AthenaPracticeID, departmentID)
+	if err != nil {
+		log.Printf("scribe: list encounters (dept=%s): %v", departmentID, err)
+		http.Error(w, "failed to list encounters", http.StatusBadGateway)
+		return
+	}
+
+	out := make([]encounterResponse, 0, len(encs))
+	for _, e := range encs {
+		out = append(out, encounterResponse{
+			EncounterID:  e.ID,
+			PatientID:    e.PatientID,
+			PatientName:  e.PatientName,
+			DepartmentID: e.DepartmentID,
+			Date:         e.Date,
+			StartTime:    e.StartTime,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
 }
 
 func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {

@@ -34,8 +34,10 @@ type Diagnosis struct {
 type Encounter struct {
 	ID           string `json:"id"`
 	PatientID    string `json:"patient_id"`
+	PatientName  string `json:"patient_name"`
 	DepartmentID string `json:"department_id"`
 	Date         string `json:"date"`
+	StartTime    string `json:"start_time"`
 }
 
 type EMR interface {

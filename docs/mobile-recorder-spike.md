@@ -15,7 +15,7 @@ It tests:
 - Android foreground-service-related permissions in the manifest
 - optional keep-awake fallback toggle, for comparison only
 - local file URI, duration, and file-size validation
-- placeholder multipart upload to `/api/mobile/recordings`
+- authenticated multipart upload via `POST /api/scribe/sessions` + `/{id}/upload`
 
 ## Run on devices
 
@@ -73,20 +73,14 @@ Fail / needs native module:
 - iOS interruptions corrupt or lose the recording
 - large file upload is unreliable without chunking/resume
 
-## Expected next backend shape
+## Backend shape
 
-The spike app currently posts multipart form data to:
+The spike app uses the authenticated scribe session flow:
 
-```http
-POST /api/mobile/recordings
-```
+1. `POST /api/scribe/sessions` creates a session linked to an encounter.
+2. `POST /api/scribe/sessions/{id}/upload` uploads audio with `auto_transcribe=false`, so the session lands in `recording` status for the web review flow.
 
-Initial production shape should likely become:
-
-1. `POST /api/mobile/recording-sessions` creates a recording session.
-2. App uploads audio with a signed S3 URL or multipart upload.
-3. `POST /api/mobile/recording-sessions/{id}/complete` marks upload complete.
-4. Backend creates a transcription job and links result to a scribe session.
+The retired `/api/mobile/recordings` placeholder endpoint is no longer in use.
 
 ## Platform notes
 
