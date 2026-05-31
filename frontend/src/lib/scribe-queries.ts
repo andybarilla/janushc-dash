@@ -81,9 +81,23 @@ export interface ScribeSessionDetail extends ScribeSession {
   usage?: ScribeUsageSummary;
 }
 
+export interface ScribeDepartment {
+  id: string;
+  name: string;
+}
+
+export interface ScribeAppointment {
+  appointment_id: string;
+  patient_id: string;
+  patient_name: string;
+  time: string;
+  department_id: string;
+  status: string;
+}
+
 interface CreateSessionRequest {
   patient_id: string;
-  encounter_id: string;
+  appointment_id: string;
   department_id: string;
 }
 
@@ -91,6 +105,25 @@ export function useScribeSessions() {
   return useQuery({
     queryKey: ["scribeSessions"],
     queryFn: () => api.fetch<ScribeSession[]>("/api/scribe/sessions"),
+  });
+}
+
+export function useScribeDepartments() {
+  return useQuery({
+    queryKey: ["scribeDepartments"],
+    queryFn: () => api.fetch<ScribeDepartment[]>("/api/scribe/departments"),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useTodayAppointments(departmentId: string) {
+  return useQuery({
+    queryKey: ["scribeAppointments", departmentId],
+    queryFn: () =>
+      api.fetch<ScribeAppointment[]>(
+        `/api/scribe/appointments?department_id=${encodeURIComponent(departmentId)}`,
+      ),
+    enabled: !!departmentId,
   });
 }
 
