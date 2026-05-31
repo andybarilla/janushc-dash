@@ -25,13 +25,16 @@ auto-transcription on upload (sessions land as `recording` for the web flow).
 
 Implement `(*Client).ListTodayEncounters(ctx, practiceID, departmentID)` in
 `internal/emr/athena/encounters.go` against
-`GET /v1/{practiceID}/appointments/open?departmentid=…&showpatientdetailbyappointment=true`.
-The open-appointments payload carries `patientid` and patient name fields per
-slot, so map them directly — no N+1 `GetPatientName` calls.
+`GET /v1/{practiceID}/appointments/booked?departmentid=…&startdate=…&enddate=…`
+(athena dates are `MM/DD/YYYY`; today for both bounds). The booked-appointments
+payload carries `appointmentid`, `patientid`, and `date`/`starttime`. Patient
+names are filled by calling the existing `GetPatientName` once per unique
+patient id (a single department's daily list is small, so the extra calls are
+cheap and more robust than depending on name fields in the booked payload).
 
 `emr.Encounter` gains a `PatientName string` field. The encounter identifier is
-the open appointment id; this is what is recordable before check-in and matches
-the id the existing write-back path keys on downstream.
+the appointment id, which matches the id the existing write-back path keys on
+downstream.
 
 ### Endpoints
 
@@ -103,13 +106,13 @@ On success the app returns to the encounter list.
 
 ### Resilience
 
-- The finished recording is persisted locally and is not deleted until upload
-  succeeds.
+- The finished recording stays on disk (its file URI) and is not discarded
+  until upload succeeds.
 - Session-create and upload are tracked per item so a retry resumes at the
-  correct step.
-- Upload retries with backoff; on repeated failure the item stays in a local
-  "pending upload" list with a manual retry button. A dropped create or upload
-  never loses audio.
+  correct step (no duplicate session on a failed-after-create upload).
+- On failure the user gets an in-session Retry prompt. v1 does not persist a
+  pending-upload queue across an app restart; resume-on-relaunch is a deliberate
+  follow-up.
 
 ## Error handling
 
