@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -13,7 +13,7 @@ import { useAuth } from '../auth';
 
 export function PickEncounterScreen({ onSelect }: { onSelect: (e: Encounter) => void }) {
   const { token, baseUrl, signOut } = useAuth();
-  const opts = { baseUrl, token, onUnauthorized: signOut };
+  const opts = useMemo(() => ({ baseUrl, token, onUnauthorized: signOut }), [baseUrl, token, signOut]);
 
   const [departments, setDepartments] = useState<Department[]>([]);
   const [departmentId, setDepartmentId] = useState<string | null>(null);

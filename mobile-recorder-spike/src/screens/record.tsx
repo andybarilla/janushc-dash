@@ -1,6 +1,6 @@
 import { Audio } from 'expo-av';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, StyleSheet, Switch, Text, View } from 'react-native';
 import { createSession, Encounter, uploadAudio } from '../api';
 import { useAuth } from '../auth';
@@ -16,7 +16,7 @@ function formatDuration(ms: number) {
 
 export function RecordScreen({ encounter, onDone }: { encounter: Encounter; onDone: () => void }) {
   const { token, baseUrl, signOut } = useAuth();
-  const opts = { baseUrl, token, onUnauthorized: signOut };
+  const opts = useMemo(() => ({ baseUrl, token, onUnauthorized: signOut }), [baseUrl, token, signOut]);
   const recordingRef = useRef<Audio.Recording | null>(null);
 
   const [consent, setConsent] = useState(false);
@@ -34,6 +34,13 @@ export function RecordScreen({ encounter, onDone }: { encounter: Encounter; onDo
     }).catch(console.warn);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      recordingRef.current?.stopAndUnloadAsync().catch(() => undefined);
+      deactivateKeepAwake('janushc-recorder');
+    };
+  }, []);
+
   async function startRecording() {
     if (!consent) {
       Alert.alert('Consent required', 'Confirm patient consent before recording.');
@@ -46,25 +53,38 @@ export function RecordScreen({ encounter, onDone }: { encounter: Encounter; onDo
     }
     if (keepAwake) await activateKeepAwakeAsync('janushc-recorder');
 
-    const recording = new Audio.Recording();
-    recording.setOnRecordingStatusUpdate((status) => {
-      if (status.isRecording || status.durationMillis > 0) setDurationMillis(status.durationMillis);
-    });
-    recording.setProgressUpdateInterval(1000);
-    await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-    await recording.startAsync();
-    recordingRef.current = recording;
-    setIsRecording(true);
+    try {
+      const recording = new Audio.Recording();
+      recording.setOnRecordingStatusUpdate((status) => {
+        if (status.isRecording || status.durationMillis > 0) setDurationMillis(status.durationMillis);
+      });
+      recording.setProgressUpdateInterval(1000);
+      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      await recording.startAsync();
+      recordingRef.current = recording;
+      setIsRecording(true);
+    } catch (err) {
+      deactivateKeepAwake('janushc-recorder');
+      recordingRef.current = null;
+      setIsRecording(false);
+      Alert.alert('Recording failed', String(err));
+    }
   }
 
   async function stopRecording() {
     const recording = recordingRef.current;
     if (!recording) return;
-    await recording.stopAndUnloadAsync();
-    deactivateKeepAwake('janushc-recorder');
-    const uri = recording.getURI();
-    recordingRef.current = null;
-    setIsRecording(false);
+    let uri: string | null = null;
+    try {
+      await recording.stopAndUnloadAsync();
+      uri = recording.getURI();
+    } catch (err) {
+      Alert.alert('Stop failed', String(err));
+    } finally {
+      deactivateKeepAwake('janushc-recorder');
+      recordingRef.current = null;
+      setIsRecording(false);
+    }
     if (!uri) {
       Alert.alert('No recording URI returned');
       return;

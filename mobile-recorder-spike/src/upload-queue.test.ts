@@ -60,3 +60,19 @@ test('upload failure keeps the session id for a later resume', async () => {
   expect(result.status).toBe('needs-upload');
   expect(result.sessionId).toBe('sess-1');
 });
+
+test('session creation failure stays at needs-session and skips upload', async () => {
+  const calls: string[] = [];
+  const result = await processItem(baseItem(), {
+    createSession: async () => {
+      calls.push('create');
+      throw new Error('network down');
+    },
+    uploadAudio: async (sessionId) => {
+      calls.push(`upload:${sessionId}`);
+    },
+  });
+  expect(calls).toEqual(['create']);
+  expect(result.status).toBe('needs-session');
+  expect(result.sessionId).toBeNull();
+});
