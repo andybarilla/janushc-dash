@@ -8,6 +8,7 @@ export type Encounter = {
   patient_name: string;
   department_id: string;
   date: string;
+  start_time: string;
 };
 
 export type Session = {
@@ -90,8 +91,8 @@ export function createSession(
   });
 }
 
-// Uploads the recorded audio to an existing session. No auto-transcribe flag is
-// sent, so the backend marks the session "recording" for the web review flow.
+// Uploads the recorded audio to an existing session. Sends auto_transcribe=false
+// so the backend marks the session "recording" instead of kicking off transcription.
 export async function uploadAudio(opts: ApiOptions, sessionId: string, fileUri: string): Promise<void> {
   const form = new FormData();
   form.append('audio', {
@@ -99,6 +100,7 @@ export async function uploadAudio(opts: ApiOptions, sessionId: string, fileUri: 
     name: `janushc-${sessionId}.m4a`,
     type: 'audio/m4a',
   } as unknown as Blob);
+  form.append('auto_transcribe', 'false');
 
   const res = await fetch(
     `${normalizeBaseUrl(opts.baseUrl)}/api/scribe/sessions/${sessionId}/upload`,

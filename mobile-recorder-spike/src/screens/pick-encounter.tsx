@@ -71,7 +71,7 @@ export function PickEncounterScreen({ onSelect }: { onSelect: (e: Encounter) => 
         renderItem={({ item }) => (
           <Pressable style={styles.row} onPress={() => onSelect(item)}>
             <Text style={styles.rowName}>{item.patient_name || item.patient_id}</Text>
-            <Text style={styles.rowMeta}>{item.date}</Text>
+            <Text style={styles.rowMeta}>{item.start_time ? `${item.start_time} · ${item.date}` : item.date}</Text>
           </Pressable>
         )}
       />
