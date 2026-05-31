@@ -104,6 +104,7 @@ func (s *Server) routes() {
 		r.With(auth.RequireRole("admin")).Post("/api/users", s.usersHandler.HandleCreate)
 
 		r.Get("/api/scribe/departments", s.scribeHandler.HandleListDepartments)
+		r.Get("/api/scribe/encounters", s.scribeHandler.HandleListEncounters)
 		r.Post("/api/scribe/sessions", s.scribeHandler.HandleCreate)
 		r.Get("/api/scribe/sessions", s.scribeHandler.HandleList)
 		r.Get("/api/scribe/sessions/{id}", s.scribeHandler.HandleGet)

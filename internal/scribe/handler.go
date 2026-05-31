@@ -387,6 +387,43 @@ func (h *Handler) HandleListDepartments(w http.ResponseWriter, r *http.Request) 
 	_ = json.NewEncoder(w).Encode(out)
 }
 
+type encounterResponse struct {
+	EncounterID  string `json:"encounter_id"`
+	PatientID    string `json:"patient_id"`
+	PatientName  string `json:"patient_name"`
+	DepartmentID string `json:"department_id"`
+	Date         string `json:"date"`
+}
+
+func (h *Handler) HandleListEncounters(w http.ResponseWriter, r *http.Request) {
+	departmentID := r.URL.Query().Get("department_id")
+	if departmentID == "" {
+		http.Error(w, "department_id required", http.StatusBadRequest)
+		return
+	}
+
+	encs, err := h.emr.ListTodayEncounters(r.Context(), h.cfg.AthenaPracticeID, departmentID)
+	if err != nil {
+		log.Printf("scribe: list encounters (dept=%s): %v", departmentID, err)
+		http.Error(w, "failed to list encounters", http.StatusBadGateway)
+		return
+	}
+
+	out := make([]encounterResponse, 0, len(encs))
+	for _, e := range encs {
+		out = append(out, encounterResponse{
+			EncounterID:  e.ID,
+			PatientID:    e.PatientID,
+			PatientName:  e.PatientName,
+			DepartmentID: e.DepartmentID,
+			Date:         e.Date,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
+}
+
 func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	claims := auth.ClaimsFromContext(r.Context())
 	if claims == nil {

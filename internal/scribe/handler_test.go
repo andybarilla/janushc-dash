@@ -449,3 +449,36 @@ func TestHandleListDepartments(t *testing.T) {
 		t.Errorf("expected department in body, got %s", w.Body.String())
 	}
 }
+
+func TestHandleListEncounters(t *testing.T) {
+	h := &Handler{
+		cfg: &config.Config{AthenaPracticeID: "195900"},
+		emr: fakeEMR{encounters: []emr.Encounter{
+			{ID: "900", PatientID: "55", PatientName: "Ada Lovelace", DepartmentID: "1", Date: "05/31/2026"},
+		}},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/scribe/encounters?department_id=1", nil)
+	w := httptest.NewRecorder()
+	h.HandleListEncounters(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `"encounter_id":"900"`) || !strings.Contains(body, `"patient_name":"Ada Lovelace"`) {
+		t.Errorf("unexpected body: %s", body)
+	}
+}
+
+func TestHandleListEncounters_MissingDepartment(t *testing.T) {
+	h := &Handler{cfg: &config.Config{AthenaPracticeID: "195900"}, emr: fakeEMR{}}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/scribe/encounters", nil)
+	w := httptest.NewRecorder()
+	h.HandleListEncounters(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
