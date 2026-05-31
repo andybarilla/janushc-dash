@@ -15,11 +15,6 @@ func (c *Client) GetActiveDiagnoses(ctx context.Context, practiceID, patientID s
 	return nil, fmt.Errorf("GetActiveDiagnoses not yet implemented")
 }
 
-func (c *Client) ListTodayEncounters(ctx context.Context, practiceID, departmentID string) ([]emr.Encounter, error) {
-	// TODO: implement against athena API - GET /v1/{practiceID}/appointments/open
-	return nil, fmt.Errorf("ListTodayEncounters not yet implemented")
-}
-
 // WriteEncounterAssessmentPlan writes the reviewed Assessment & Plan to the
 // encounter's assessment section note. Assessment is the only section that
 // takes a plain write — no GET-merge is required.

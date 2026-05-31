@@ -167,8 +167,11 @@ func (fakeProcessorEMR) ApproveOrders(ctx context.Context, practiceID string, or
 func (fakeProcessorEMR) GetActiveDiagnoses(ctx context.Context, practiceID, patientID string) ([]emr.Diagnosis, error) {
 	return nil, nil
 }
-func (fakeProcessorEMR) ListTodayEncounters(ctx context.Context, practiceID, departmentID string) ([]emr.Encounter, error) {
+func (fakeProcessorEMR) ListTodayAppointments(ctx context.Context, practiceID, departmentID string) ([]emr.Appointment, error) {
 	return nil, nil
+}
+func (fakeProcessorEMR) ResolveEncounterID(ctx context.Context, practiceID, appointmentID string) (string, error) {
+	return "", nil
 }
 func (fakeProcessorEMR) WriteEncounterHPI(ctx context.Context, practiceID, encounterID, hpiText string) error {
 	return nil
