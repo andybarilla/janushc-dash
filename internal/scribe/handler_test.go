@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -312,6 +313,28 @@ func TestSaveSessionAudio_PersistsAndRewinds(t *testing.T) {
 	}
 	if !h.sessionAudioAvailable("tenant-1", "session-1") {
 		t.Fatal("expected saved audio to be available")
+	}
+}
+
+func TestHandleListAppointmentsRequiresDepartment(t *testing.T) {
+	h := NewHandler(nil, nil, &config.Config{}, nil)
+	rec := httptest.NewRecorder()
+	h.HandleListAppointments(rec, httptest.NewRequest(http.MethodGet, "/api/scribe/appointments", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestHandleListAppointmentsReturnsJSONArray(t *testing.T) {
+	processor := &Processor{emr: fakeProcessorEMR{}}
+	h := NewHandler(nil, processor, &config.Config{}, nil)
+	rec := httptest.NewRecorder()
+	h.HandleListAppointments(rec, httptest.NewRequest(http.MethodGet, "/api/scribe/appointments?department_id=1", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if got := strings.TrimSpace(rec.Body.String()); got != "[]" {
+		t.Fatalf("expected empty JSON array, got %s", got)
 	}
 }
 

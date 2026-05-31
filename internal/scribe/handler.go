@@ -21,6 +21,7 @@ import (
 	"github.com/andybarilla/janushc-dash/internal/auth"
 	"github.com/andybarilla/janushc-dash/internal/config"
 	"github.com/andybarilla/janushc-dash/internal/database"
+	"github.com/andybarilla/janushc-dash/internal/emr"
 	"github.com/andybarilla/janushc-dash/internal/transcribe"
 )
 
@@ -444,6 +445,39 @@ func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+func (h *Handler) HandleListDepartments(w http.ResponseWriter, r *http.Request) {
+	departments, err := h.processor.ListDepartments(r.Context(), h.cfg.AthenaPracticeID)
+	if err != nil {
+		log.Printf("scribe: list departments: %v", err)
+		http.Error(w, "failed to load departments", http.StatusBadGateway)
+		return
+	}
+	if departments == nil {
+		departments = []emr.Department{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(departments)
+}
+
+func (h *Handler) HandleListAppointments(w http.ResponseWriter, r *http.Request) {
+	departmentID := r.URL.Query().Get("department_id")
+	if departmentID == "" {
+		http.Error(w, "department_id required", http.StatusBadRequest)
+		return
+	}
+	appointments, err := h.processor.ListTodayAppointments(r.Context(), h.cfg.AthenaPracticeID, departmentID)
+	if err != nil {
+		log.Printf("scribe: list appointments: %v", err)
+		http.Error(w, "failed to load appointments", http.StatusBadGateway)
+		return
+	}
+	if appointments == nil {
+		appointments = []emr.Appointment{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(appointments)
 }
 
 func (h *Handler) HandleDelete(w http.ResponseWriter, r *http.Request) {
