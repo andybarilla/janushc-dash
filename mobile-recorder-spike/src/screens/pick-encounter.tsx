@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Button,
   FlatList,
   Pressable,
   RefreshControl,
@@ -10,8 +12,18 @@ import {
 } from 'react-native';
 import { Department, Encounter, listDepartments, listEncounters } from '../api';
 import { useAuth } from '../auth';
+import { runUpload } from '../upload';
+import { PendingItem } from '../upload-queue';
 
-export function PickEncounterScreen({ onSelect }: { onSelect: (e: Encounter) => void }) {
+export function PickEncounterScreen({
+  onSelect,
+  pending,
+  onResolve,
+}: {
+  onSelect: (e: Encounter) => void;
+  pending: PendingItem[];
+  onResolve: (item: PendingItem) => void;
+}) {
   const { token, baseUrl, signOut } = useAuth();
   const opts = useMemo(() => ({ baseUrl, token, onUnauthorized: signOut }), [baseUrl, token, signOut]);
 
@@ -20,6 +32,23 @@ export function PickEncounterScreen({ onSelect }: { onSelect: (e: Encounter) => 
   const [encounters, setEncounters] = useState<Encounter[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resuming, setResuming] = useState<string | null>(null);
+
+  async function resume(item: PendingItem) {
+    setResuming(item.id);
+    let signedOut = false;
+    const result = await runUpload(
+      { ...opts, onUnauthorized: () => { signedOut = true; signOut(); } },
+      item,
+    );
+    setResuming(null);
+    onResolve(result);
+    if (result.status === 'done') {
+      Alert.alert('Uploaded', 'Recording sent to the scribe inbox.');
+    } else if (!signedOut) {
+      Alert.alert('Still failing', 'Try again from a better connection.');
+    }
+  }
 
   useEffect(() => {
     listDepartments(opts)
@@ -67,6 +96,23 @@ export function PickEncounterScreen({ onSelect }: { onSelect: (e: Encounter) => 
         data={encounters}
         keyExtractor={(e) => e.encounter_id}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={loadEncounters} />}
+        ListHeaderComponent={
+          pending.length > 0 ? (
+            <View style={styles.pendingBox}>
+              <Text style={styles.pendingTitle}>Pending uploads</Text>
+              {pending.map((p) => (
+                <View key={p.id} style={styles.pendingRow}>
+                  <Text style={styles.pendingName}>Encounter {p.encounterId}</Text>
+                  {resuming === p.id ? (
+                    <ActivityIndicator />
+                  ) : (
+                    <Button title="Retry" disabled={resuming !== null} onPress={() => resume(p)} />
+                  )}
+                </View>
+              ))}
+            </View>
+          ) : null
+        }
         ListEmptyComponent={!loading ? <Text style={styles.empty}>No encounters today.</Text> : null}
         renderItem={({ item }) => (
           <Pressable style={styles.row} onPress={() => onSelect(item)}>
@@ -92,4 +138,16 @@ const styles = StyleSheet.create({
   rowMeta: { color: '#64748b', marginTop: 2 },
   empty: { color: '#64748b', paddingVertical: 24, textAlign: 'center' },
   error: { color: '#b91c1c' },
+  pendingBox: {
+    borderWidth: 1,
+    borderColor: '#fcd34d',
+    backgroundColor: '#fffbeb',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+    gap: 8,
+  },
+  pendingTitle: { fontWeight: '700', color: '#92400e' },
+  pendingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  pendingName: { color: '#0f172a' },
 });

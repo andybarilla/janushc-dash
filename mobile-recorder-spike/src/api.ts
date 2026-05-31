@@ -26,7 +26,7 @@ export class UnauthorizedError extends Error {
   }
 }
 
-type ApiOptions = {
+export type ApiOptions = {
   baseUrl: string;
   token: string | null;
   onUnauthorized: () => void;
