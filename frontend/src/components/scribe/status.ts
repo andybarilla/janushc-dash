@@ -14,7 +14,9 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import type {
+  Approvals,
   NoteCategoryDef,
+  SectionKey,
   StatusDef,
   StatusId,
 } from "./types";
@@ -75,6 +77,15 @@ export function deriveStatusId(
 
 export function isInPipeline(id: StatusId) {
   return id === "queued" || id === "transcribing" || id === "extracting";
+}
+
+// Sections written to the EHR, and therefore required before sending. labs is
+// reference-only and does not gate sending — mirrors the backend's
+// requiredSendSections (internal/scribe/handler.go).
+export const REQUIRED_SEND_SECTIONS: SectionKey[] = ["hpi", "plan", "exam"];
+
+export function isReadyToSend(approvals: Approvals): boolean {
+  return REQUIRED_SEND_SECTIONS.every((k) => approvals[k]);
 }
 
 export const NOTE_CATEGORIES: NoteCategoryDef[] = [

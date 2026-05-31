@@ -20,7 +20,7 @@ import type {
   SectionKey,
   StatusId,
 } from "./types";
-import { STATUS, isInPipeline, wordCount } from "./status";
+import { STATUS, isInPipeline, isReadyToSend, wordCount } from "./status";
 import { PipelineProgress } from "./pipeline-progress";
 import { SectionCard } from "./section-card";
 import { LabsTable, PlanBody } from "./section-bodies";
@@ -136,6 +136,7 @@ export function ReviewScreen({
     (k) => approvals[k],
   ).length;
   const allApproved = approvedCount === 4;
+  const readyToSend = isReadyToSend(approvals);
   const totalNotes = notes.length;
   const words = wordCount(session.transcript);
 
@@ -244,14 +245,14 @@ export function ReviewScreen({
               <button
                 type="button"
                 className="janus-btn janus-btn-primary"
-                disabled={!allApproved || isSent}
-                onClick={!isSent && allApproved ? onSend : undefined}
+                disabled={!readyToSend || isSent}
+                onClick={!isSent && readyToSend ? onSend : undefined}
                 title={
                   isSent
                     ? "Already sent"
-                    : allApproved
+                    : readyToSend
                       ? "Send to EHR"
-                      : "Approve all sections first"
+                      : "Approve HPI, Assessment & Plan, and Physical Exam first"
                 }
               >
                 {isSent ? <Check /> : <Send />}

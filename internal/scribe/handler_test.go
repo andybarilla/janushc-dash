@@ -172,6 +172,23 @@ func TestAllSectionsReadyToSend_AllApprovedNoEdits(t *testing.T) {
 	}
 }
 
+func TestAllSectionsReadyToSend_LabsNotRequired(t *testing.T) {
+	// labs is reference-only and is not written to the EHR, so it must not
+	// gate sending. hpi/plan/exam approved with labs left pending → ready.
+	rows := makeApprovalRows("hpi", "plan", "exam")
+	if !allSectionsReadyToSend(rows, nil) {
+		t.Error("expected ready to send when hpi/plan/exam approved and labs left pending")
+	}
+}
+
+func TestAllSectionsReadyToSend_StaleLabsDoesNotBlock(t *testing.T) {
+	rows := makeApprovalRows("hpi", "plan", "exam", "labs")
+	edit := makeEditRow("labs", 1) // labs edited after approval → stale
+	if !allSectionsReadyToSend(rows, []database.GetSessionSectionEditsRow{edit}) {
+		t.Error("expected ready: a stale labs section must not block send")
+	}
+}
+
 func TestValidateSectionContent_TextSection_ValidString(t *testing.T) {
 	if err := validateSectionContent("hpi", []byte(`"some text"`)); err != nil {
 		t.Errorf("expected nil error, got %v", err)

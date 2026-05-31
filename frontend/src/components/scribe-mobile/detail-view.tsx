@@ -7,7 +7,7 @@ import type {
   SectionKey,
   StatusId,
 } from "@/components/scribe/types";
-import { isInPipeline } from "@/components/scribe/status";
+import { isInPipeline, isReadyToSend } from "@/components/scribe/status";
 import { UsageCostCard } from "@/components/scribe/usage-cost-card";
 import {
   ExamBody,
@@ -86,11 +86,12 @@ export function MDetailView({
   const sections = session.sections;
   const approvedCount = SECTION_KEYS.filter((k) => approvals[k]).length;
   const allApproved = approvedCount === 4;
+  const readyToSend = isReadyToSend(approvals);
   const totalNotes = notes.length;
 
   const sendState: SendState = isSent
     ? "sent"
-    : allApproved && hasSections && !isRejected
+    : readyToSend && hasSections && !isRejected
       ? "ready"
       : "disabled";
   const showApproveAll =
