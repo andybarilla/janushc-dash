@@ -34,6 +34,7 @@ type Diagnosis struct {
 type Encounter struct {
 	ID           string `json:"id"`
 	PatientID    string `json:"patient_id"`
+	PatientName  string `json:"patient_name"`
 	DepartmentID string `json:"department_id"`
 	Date         string `json:"date"`
 }
