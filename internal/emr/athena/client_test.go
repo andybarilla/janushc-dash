@@ -92,6 +92,53 @@ func TestGetPatientName(t *testing.T) {
 	}
 }
 
+func TestListTodayEncounters(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/oauth2/v1/token":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"access_token":"test-token","expires_in":3600}`))
+		case r.URL.Path == "/v1/195900/appointments/booked":
+			if r.URL.Query().Get("departmentid") != "1" {
+				t.Errorf("expected departmentid=1, got %q", r.URL.Query().Get("departmentid"))
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"appointments":[
+				{"appointmentid":"900","patientid":"55","date":"05/31/2026","starttime":"09:00"},
+				{"appointmentid":"901","patientid":"55","date":"05/31/2026","starttime":"09:30"},
+				{"appointmentid":"902","patientid":"66","date":"05/31/2026","starttime":"10:00"}
+			]}`))
+		case r.URL.Path == "/v1/195900/patients/55":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`[{"firstname":"Ada","lastname":"Lovelace"}]`))
+		case r.URL.Path == "/v1/195900/patients/66":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`[{"firstname":"Alan","lastname":"Turing"}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "client-id", "client-secret")
+	encs, err := client.ListTodayEncounters(context.Background(), "195900", "1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(encs) != 3 {
+		t.Fatalf("expected 3 encounters, got %d", len(encs))
+	}
+	if encs[0].ID != "900" || encs[0].PatientID != "55" || encs[0].PatientName != "Ada Lovelace" {
+		t.Errorf("unexpected first encounter: %+v", encs[0])
+	}
+	if encs[2].PatientName != "Alan Turing" {
+		t.Errorf("expected name lookup for patient 66, got %q", encs[2].PatientName)
+	}
+	if encs[0].DepartmentID != "1" {
+		t.Errorf("expected departmentid carried through, got %q", encs[0].DepartmentID)
+	}
+}
+
 func TestListDepartments(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/oauth2/v1/token" {
