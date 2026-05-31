@@ -8,10 +8,12 @@
     "ios": "expo run:ios",
     "android": "expo run:android",
     "export:android": "expo export:embed --eager --platform android --dev false",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-google-signin/google-signin": "^16.1.2",
     "expo": "54.0.23",
     "expo-av": "16.0.7",
     "expo-constants": "18.0.10",
@@ -22,7 +24,10 @@
     "react-native": "0.81.5"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/react": "~19.1.10",
+    "jest": "^30.4.2",
+    "jest-expo": "^56.0.4",
     "typescript": "~5.9.2"
   }
 }
