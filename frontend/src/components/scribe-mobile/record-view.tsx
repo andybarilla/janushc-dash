@@ -420,7 +420,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
     try {
       const session = await createSession.mutateAsync({
         patient_id: patient,
-        encounter_id: `enc-${patient}-${new Date()
+        appointment_id: `appt-${patient}-${new Date()
           .toISOString()
           .replace(/[:.]/g, "-")}`,
         department_id: department,
