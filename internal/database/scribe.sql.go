@@ -12,35 +12,37 @@ import (
 )
 
 const createScribeSession = `-- name: CreateScribeSession :one
-INSERT INTO scribe_sessions (tenant_id, user_id, patient_id, encounter_id, department_id, status)
-VALUES ($1, $2, $3, $4, $5, 'processing')
-RETURNING id, tenant_id, user_id, patient_id, encounter_id, department_id, status,
+INSERT INTO scribe_sessions (tenant_id, user_id, patient_id, encounter_id, appointment_id, department_id, status)
+VALUES ($1, $2, $3, $4, $5, $6, 'processing')
+RETURNING id, tenant_id, user_id, patient_id, encounter_id, appointment_id, department_id, status,
           transcript, ai_output, error_message, started_at, stopped_at, completed_at, created_at
 `
 
 type CreateScribeSessionParams struct {
-	TenantID     pgtype.UUID `json:"tenant_id"`
-	UserID       pgtype.UUID `json:"user_id"`
-	PatientID    string      `json:"patient_id"`
-	EncounterID  string      `json:"encounter_id"`
-	DepartmentID string      `json:"department_id"`
+	TenantID      pgtype.UUID `json:"tenant_id"`
+	UserID        pgtype.UUID `json:"user_id"`
+	PatientID     string      `json:"patient_id"`
+	EncounterID   string      `json:"encounter_id"`
+	AppointmentID string      `json:"appointment_id"`
+	DepartmentID  string      `json:"department_id"`
 }
 
 type CreateScribeSessionRow struct {
-	ID           pgtype.UUID        `json:"id"`
-	TenantID     pgtype.UUID        `json:"tenant_id"`
-	UserID       pgtype.UUID        `json:"user_id"`
-	PatientID    string             `json:"patient_id"`
-	EncounterID  string             `json:"encounter_id"`
-	DepartmentID string             `json:"department_id"`
-	Status       string             `json:"status"`
-	Transcript   pgtype.Text        `json:"transcript"`
-	AiOutput     []byte             `json:"ai_output"`
-	ErrorMessage pgtype.Text        `json:"error_message"`
-	StartedAt    pgtype.Timestamptz `json:"started_at"`
-	StoppedAt    pgtype.Timestamptz `json:"stopped_at"`
-	CompletedAt  pgtype.Timestamptz `json:"completed_at"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	ID            pgtype.UUID        `json:"id"`
+	TenantID      pgtype.UUID        `json:"tenant_id"`
+	UserID        pgtype.UUID        `json:"user_id"`
+	PatientID     string             `json:"patient_id"`
+	EncounterID   string             `json:"encounter_id"`
+	AppointmentID string             `json:"appointment_id"`
+	DepartmentID  string             `json:"department_id"`
+	Status        string             `json:"status"`
+	Transcript    pgtype.Text        `json:"transcript"`
+	AiOutput      []byte             `json:"ai_output"`
+	ErrorMessage  pgtype.Text        `json:"error_message"`
+	StartedAt     pgtype.Timestamptz `json:"started_at"`
+	StoppedAt     pgtype.Timestamptz `json:"stopped_at"`
+	CompletedAt   pgtype.Timestamptz `json:"completed_at"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 }
 
 func (q *Queries) CreateScribeSession(ctx context.Context, arg CreateScribeSessionParams) (CreateScribeSessionRow, error) {
@@ -49,6 +51,7 @@ func (q *Queries) CreateScribeSession(ctx context.Context, arg CreateScribeSessi
 		arg.UserID,
 		arg.PatientID,
 		arg.EncounterID,
+		arg.AppointmentID,
 		arg.DepartmentID,
 	)
 	var i CreateScribeSessionRow
@@ -58,6 +61,7 @@ func (q *Queries) CreateScribeSession(ctx context.Context, arg CreateScribeSessi
 		&i.UserID,
 		&i.PatientID,
 		&i.EncounterID,
+		&i.AppointmentID,
 		&i.DepartmentID,
 		&i.Status,
 		&i.Transcript,
@@ -92,7 +96,7 @@ func (q *Queries) DeleteScribeSession(ctx context.Context, arg DeleteScribeSessi
 const getScribeSession = `-- name: GetScribeSession :one
 SELECT id, tenant_id, user_id, patient_id, encounter_id, department_id, status,
        transcript, ai_output, error_message, started_at, stopped_at, completed_at, created_at,
-       sent_to_ehr_at, sent_to_ehr_by, rejected_at, rejected_by
+       sent_to_ehr_at, sent_to_ehr_by, rejected_at, rejected_by, appointment_id
 FROM scribe_sessions
 WHERE id = $1 AND tenant_id = $2
 `
@@ -124,6 +128,7 @@ func (q *Queries) GetScribeSession(ctx context.Context, arg GetScribeSessionPara
 		&i.SentToEhrBy,
 		&i.RejectedAt,
 		&i.RejectedBy,
+		&i.AppointmentID,
 	)
 	return i, err
 }
@@ -142,7 +147,7 @@ approved_counts AS (
     GROUP BY session_id
 )
 SELECT
-    s.id, s.tenant_id, s.user_id, s.patient_id, s.encounter_id, s.department_id,
+    s.id, s.tenant_id, s.user_id, s.patient_id, s.encounter_id, s.appointment_id, s.department_id,
     s.status, s.error_message, s.started_at, s.stopped_at, s.completed_at, s.created_at,
     s.sent_to_ehr_at, s.rejected_at,
     COALESCE(ac.approved_count, 0)::int AS approved_count
@@ -159,6 +164,7 @@ type ListScribeSessionsRow struct {
 	UserID        pgtype.UUID        `json:"user_id"`
 	PatientID     string             `json:"patient_id"`
 	EncounterID   string             `json:"encounter_id"`
+	AppointmentID string             `json:"appointment_id"`
 	DepartmentID  string             `json:"department_id"`
 	Status        string             `json:"status"`
 	ErrorMessage  pgtype.Text        `json:"error_message"`
@@ -186,6 +192,7 @@ func (q *Queries) ListScribeSessions(ctx context.Context, tenantID pgtype.UUID) 
 			&i.UserID,
 			&i.PatientID,
 			&i.EncounterID,
+			&i.AppointmentID,
 			&i.DepartmentID,
 			&i.Status,
 			&i.ErrorMessage,
@@ -247,6 +254,23 @@ func (q *Queries) MarkScribeSessionSent(ctx context.Context, arg MarkScribeSessi
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const setScribeSessionEncounter = `-- name: SetScribeSessionEncounter :exec
+UPDATE scribe_sessions
+SET encounter_id = $3
+WHERE id = $1 AND tenant_id = $2
+`
+
+type SetScribeSessionEncounterParams struct {
+	ID          pgtype.UUID `json:"id"`
+	TenantID    pgtype.UUID `json:"tenant_id"`
+	EncounterID string      `json:"encounter_id"`
+}
+
+func (q *Queries) SetScribeSessionEncounter(ctx context.Context, arg SetScribeSessionEncounterParams) error {
+	_, err := q.db.Exec(ctx, setScribeSessionEncounter, arg.ID, arg.TenantID, arg.EncounterID)
+	return err
 }
 
 const updateScribeSessionComplete = `-- name: UpdateScribeSessionComplete :exec

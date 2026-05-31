@@ -19,9 +19,9 @@ import (
 
 func TestValidateCreateRequest_Valid(t *testing.T) {
 	req := createSessionRequest{
-		PatientID:    "12345",
-		EncounterID:  "67890",
-		DepartmentID: "1",
+		PatientID:     "12345",
+		AppointmentID: "67890",
+		DepartmentID:  "1",
 	}
 	if err := req.validate(); err != nil {
 		t.Errorf("expected valid request, got error: %v", err)
@@ -30,21 +30,21 @@ func TestValidateCreateRequest_Valid(t *testing.T) {
 
 func TestValidateCreateRequest_MissingPatientID(t *testing.T) {
 	req := createSessionRequest{
-		EncounterID:  "67890",
-		DepartmentID: "1",
+		AppointmentID: "67890",
+		DepartmentID:  "1",
 	}
 	if err := req.validate(); err == nil {
 		t.Error("expected error for missing patient_id")
 	}
 }
 
-func TestValidateCreateRequest_MissingEncounterID(t *testing.T) {
+func TestValidateCreateRequest_MissingAppointmentID(t *testing.T) {
 	req := createSessionRequest{
 		PatientID:    "12345",
 		DepartmentID: "1",
 	}
 	if err := req.validate(); err == nil {
-		t.Error("expected error for missing encounter_id")
+		t.Error("expected error for missing appointment_id")
 	}
 }
 
