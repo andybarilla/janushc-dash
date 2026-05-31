@@ -291,7 +291,7 @@ func TestSaveSessionAudio_PersistsAndRewinds(t *testing.T) {
 	}
 	defer file.Close()
 
-	h := NewHandler(nil, nil, &config.Config{ScribeAudioDir: t.TempDir()}, nil)
+	h := NewHandler(nil, nil, &config.Config{ScribeAudioDir: t.TempDir()}, nil, nil)
 	if _, err := h.saveSessionAudio(file, "tenant-1", "session-1", ext); err != nil {
 		t.Fatalf("saveSessionAudio: %v", err)
 	}

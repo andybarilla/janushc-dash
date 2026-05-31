@@ -21,6 +21,7 @@ import (
 	"github.com/andybarilla/janushc-dash/internal/auth"
 	"github.com/andybarilla/janushc-dash/internal/config"
 	"github.com/andybarilla/janushc-dash/internal/database"
+	"github.com/andybarilla/janushc-dash/internal/emr"
 	"github.com/andybarilla/janushc-dash/internal/transcribe"
 )
 
@@ -29,10 +30,11 @@ type Handler struct {
 	processor *Processor
 	cfg       *config.Config
 	batch     *transcribe.BatchClient
+	emr       emr.EMR
 }
 
-func NewHandler(queries *database.Queries, processor *Processor, cfg *config.Config, batch *transcribe.BatchClient) *Handler {
-	return &Handler{queries: queries, processor: processor, cfg: cfg, batch: batch}
+func NewHandler(queries *database.Queries, processor *Processor, cfg *config.Config, batch *transcribe.BatchClient, emrClient emr.EMR) *Handler {
+	return &Handler{queries: queries, processor: processor, cfg: cfg, batch: batch, emr: emrClient}
 }
 
 const maxUploadSize = 100 << 20 // 100 MB

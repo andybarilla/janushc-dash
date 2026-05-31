@@ -149,7 +149,7 @@ func main() {
 
 	// Create scribe dependencies
 	scribeProcessor := scribe.NewProcessor(bedrockClient, athenaClient)
-	scribeHandler := scribe.NewHandler(queries, scribeProcessor, cfg, transcribeBatchClient)
+	scribeHandler := scribe.NewHandler(queries, scribeProcessor, cfg, transcribeBatchClient, athenaClient)
 
 	// Mobile recorder spike handler (issue #7)
 	mobileHandler := mobile.NewHandler(cfg)
