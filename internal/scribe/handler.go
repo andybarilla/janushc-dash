@@ -365,6 +365,28 @@ type feedbackResponse struct {
 	At             string `json:"at"`
 }
 
+type departmentResponse struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+func (h *Handler) HandleListDepartments(w http.ResponseWriter, r *http.Request) {
+	depts, err := h.emr.ListDepartments(r.Context(), h.cfg.AthenaPracticeID)
+	if err != nil {
+		log.Printf("scribe: list departments: %v", err)
+		http.Error(w, "failed to list departments", http.StatusBadGateway)
+		return
+	}
+
+	out := make([]departmentResponse, 0, len(depts))
+	for _, d := range depts {
+		out = append(out, departmentResponse{ID: d.ID, Name: d.Name})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
+}
+
 func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	claims := auth.ClaimsFromContext(r.Context())
 	if claims == nil {

@@ -2,12 +2,14 @@ package scribe
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 
 	"github.com/andybarilla/janushc-dash/internal/config"
 	"github.com/andybarilla/janushc-dash/internal/database"
+	"github.com/andybarilla/janushc-dash/internal/emr"
 )
 
 func TestValidateCreateRequest_Valid(t *testing.T) {
@@ -389,5 +392,60 @@ func TestValidateCreateFeedbackRequest_EmptyBody(t *testing.T) {
 	req := createFeedbackRequest{Section: "hpi", Category: "good", Body: "   "}
 	if err := req.validate(); err == nil {
 		t.Error("expected error for empty body")
+	}
+}
+
+type fakeEMR struct {
+	departments []emr.Department
+	encounters  []emr.Encounter
+	err         error
+}
+
+func (f fakeEMR) ListDepartments(ctx context.Context, practiceID string) ([]emr.Department, error) {
+	return f.departments, f.err
+}
+func (f fakeEMR) ListTodayEncounters(ctx context.Context, practiceID, departmentID string) ([]emr.Encounter, error) {
+	return f.encounters, f.err
+}
+func (f fakeEMR) ListPatientOrders(ctx context.Context, practiceID, patientID, departmentID string, orderTypes []string) ([]emr.Order, error) {
+	return nil, nil
+}
+func (f fakeEMR) ListDepartmentPatients(ctx context.Context, practiceID, departmentID string) ([]emr.Patient, error) {
+	return nil, nil
+}
+func (f fakeEMR) GetPatientName(ctx context.Context, practiceID, patientID string) (string, error) {
+	return "", nil
+}
+func (f fakeEMR) ApproveOrders(ctx context.Context, practiceID string, orderIDs []string) ([]string, error) {
+	return nil, nil
+}
+func (f fakeEMR) GetActiveDiagnoses(ctx context.Context, practiceID, patientID string) ([]emr.Diagnosis, error) {
+	return nil, nil
+}
+func (f fakeEMR) WriteEncounterHPI(ctx context.Context, practiceID, encounterID, hpiText string) error {
+	return nil
+}
+func (f fakeEMR) WriteEncounterAssessmentPlan(ctx context.Context, practiceID, encounterID, apText string) error {
+	return nil
+}
+func (f fakeEMR) WriteEncounterPhysicalExam(ctx context.Context, practiceID, encounterID, peText string) error {
+	return nil
+}
+
+func TestHandleListDepartments(t *testing.T) {
+	h := &Handler{
+		cfg: &config.Config{AthenaPracticeID: "195900"},
+		emr: fakeEMR{departments: []emr.Department{{ID: "1", Name: "Primary Care"}}},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/scribe/departments", nil)
+	w := httptest.NewRecorder()
+	h.HandleListDepartments(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"Primary Care"`) {
+		t.Errorf("expected department in body, got %s", w.Body.String())
 	}
 }
