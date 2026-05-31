@@ -41,8 +41,15 @@ UI sections (`sectionKeys`): `hpi, plan, exam, labs` → `ScribeOutput.{HPI, Ass
 
 **Decision A frontend — DONE.** Added `REQUIRED_SEND_SECTIONS = [hpi, plan, exam]` + `isReadyToSend()` to `status.ts` (mirrors backend). `review-screen.tsx` and mobile `detail-view.tsx` now gate Send on `isReadyToSend` instead of `approvedCount === 4`; labs stays approvable but optional. Approval pips still show all 4. Component tests + full `npm run build` green.
 
-### Phase 4 — sandbox end-to-end
-- Lorem ipsum content against an OPEN sandbox encounter (the one external dependency). Prereq: a checked-in sandbox patient with a writable `encounterid`.
+### Phase 4 — sandbox end-to-end — DONE
+Validated against sandbox practice 195900, patient 1, OPEN encounter 64097 (patient 1 already has many OPEN encounters — no booking/check-in needed). Wrote lorem ipsum to assessment/hpi/physicalexam and read back:
+- GET response shapes match the code's models: hpi → `{hpi[], templatedata[], templates[], hpitoros}`; physicalexam → `{physicalexam[], templatedata[], templates}`; assessment → `{}`/`{assessmenttext}`.
+- Boolean form values: `"true"` accepted for `replacetext`/`replacesectionnote` (NOT "yes/no"). Code already uses `"true"`. ✓
+- A&P maps to the single `/assessment` section (`assessmenttext`). ✓
+- `replace` is idempotent: re-PUT of the same note left `sectionnote` unchanged (no append/dup) — confirms the retry-safety the send flow relies on. ✓
+- All three section notes read back with the exact written text. ✓
+
+**Un-exercised:** PE `templateid` extraction (encounter had empty `templatedata`, so no attached templates to preserve) and non-empty `hpi` array echo-preservation. Both only matter on encounters with pre-existing structured findings; the write path itself is confirmed. No code changes were required — implementation matched the live API.
 
 ## Test environment
 Local Postgres on `localhost:5433` (off prod Supabase). `go test ./...` for backend.
