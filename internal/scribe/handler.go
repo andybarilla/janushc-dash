@@ -1302,9 +1302,33 @@ func (h *Handler) HandleSend(w http.ResponseWriter, r *http.Request) {
 	// duplicating. Write the provider-reviewed content: the AI output with each
 	// section overridden by its latest edit — writing raw AiOutput would drop
 	// the provider's corrections.
+	encounterID := session.EncounterID
+	if encounterID == "" {
+		resolved, err := h.processor.ResolveEncounterID(r.Context(), h.cfg.AthenaPracticeID, session.AppointmentID)
+		if err != nil {
+			log.Printf("scribe send: resolve encounter for session %s (appt %s): %v", uuidToString(sessionUUID), session.AppointmentID, err)
+			http.Error(w, "could not resolve encounter from appointment — contact support", http.StatusInternalServerError)
+			return
+		}
+		if resolved == "" {
+			http.Error(w, "patient not checked in yet — encounter not available, retry after check-in", http.StatusBadRequest)
+			return
+		}
+		if err := h.queries.SetScribeSessionEncounter(r.Context(), database.SetScribeSessionEncounterParams{
+			ID:          sessionUUID,
+			TenantID:    tenantUUID,
+			EncounterID: resolved,
+		}); err != nil {
+			log.Printf("scribe send: persist resolved encounter for session %s: %v", uuidToString(sessionUUID), err)
+			http.Error(w, "could not save resolved encounter — contact support", http.StatusInternalServerError)
+			return
+		}
+		encounterID = resolved
+	}
+
 	if session.AiOutput != nil {
 		output := effectiveOutput(session.AiOutput, editRows)
-		if writeErr := h.processor.WriteToAthena(r.Context(), h.cfg.AthenaPracticeID, session.EncounterID, output); writeErr != nil {
+		if writeErr := h.processor.WriteToAthena(r.Context(), h.cfg.AthenaPracticeID, encounterID, output); writeErr != nil {
 			log.Printf("scribe send: athena write error for session %s (not marked sent, retryable): %v", uuidToString(sessionUUID), writeErr)
 			http.Error(w, "sent to EHR failed — contact support", http.StatusInternalServerError)
 			return
