@@ -37,6 +37,7 @@ type Encounter struct {
 	PatientName  string `json:"patient_name"`
 	DepartmentID string `json:"department_id"`
 	Date         string `json:"date"`
+	StartTime    string `json:"start_time"`
 }
 
 type EMR interface {

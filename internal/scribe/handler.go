@@ -393,6 +393,7 @@ type encounterResponse struct {
 	PatientName  string `json:"patient_name"`
 	DepartmentID string `json:"department_id"`
 	Date         string `json:"date"`
+	StartTime    string `json:"start_time"`
 }
 
 func (h *Handler) HandleListEncounters(w http.ResponseWriter, r *http.Request) {
@@ -417,6 +418,7 @@ func (h *Handler) HandleListEncounters(w http.ResponseWriter, r *http.Request) {
 			PatientName:  e.PatientName,
 			DepartmentID: e.DepartmentID,
 			Date:         e.Date,
+			StartTime:    e.StartTime,
 		})
 	}
 

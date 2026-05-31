@@ -432,6 +432,33 @@ func (f fakeEMR) WriteEncounterPhysicalExam(ctx context.Context, practiceID, enc
 	return nil
 }
 
+func TestShouldAutoTranscribe(t *testing.T) {
+	cases := []struct {
+		value string
+		want  bool
+	}{
+		{"", true},           // absent → default true
+		{"true", true},
+		{"1", true},
+		{"yes", true},
+		{"on", true},
+		{"false", false},
+		{"0", false},
+		{"off", false},
+		{"no", false},
+		{"FALSE", false},     // case-insensitive
+		{"OFF", false},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest(http.MethodPost, "/upload", strings.NewReader("auto_transcribe="+tc.value))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		got := shouldAutoTranscribe(req)
+		if got != tc.want {
+			t.Errorf("shouldAutoTranscribe(%q) = %v, want %v", tc.value, got, tc.want)
+		}
+	}
+}
+
 func TestHandleListDepartments(t *testing.T) {
 	h := &Handler{
 		cfg: &config.Config{AthenaPracticeID: "195900"},

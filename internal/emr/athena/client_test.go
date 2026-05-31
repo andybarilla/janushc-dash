@@ -149,6 +149,9 @@ func TestListTodayEncounters(t *testing.T) {
 	if encs[0].DepartmentID != "1" {
 		t.Errorf("expected departmentid carried through, got %q", encs[0].DepartmentID)
 	}
+	if encs[0].StartTime != "09:00" {
+		t.Errorf("expected starttime %q, got %q", "09:00", encs[0].StartTime)
+	}
 }
 
 func TestListDepartments(t *testing.T) {

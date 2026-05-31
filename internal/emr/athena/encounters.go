@@ -41,6 +41,7 @@ func (c *Client) ListTodayEncounters(ctx context.Context, practiceID, department
 			AppointmentID string `json:"appointmentid"`
 			PatientID     string `json:"patientid"`
 			Date          string `json:"date"`
+			StartTime     string `json:"starttime"`
 		} `json:"appointments"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -63,6 +64,7 @@ func (c *Client) ListTodayEncounters(ctx context.Context, practiceID, department
 			PatientName:  name,
 			DepartmentID: departmentID,
 			Date:         a.Date,
+			StartTime:    a.StartTime,
 		})
 	}
 	return encounters, nil
