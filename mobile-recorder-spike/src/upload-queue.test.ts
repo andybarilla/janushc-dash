@@ -5,7 +5,7 @@ function baseItem(): PendingItem {
     id: 'r1',
     fileUri: 'file:///tmp/r1.m4a',
     patientId: '55',
-    encounterId: '900',
+    appointmentId: '900',
     departmentId: '1',
     sessionId: null,
     status: 'needs-session',
