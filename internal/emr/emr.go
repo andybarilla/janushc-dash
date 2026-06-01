@@ -40,6 +40,15 @@ type Appointment struct {
 	Status        string `json:"status"`
 }
 
+type Encounter struct {
+	ID           string `json:"id"`
+	PatientID    string `json:"patient_id"`
+	PatientName  string `json:"patient_name"`
+	DepartmentID string `json:"department_id"`
+	Date         string `json:"date"`
+	StartTime    string `json:"start_time"`
+}
+
 type EMR interface {
 	ListPatientOrders(ctx context.Context, practiceID, patientID, departmentID string, orderTypes []string) ([]Order, error)
 	ListDepartments(ctx context.Context, practiceID string) ([]Department, error)
@@ -47,6 +56,7 @@ type EMR interface {
 	GetPatientName(ctx context.Context, practiceID, patientID string) (string, error)
 	ApproveOrders(ctx context.Context, practiceID string, orderIDs []string) ([]string, error)
 	GetActiveDiagnoses(ctx context.Context, practiceID, patientID string) ([]Diagnosis, error)
+	ListTodayEncounters(ctx context.Context, practiceID, departmentID string) ([]Encounter, error)
 	ListTodayAppointments(ctx context.Context, practiceID, departmentID string) ([]Appointment, error)
 	ResolveEncounterID(ctx context.Context, practiceID, appointmentID string) (string, error)
 	WriteEncounterHPI(ctx context.Context, practiceID, encounterID, hpiText string) error

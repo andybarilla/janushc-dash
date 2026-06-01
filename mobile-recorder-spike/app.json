@@ -29,10 +29,12 @@
         {
           "microphonePermission": "JanusHC records visit audio so it can be transcribed and summarized for clinician review."
         }
-      ]
+      ],
+      "@react-native-google-signin/google-signin"
     ],
     "extra": {
       "apiBaseUrl": "http://localhost:8080",
+      "googleWebClientId": "REPLACE_WITH_GOOGLE_CLIENT_ID",
       "eas": {
         "projectId": "c140e7c5-2100-4b74-a1b6-4469c7ee92c8"
       }

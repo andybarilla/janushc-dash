@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"time"
 
 	"github.com/andybarilla/janushc-dash/internal/emr"
 )
@@ -13,6 +14,60 @@ import (
 func (c *Client) GetActiveDiagnoses(ctx context.Context, practiceID, patientID string) ([]emr.Diagnosis, error) {
 	// TODO: implement against athena API - GET /v1/{practiceID}/chart/{patientID}/problems
 	return nil, fmt.Errorf("GetActiveDiagnoses not yet implemented")
+}
+
+func (c *Client) ListTodayEncounters(ctx context.Context, practiceID, departmentID string) ([]emr.Encounter, error) {
+	today := time.Now().Format("01/02/2006")
+	q := url.Values{
+		"departmentid": {departmentID},
+		"startdate":    {today},
+		"enddate":      {today},
+	}
+	path := fmt.Sprintf("/v1/%s/appointments/booked?%s", practiceID, q.Encode())
+
+	resp, err := c.doRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("list booked appointments: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("list booked appointments failed (%d): %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		Appointments []struct {
+			AppointmentID string `json:"appointmentid"`
+			PatientID     string `json:"patientid"`
+			Date          string `json:"date"`
+			StartTime     string `json:"starttime"`
+		} `json:"appointments"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode booked appointments: %w", err)
+	}
+
+	names := make(map[string]string)
+	encounters := make([]emr.Encounter, 0, len(result.Appointments))
+	for _, a := range result.Appointments {
+		name, cached := names[a.PatientID]
+		if !cached && a.PatientID != "" {
+			if n, err := c.GetPatientName(ctx, practiceID, a.PatientID); err == nil {
+				name = n
+			}
+			names[a.PatientID] = name
+		}
+		encounters = append(encounters, emr.Encounter{
+			ID:           a.AppointmentID,
+			PatientID:    a.PatientID,
+			PatientName:  name,
+			DepartmentID: departmentID,
+			Date:         a.Date,
+			StartTime:    a.StartTime,
+		})
+	}
+	return encounters, nil
 }
 
 // WriteEncounterAssessmentPlan writes the reviewed Assessment & Plan to the

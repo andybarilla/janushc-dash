@@ -18,7 +18,6 @@ import (
 	"github.com/andybarilla/janushc-dash/internal/config"
 	"github.com/andybarilla/janushc-dash/internal/database"
 	"github.com/andybarilla/janushc-dash/internal/emr/athena"
-	"github.com/andybarilla/janushc-dash/internal/mobile"
 	"github.com/andybarilla/janushc-dash/internal/scribe"
 	"github.com/andybarilla/janushc-dash/internal/server"
 	"github.com/andybarilla/janushc-dash/internal/transcribe"
@@ -149,12 +148,9 @@ func main() {
 
 	// Create scribe dependencies
 	scribeProcessor := scribe.NewProcessor(bedrockClient, athenaClient)
-	scribeHandler := scribe.NewHandler(queries, scribeProcessor, cfg, transcribeBatchClient)
-
-	// Mobile recorder spike handler (issue #7)
-	mobileHandler := mobile.NewHandler(cfg)
+	scribeHandler := scribe.NewHandler(queries, scribeProcessor, cfg, transcribeBatchClient, athenaClient)
 
 	// Start server
-	srv := server.New(cfg, pool, queries, authHandler, approvalHandler, usersHandler, scribeHandler, mobileHandler)
+	srv := server.New(cfg, pool, queries, authHandler, approvalHandler, usersHandler, scribeHandler)
 	log.Fatal(srv.Start())
 }
