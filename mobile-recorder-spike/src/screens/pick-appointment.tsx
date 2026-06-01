@@ -10,17 +10,17 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Department, Encounter, listDepartments, listEncounters } from '../api';
+import { Appointment, Department, listAppointments, listDepartments } from '../api';
 import { useAuth } from '../auth';
 import { runUpload } from '../upload';
 import { PendingItem } from '../upload-queue';
 
-export function PickEncounterScreen({
+export function PickAppointmentScreen({
   onSelect,
   pending,
   onResolve,
 }: {
-  onSelect: (e: Encounter) => void;
+  onSelect: (a: Appointment) => void;
   pending: PendingItem[];
   onResolve: (item: PendingItem) => void;
 }) {
@@ -29,7 +29,7 @@ export function PickEncounterScreen({
 
   const [departments, setDepartments] = useState<Department[]>([]);
   const [departmentId, setDepartmentId] = useState<string | null>(null);
-  const [encounters, setEncounters] = useState<Encounter[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resuming, setResuming] = useState<string | null>(null);
@@ -60,22 +60,22 @@ export function PickEncounterScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadEncounters = useCallback(() => {
+  const loadAppointments = useCallback(() => {
     if (!departmentId) return;
     setLoading(true);
     setError(null);
-    listEncounters(opts, departmentId)
-      .then(setEncounters)
+    listAppointments(opts, departmentId)
+      .then(setAppointments)
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [departmentId]);
 
-  useEffect(loadEncounters, [loadEncounters]);
+  useEffect(loadAppointments, [loadAppointments]);
 
   return (
     <View style={styles.screen}>
-      <Text style={styles.title}>Select encounter</Text>
+      <Text style={styles.title}>Select appointment</Text>
 
       <View style={styles.depRow}>
         {departments.map((d) => (
@@ -93,16 +93,16 @@ export function PickEncounterScreen({
       {loading && <ActivityIndicator />}
 
       <FlatList
-        data={encounters}
-        keyExtractor={(e) => e.encounter_id}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={loadEncounters} />}
+        data={appointments}
+        keyExtractor={(a) => a.appointment_id}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={loadAppointments} />}
         ListHeaderComponent={
           pending.length > 0 ? (
             <View style={styles.pendingBox}>
               <Text style={styles.pendingTitle}>Pending uploads</Text>
               {pending.map((p) => (
                 <View key={p.id} style={styles.pendingRow}>
-                  <Text style={styles.pendingName}>Encounter {p.encounterId}</Text>
+                  <Text style={styles.pendingName}>Appointment {p.appointmentId}</Text>
                   {resuming === p.id ? (
                     <ActivityIndicator />
                   ) : (
@@ -113,11 +113,11 @@ export function PickEncounterScreen({
             </View>
           ) : null
         }
-        ListEmptyComponent={!loading ? <Text style={styles.empty}>No encounters today.</Text> : null}
+        ListEmptyComponent={!loading ? <Text style={styles.empty}>No appointments today.</Text> : null}
         renderItem={({ item }) => (
           <Pressable style={styles.row} onPress={() => onSelect(item)}>
             <Text style={styles.rowName}>{item.patient_name || item.patient_id}</Text>
-            <Text style={styles.rowMeta}>{item.start_time ? `${item.start_time} · ${item.date}` : item.date}</Text>
+            <Text style={styles.rowMeta}>{item.time}</Text>
           </Pressable>
         )}
       />

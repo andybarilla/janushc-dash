@@ -4,7 +4,7 @@ export type PendingItem = {
   id: string;
   fileUri: string;
   patientId: string;
-  encounterId: string;
+  appointmentId: string;
   departmentId: string;
   sessionId: string | null;
   status: PendingStatus;

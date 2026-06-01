@@ -2,7 +2,7 @@ import { Audio } from 'expo-av';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, StyleSheet, Switch, Text, View } from 'react-native';
-import { Encounter } from '../api';
+import { Appointment } from '../api';
 import { useAuth } from '../auth';
 import { pendingFor } from '../pending';
 import { runUpload } from '../upload';
@@ -17,15 +17,15 @@ function formatDuration(ms: number) {
 }
 
 export function RecordScreen({
-  encounter,
+  appointment,
   resume,
   onDone,
   onSettle,
 }: {
-  encounter: Encounter;
-  // A held attempt for this encounter, if any; its session is reused on upload.
+  appointment: Appointment;
+  // A held attempt for this appointment, if any; its session is reused on upload.
   resume?: PendingItem | null;
-  // Leave the screen and return to the encounter list.
+  // Leave the screen and return to the appointment list.
   onDone: () => void;
   // Record where an upload landed: a still-pending item is held in memory for a
   // later resume, a `done` item clears any held copy. Called the instant an
@@ -116,7 +116,7 @@ export function RecordScreen({
   }
 
   async function upload(fileUri: string) {
-    await attempt(pendingFor(encounter, fileUri, resume), 'Upload incomplete');
+    await attempt(pendingFor(appointment, fileUri, resume), 'Upload incomplete');
   }
 
   async function attempt(item: PendingItem, failureTitle: string) {
@@ -142,8 +142,8 @@ export function RecordScreen({
 
   return (
     <View style={styles.screen}>
-      <Text style={styles.patient}>{encounter.patient_name || encounter.patient_id}</Text>
-      <Text style={styles.meta}>Encounter {encounter.encounter_id}</Text>
+      <Text style={styles.patient}>{appointment.patient_name || appointment.patient_id}</Text>
+      <Text style={styles.meta}>Appointment {appointment.appointment_id}</Text>
 
       <View style={styles.row}>
         <Text style={styles.body}>Consent confirmed</Text>
@@ -166,7 +166,7 @@ export function RecordScreen({
         />
       )}
 
-      {!isRecording && !uploading && <Button title="Back to encounters" onPress={() => onDone()} />}
+      {!isRecording && !uploading && <Button title="Back to appointments" onPress={() => onDone()} />}
     </View>
   );
 }

@@ -1,16 +1,16 @@
-import { Encounter } from './api';
+import { Appointment } from './api';
 import { PendingItem } from './upload-queue';
 
 // Builds the pending item for a freshly recorded file. When an earlier attempt
-// for the same encounter is still held with a session, the new recording reuses
-// that session instead of creating a duplicate (and orphaning the first).
-export function pendingFor(encounter: Encounter, fileUri: string, held?: PendingItem | null): PendingItem {
+// for the same appointment is still held with a session, the new recording
+// reuses that session instead of creating a duplicate (and orphaning the first).
+export function pendingFor(appointment: Appointment, fileUri: string, held?: PendingItem | null): PendingItem {
   return {
-    id: encounter.encounter_id,
+    id: appointment.appointment_id,
     fileUri,
-    patientId: encounter.patient_id,
-    encounterId: encounter.encounter_id,
-    departmentId: encounter.department_id,
+    patientId: appointment.patient_id,
+    appointmentId: appointment.appointment_id,
+    departmentId: appointment.department_id,
     sessionId: held?.sessionId ?? null,
     status: held?.sessionId ? 'needs-upload' : 'needs-session',
   };

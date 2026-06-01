@@ -13,10 +13,10 @@ const opts = { baseUrl: 'http://x', token: 't', onUnauthorized: () => undefined 
 
 function item(overrides: Partial<PendingItem> = {}): PendingItem {
   return {
-    id: 'enc-1',
-    fileUri: 'file:///enc-1.m4a',
+    id: 'appt-1',
+    fileUri: 'file:///appt-1.m4a',
     patientId: '55',
-    encounterId: 'enc-1',
+    appointmentId: 'appt-1',
     departmentId: '1',
     sessionId: null,
     status: 'needs-session',
@@ -29,11 +29,12 @@ beforeEach(() => {
   uploadAudioMock.mockReset();
 });
 
-test('creates a session from the encounter fields, then uploads the recorded file', async () => {
+test('creates a session from the appointment fields, then uploads the recorded file', async () => {
   createSessionMock.mockResolvedValue({
     id: 'sess-9',
     patient_id: '55',
-    encounter_id: 'enc-1',
+    appointment_id: 'appt-1',
+    encounter_id: '',
     department_id: '1',
     status: 'created',
   });
@@ -43,10 +44,10 @@ test('creates a session from the encounter fields, then uploads the recorded fil
 
   expect(createSessionMock).toHaveBeenCalledWith(opts, {
     patient_id: '55',
-    encounter_id: 'enc-1',
+    appointment_id: 'appt-1',
     department_id: '1',
   });
-  expect(uploadAudioMock).toHaveBeenCalledWith(opts, 'sess-9', 'file:///enc-1.m4a');
+  expect(uploadAudioMock).toHaveBeenCalledWith(opts, 'sess-9', 'file:///appt-1.m4a');
   expect(result.status).toBe('done');
   expect(result.sessionId).toBe('sess-9');
 });
@@ -57,7 +58,7 @@ test('reuses an existing session id without creating a duplicate', async () => {
   const result = await runUpload(opts, item({ sessionId: 'sess-1', status: 'needs-upload' }));
 
   expect(createSessionMock).not.toHaveBeenCalled();
-  expect(uploadAudioMock).toHaveBeenCalledWith(opts, 'sess-1', 'file:///enc-1.m4a');
+  expect(uploadAudioMock).toHaveBeenCalledWith(opts, 'sess-1', 'file:///appt-1.m4a');
   expect(result.status).toBe('done');
 });
 
@@ -65,7 +66,8 @@ test('keeps the session id when only the upload fails', async () => {
   createSessionMock.mockResolvedValue({
     id: 'sess-9',
     patient_id: '55',
-    encounter_id: 'enc-1',
+    appointment_id: 'appt-1',
+    encounter_id: '',
     department_id: '1',
     status: 'created',
   });

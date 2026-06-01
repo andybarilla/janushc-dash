@@ -10,7 +10,7 @@ export function runUpload(opts: ApiOptions, item: PendingItem): Promise<PendingI
       (
         await createSession(opts, {
           patient_id: it.patientId,
-          encounter_id: it.encounterId,
+          appointment_id: it.appointmentId,
           department_id: it.departmentId,
         })
       ).id,
