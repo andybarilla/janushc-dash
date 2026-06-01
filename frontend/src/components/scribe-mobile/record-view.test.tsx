@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   deleteActiveRecordingDraft: vi.fn(),
   useCreateScribeSession: vi.fn(),
   useUploadScribeAudio: vi.fn(),
+  useScribeDepartments: vi.fn(),
+  useTodayAppointments: vi.fn(),
   useAuth: vi.fn(),
 }));
 
@@ -36,6 +38,8 @@ vi.mock("@/lib/recording-drafts", async () => {
 vi.mock("@/lib/scribe-queries", () => ({
   useCreateScribeSession: mocks.useCreateScribeSession,
   useUploadScribeAudio: mocks.useUploadScribeAudio,
+  useScribeDepartments: mocks.useScribeDepartments,
+  useTodayAppointments: mocks.useTodayAppointments,
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -112,7 +116,7 @@ async function stopRecordingForReview(): Promise<void> {
 
 async function startRecording(): Promise<FakeMediaRecorder> {
   renderRecordView();
-  fireEvent.change(await screen.findByLabelText("Patient"), { target: { value: "patient-1" } });
+  fireEvent.change(await screen.findByLabelText("Patient"), { target: { value: "appt-1" } });
   fireEvent.click(screen.getByLabelText("Start recording"));
   await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
   const recorder = recorderAt(0);
@@ -146,6 +150,36 @@ beforeEach(() => {
   mocks.deleteActiveRecordingDraft.mockResolvedValue(undefined);
   mocks.useCreateScribeSession.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ id: "session-1" }) });
   mocks.useUploadScribeAudio.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue(undefined) });
+  mocks.useScribeDepartments.mockReturnValue({
+    data: [
+      { id: "dept-1", name: "Dept 1" },
+      { id: "dept-2", name: "Dept 2" },
+    ],
+    isLoading: false,
+    isError: false,
+  });
+  mocks.useTodayAppointments.mockReturnValue({
+    data: [
+      {
+        appointment_id: "appt-1",
+        patient_id: "patient-1",
+        patient_name: "Jane Doe",
+        time: "09:30",
+        department_id: "dept-1",
+        status: "booked",
+      },
+      {
+        appointment_id: "appt-2",
+        patient_id: "patient-2",
+        patient_name: "John Roe",
+        time: "10:00",
+        department_id: "dept-2",
+        status: "booked",
+      },
+    ],
+    isLoading: false,
+    isError: false,
+  });
   mocks.useAuth.mockReturnValue({ user: { id: "user-1", email: "doctor@example.com", name: "Doctor", role: "doctor" } });
 
   Object.defineProperty(globalThis, "MediaRecorder", {
@@ -181,6 +215,7 @@ describe("MRecordView recording drafts", () => {
       mimeType: "audio/webm",
       fileExtension: "webm",
       patientId: "patient-2",
+      appointmentId: "appt-2",
       departmentId: "dept-2",
       autoTranscribe: false,
       startedAt: "2026-05-19T00:00:00.000Z",
@@ -205,6 +240,7 @@ describe("MRecordView recording drafts", () => {
       mimeType: "audio/webm",
       fileExtension: "webm",
       patientId: "patient-2",
+      appointmentId: "appt-2",
       departmentId: "dept-2",
       autoTranscribe: false,
       startedAt: "2026-05-19T00:00:00.000Z",
@@ -229,6 +265,7 @@ describe("MRecordView recording drafts", () => {
       mimeType: "audio/webm",
       fileExtension: "webm",
       patientId: "patient-2",
+      appointmentId: "appt-2",
       departmentId: "dept-2",
       autoTranscribe: false,
       startedAt: "2026-05-19T00:00:00.000Z",
@@ -267,6 +304,7 @@ describe("MRecordView recording drafts", () => {
       mimeType: "audio/webm",
       fileExtension: "webm",
       patientId: "patient-2",
+      appointmentId: "appt-2",
       departmentId: "dept-2",
       autoTranscribe: true,
       startedAt: "2026-05-19T00:00:00.000Z",
@@ -290,6 +328,7 @@ describe("MRecordView recording drafts", () => {
       mimeType: "audio/webm",
       fileExtension: "webm",
       patientId: "patient-2",
+      appointmentId: "appt-2",
       departmentId: "dept-2",
       autoTranscribe: true,
       startedAt: "2026-05-19T00:00:00.000Z",
@@ -344,7 +383,7 @@ describe("MRecordView recording drafts", () => {
     });
     renderRecordView();
     fireEvent.click(await screen.findByLabelText("Keep screen awake while recording"));
-    fireEvent.change(screen.getByLabelText("Patient"), { target: { value: "patient-1" } });
+    fireEvent.change(screen.getByLabelText("Patient"), { target: { value: "appt-1" } });
     fireEvent.click(screen.getByLabelText("Start recording"));
 
     await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
@@ -359,6 +398,7 @@ describe("MRecordView recording drafts", () => {
       mimeType: "audio/webm;codecs=opus",
       fileExtension: "webm",
       patientId: "patient-1",
+      appointmentId: "appt-1",
       departmentId: "dept-1",
       autoTranscribe: true,
       elapsedSeconds: 0,
@@ -419,7 +459,7 @@ describe("MRecordView recording drafts", () => {
     const uploadAudio = vi.fn().mockResolvedValue(undefined);
     mocks.useUploadScribeAudio.mockReturnValue({ mutateAsync: uploadAudio });
     renderRecordView(onSaved);
-    fireEvent.change(await screen.findByLabelText("Patient"), { target: { value: "patient-1" } });
+    fireEvent.change(await screen.findByLabelText("Patient"), { target: { value: "appt-1" } });
     fireEvent.click(screen.getByLabelText("Start recording"));
     await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
     const recorder = recorderAt(0);
@@ -448,7 +488,8 @@ describe("MRecordView recording drafts", () => {
   it("deletes the active draft and navigates back when discarding from review", async () => {
     const onBack = vi.fn();
     renderRecordView(vi.fn(), onBack);
-    fireEvent.click(await screen.findByLabelText("Start recording"));
+    fireEvent.change(await screen.findByLabelText("Patient"), { target: { value: "appt-1" } });
+    fireEvent.click(screen.getByLabelText("Start recording"));
     await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
     const recorder = recorderAt(0);
     recorder.ondataavailable?.({ data: new Blob(["audio"], { type: "audio/webm" }) } as BlobEvent);
@@ -463,7 +504,8 @@ describe("MRecordView recording drafts", () => {
   it("deletes the active draft and navigates back without showing review when backing out while recording", async () => {
     const onBack = vi.fn();
     renderRecordView(vi.fn(), onBack);
-    fireEvent.click(await screen.findByLabelText("Start recording"));
+    fireEvent.change(await screen.findByLabelText("Patient"), { target: { value: "appt-1" } });
+    fireEvent.click(screen.getByLabelText("Start recording"));
     await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
     const recorder = recorderAt(0);
 
@@ -504,7 +546,8 @@ describe("MRecordView recording drafts", () => {
     mocks.saveRecordingDraftChunk.mockReturnValueOnce(pendingChunkSave.promise);
     const onBack = vi.fn();
     renderRecordView(vi.fn(), onBack);
-    fireEvent.click(await screen.findByLabelText("Start recording"));
+    fireEvent.change(await screen.findByLabelText("Patient"), { target: { value: "appt-1" } });
+    fireEvent.click(screen.getByLabelText("Start recording"));
     await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
     const recorder = recorderAt(0);
     recorder.ondataavailable?.({ data: new Blob(["audio"], { type: "audio/webm" }) } as BlobEvent);
@@ -524,7 +567,8 @@ describe("MRecordView recording drafts", () => {
     mocks.saveRecordingDraftChunk.mockReturnValueOnce(pendingChunkSave.promise);
     const onBack = vi.fn();
     renderRecordView(vi.fn(), onBack);
-    fireEvent.click(await screen.findByLabelText("Start recording"));
+    fireEvent.change(await screen.findByLabelText("Patient"), { target: { value: "appt-1" } });
+    fireEvent.click(screen.getByLabelText("Start recording"));
     await waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
     const recorder = recorderAt(0);
     recorder.ondataavailable?.({ data: new Blob(["audio"], { type: "audio/webm" }) } as BlobEvent);
