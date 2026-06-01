@@ -91,6 +91,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
   const [activeDraft, setActiveDraft] = useState<RecordingDraftMetadata | null>(null);
   const [isCheckingDraft, setIsCheckingDraft] = useState(true);
   const [isRecoveredDraft, setIsRecoveredDraft] = useState(false);
+  const [recoveredAppointment, setRecoveredAppointment] = useState<ScribeAppointment | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -111,7 +112,14 @@ export function MRecordView({ onBack, onSaved }: Props) {
   const currentUserId = user?.id ?? null;
 
   const appointments = appointmentsQuery.data ?? [];
-  const selectedAppointment = appointments.find(
+  const effectiveAppointments =
+    recoveredAppointment &&
+    !appointments.some(
+      (a) => a.appointment_id === recoveredAppointment.appointment_id,
+    )
+      ? [recoveredAppointment, ...appointments]
+      : appointments;
+  const selectedAppointment = effectiveAppointments.find(
     (a) => a.appointment_id === appointmentId,
   );
   const patientId = selectedAppointment?.patient_id ?? "";
@@ -224,6 +232,8 @@ export function MRecordView({ onBack, onSaved }: Props) {
       elapsedSeconds: seconds,
       patientId: patientId.trim(),
       appointmentId,
+      patientName: selectedAppointment?.patient_name,
+      appointmentTime: selectedAppointment?.time,
       departmentId: department,
       autoTranscribe,
       nextChunkIndex: nextChunkIndexRef.current,
@@ -300,6 +310,8 @@ export function MRecordView({ onBack, onSaved }: Props) {
             fileExtension: extensionFor(type),
             patientId: patientId.trim(),
             appointmentId,
+            patientName: selectedAppointment?.patient_name,
+            appointmentTime: selectedAppointment?.time,
             departmentId: department,
             autoTranscribe,
             elapsedSeconds: 0,
@@ -394,6 +406,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
     setStorageWarning(null);
     setActiveDraft(null);
     setIsRecoveredDraft(false);
+    setRecoveredAppointment(null);
     setAppointmentId("");
   };
 
@@ -413,6 +426,16 @@ export function MRecordView({ onBack, onSaved }: Props) {
       objectUrlRef.current = url;
       setDepartment(activeDraft.departmentId);
       setAppointmentId(activeDraft.appointmentId ?? "");
+      if (activeDraft.appointmentId && activeDraft.patientId) {
+        setRecoveredAppointment({
+          appointment_id: activeDraft.appointmentId,
+          patient_id: activeDraft.patientId,
+          patient_name: activeDraft.patientName ?? activeDraft.patientId,
+          time: activeDraft.appointmentTime ?? "",
+          department_id: activeDraft.departmentId,
+          status: "",
+        });
+      }
       setAutoTranscribe(activeDraft.autoTranscribe);
       setSeconds(activeDraft.elapsedSeconds);
       setFile(recoveredFile);
@@ -528,7 +551,8 @@ export function MRecordView({ onBack, onSaved }: Props) {
           setDepartment={setDepartment}
           appointmentId={appointmentId}
           setAppointmentId={setAppointmentId}
-          appointments={appointments}
+          clearRecoveredAppointment={() => setRecoveredAppointment(null)}
+          appointments={effectiveAppointments}
           departmentsQuery={departmentsQuery}
           appointmentsQuery={appointmentsQuery}
           autoTranscribe={autoTranscribe}
@@ -585,6 +609,7 @@ interface IdleProps {
   setDepartment: (v: string) => void;
   appointmentId: string;
   setAppointmentId: (v: string) => void;
+  clearRecoveredAppointment: () => void;
   appointments: ScribeAppointment[];
   departmentsQuery: UseQueryResult<ScribeDepartment[]>;
   appointmentsQuery: UseQueryResult<ScribeAppointment[]>;
@@ -602,6 +627,7 @@ function IdlePhase({
   setDepartment,
   appointmentId,
   setAppointmentId,
+  clearRecoveredAppointment,
   appointments,
   departmentsQuery,
   appointmentsQuery,
@@ -624,6 +650,7 @@ function IdlePhase({
           onChange={(e) => {
             setDepartment(e.target.value);
             setAppointmentId("");
+            clearRecoveredAppointment();
           }}
           disabled={departmentsQuery.isLoading}
         >
@@ -657,7 +684,7 @@ function IdlePhase({
           </option>
           {appointments.map((a) => (
             <option key={a.appointment_id} value={a.appointment_id}>
-              {a.time} · {a.patient_name}
+              {a.time ? `${a.time} · ${a.patient_name}` : a.patient_name}
             </option>
           ))}
         </select>

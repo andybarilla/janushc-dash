@@ -266,6 +266,8 @@ describe("MRecordView recording drafts", () => {
       fileExtension: "webm",
       patientId: "patient-2",
       appointmentId: "appt-2",
+      patientName: "John Roe",
+      appointmentTime: "10:00",
       departmentId: "dept-2",
       autoTranscribe: false,
       startedAt: "2026-05-19T00:00:00.000Z",
@@ -295,6 +297,43 @@ describe("MRecordView recording drafts", () => {
     const uploadedFile = firstUploadCall[0].file as File;
     expect(uploadedFile.name).toBe("mobile-recording-recovered.webm");
     expect(uploadedFile.type).toBe("audio/webm");
+  });
+
+  it("saves a recovered draft whose appointment is no longer in today's list", async () => {
+    const uploadAudio = vi.fn().mockResolvedValue(undefined);
+    const createSession = vi.fn().mockResolvedValue({ id: "session-1" });
+    mocks.getActiveRecordingDraft.mockResolvedValueOnce({
+      draftId: ACTIVE_RECORDING_DRAFT_ID,
+      ownerUserId: "user-1",
+      mimeType: "audio/webm",
+      fileExtension: "webm",
+      patientId: "patient-aged",
+      appointmentId: "appt-aged",
+      patientName: "Aged Out",
+      appointmentTime: "08:00",
+      departmentId: "dept-1",
+      autoTranscribe: false,
+      startedAt: "2026-05-19T00:00:00.000Z",
+      updatedAt: "2026-05-19T00:01:15.000Z",
+      elapsedSeconds: 75,
+      nextChunkIndex: 3,
+    });
+    mocks.useCreateScribeSession.mockReturnValue({ mutateAsync: createSession });
+    mocks.useUploadScribeAudio.mockReturnValue({ mutateAsync: uploadAudio });
+
+    renderRecordView();
+    fireEvent.click(await screen.findByRole("button", { name: "Recover recording" }));
+
+    expect(await screen.findByText("Review recording")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save recording only" }));
+
+    await waitFor(() => expect(createSession).toHaveBeenCalled());
+    expect(createSession).toHaveBeenCalledWith({
+      patient_id: "patient-aged",
+      appointment_id: "appt-aged",
+      department_id: "dept-1",
+    });
+    await waitFor(() => expect(uploadAudio).toHaveBeenCalled());
   });
 
   it("discards an active draft and returns to normal idle controls", async () => {
@@ -399,6 +438,8 @@ describe("MRecordView recording drafts", () => {
       fileExtension: "webm",
       patientId: "patient-1",
       appointmentId: "appt-1",
+      patientName: "Jane Doe",
+      appointmentTime: "09:30",
       departmentId: "dept-1",
       autoTranscribe: true,
       elapsedSeconds: 0,
