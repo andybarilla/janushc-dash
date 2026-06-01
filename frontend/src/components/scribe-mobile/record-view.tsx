@@ -14,9 +14,13 @@ import {
 } from "@/lib/recording-drafts";
 import {
   useCreateScribeSession,
+  useScribeDepartments,
+  useTodayAppointments,
   useUploadScribeAudio,
+  type ScribeAppointment,
+  type ScribeDepartment,
 } from "@/lib/scribe-queries";
-import { defaultDepartmentId, departments } from "@/lib/departments";
+import type { UseQueryResult } from "@tanstack/react-query";
 
 type Phase = "idle" | "recording" | "review" | "uploading";
 
@@ -75,8 +79,8 @@ interface Props {
 
 export function MRecordView({ onBack, onSaved }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
-  const [patientId, setPatientId] = useState("");
-  const [department, setDepartment] = useState(defaultDepartmentId);
+  const [department, setDepartment] = useState("");
+  const [appointmentId, setAppointmentId] = useState("");
   const [seconds, setSeconds] = useState(0);
   const [file, setFile] = useState<File | null>(null);
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
@@ -87,6 +91,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
   const [activeDraft, setActiveDraft] = useState<RecordingDraftMetadata | null>(null);
   const [isCheckingDraft, setIsCheckingDraft] = useState(true);
   const [isRecoveredDraft, setIsRecoveredDraft] = useState(false);
+  const [recoveredAppointment, setRecoveredAppointment] = useState<ScribeAppointment | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -101,8 +106,30 @@ export function MRecordView({ onBack, onSaved }: Props) {
 
   const createSession = useCreateScribeSession();
   const uploadAudio = useUploadScribeAudio();
+  const departmentsQuery = useScribeDepartments();
+  const appointmentsQuery = useTodayAppointments(department);
   const { user } = useAuth();
   const currentUserId = user?.id ?? null;
+
+  const appointments = appointmentsQuery.data ?? [];
+  const effectiveAppointments =
+    recoveredAppointment &&
+    !appointments.some(
+      (a) => a.appointment_id === recoveredAppointment.appointment_id,
+    )
+      ? [recoveredAppointment, ...appointments]
+      : appointments;
+  const selectedAppointment = effectiveAppointments.find(
+    (a) => a.appointment_id === appointmentId,
+  );
+  const patientId = selectedAppointment?.patient_id ?? "";
+
+  useEffect(() => {
+    const first = departmentsQuery.data?.[0];
+    if (!department && first) {
+      setDepartment(first.id);
+    }
+  }, [department, departmentsQuery.data]);
 
   const releaseWakeLock = useCallback(() => {
     wakeLockWantedRef.current = false;
@@ -204,6 +231,9 @@ export function MRecordView({ onBack, onSaved }: Props) {
     const writePromise = updateActiveRecordingDraftMetadata({
       elapsedSeconds: seconds,
       patientId: patientId.trim(),
+      appointmentId,
+      patientName: selectedAppointment?.patient_name,
+      appointmentTime: selectedAppointment?.time,
       departmentId: department,
       autoTranscribe,
       nextChunkIndex: nextChunkIndexRef.current,
@@ -217,7 +247,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
         pendingDraftWritesRef.current.delete(writePromise);
       });
     pendingDraftWritesRef.current.add(writePromise);
-  }, [autoTranscribe, department, patientId, phase, seconds]);
+  }, [appointmentId, autoTranscribe, department, patientId, phase, seconds]);
 
   // Tear down stream / object URL when the view unmounts. The mounted flag is
   // re-armed on every mount so that StrictMode's dev-only mount/unmount/mount
@@ -279,6 +309,9 @@ export function MRecordView({ onBack, onSaved }: Props) {
             mimeType: type,
             fileExtension: extensionFor(type),
             patientId: patientId.trim(),
+            appointmentId,
+            patientName: selectedAppointment?.patient_name,
+            appointmentTime: selectedAppointment?.time,
             departmentId: department,
             autoTranscribe,
             elapsedSeconds: 0,
@@ -373,6 +406,8 @@ export function MRecordView({ onBack, onSaved }: Props) {
     setStorageWarning(null);
     setActiveDraft(null);
     setIsRecoveredDraft(false);
+    setRecoveredAppointment(null);
+    setAppointmentId("");
   };
 
   const handleRecoverDraft = async () => {
@@ -389,8 +424,18 @@ export function MRecordView({ onBack, onSaved }: Props) {
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
       const url = URL.createObjectURL(blob);
       objectUrlRef.current = url;
-      setPatientId(activeDraft.patientId);
       setDepartment(activeDraft.departmentId);
+      setAppointmentId(activeDraft.appointmentId ?? "");
+      if (activeDraft.appointmentId && activeDraft.patientId) {
+        setRecoveredAppointment({
+          appointment_id: activeDraft.appointmentId,
+          patient_id: activeDraft.patientId,
+          patient_name: activeDraft.patientName ?? activeDraft.patientId,
+          time: activeDraft.appointmentTime ?? "",
+          department_id: activeDraft.departmentId,
+          status: "",
+        });
+      }
       setAutoTranscribe(activeDraft.autoTranscribe);
       setSeconds(activeDraft.elapsedSeconds);
       setFile(recoveredFile);
@@ -414,15 +459,13 @@ export function MRecordView({ onBack, onSaved }: Props) {
 
   const handleSave = async () => {
     if (!file) return;
-    const patient = patientId.trim() || `mobile-${Date.now()}`;
+    if (!appointmentId || !patientId) return;
     setError(null);
     setPhase("uploading");
     try {
       const session = await createSession.mutateAsync({
-        patient_id: patient,
-        encounter_id: `enc-${patient}-${new Date()
-          .toISOString()
-          .replace(/[:.]/g, "-")}`,
+        patient_id: patientId,
+        appointment_id: appointmentId,
         department_id: department,
       });
       await uploadAudio.mutateAsync({ id: session.id, file, autoTranscribe });
@@ -504,10 +547,14 @@ export function MRecordView({ onBack, onSaved }: Props) {
         /> : null}
 
         {phase === "idle" && !isCheckingDraft && !activeDraft ? <IdlePhase
-          patientId={patientId}
-          setPatientId={setPatientId}
           department={department}
           setDepartment={setDepartment}
+          appointmentId={appointmentId}
+          setAppointmentId={setAppointmentId}
+          clearRecoveredAppointment={() => setRecoveredAppointment(null)}
+          appointments={effectiveAppointments}
+          departmentsQuery={departmentsQuery}
+          appointmentsQuery={appointmentsQuery}
           autoTranscribe={autoTranscribe}
           setAutoTranscribe={setAutoTranscribe}
           keepAwake={keepAwake}
@@ -558,10 +605,14 @@ export function MRecordView({ onBack, onSaved }: Props) {
 }
 
 interface IdleProps {
-  patientId: string;
-  setPatientId: (v: string) => void;
   department: string;
   setDepartment: (v: string) => void;
+  appointmentId: string;
+  setAppointmentId: (v: string) => void;
+  clearRecoveredAppointment: () => void;
+  appointments: ScribeAppointment[];
+  departmentsQuery: UseQueryResult<ScribeDepartment[]>;
+  appointmentsQuery: UseQueryResult<ScribeAppointment[]>;
   autoTranscribe: boolean;
   setAutoTranscribe: (v: boolean) => void;
   keepAwake: boolean;
@@ -572,10 +623,14 @@ interface IdleProps {
 }
 
 function IdlePhase({
-  patientId,
-  setPatientId,
   department,
   setDepartment,
+  appointmentId,
+  setAppointmentId,
+  clearRecoveredAppointment,
+  appointments,
+  departmentsQuery,
+  appointmentsQuery,
   autoTranscribe,
   setAutoTranscribe,
   keepAwake,
@@ -587,28 +642,55 @@ function IdlePhase({
   return (
     <>
       <div className="m-record-form">
-        <label className="field-label" htmlFor="m-rec-patient">Patient</label>
-        <input
-          id="m-rec-patient"
-          className="field"
-          value={patientId}
-          onChange={(e) => setPatientId(e.target.value)}
-          placeholder="Patient ID"
-          autoComplete="off"
-        />
         <label className="field-label" htmlFor="m-rec-dept">Department</label>
         <select
           id="m-rec-dept"
           className="field"
           value={department}
-          onChange={(e) => setDepartment(e.target.value)}
+          onChange={(e) => {
+            setDepartment(e.target.value);
+            setAppointmentId("");
+            clearRecoveredAppointment();
+          }}
+          disabled={departmentsQuery.isLoading}
         >
-          {departments.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
+          {departmentsQuery.isLoading ? (
+            <option value="">Loading…</option>
+          ) : (
+            departmentsQuery.data?.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))
+          )}
+        </select>
+        {departmentsQuery.isError ? (
+          <div className="m-rec-error">Could not load departments.</div>
+        ) : null}
+        <label className="field-label" htmlFor="m-rec-patient">Patient</label>
+        <select
+          id="m-rec-patient"
+          className="field"
+          value={appointmentId}
+          onChange={(e) => setAppointmentId(e.target.value)}
+          disabled={!department || appointmentsQuery.isLoading}
+        >
+          <option value="">
+            {appointmentsQuery.isLoading
+              ? "Loading…"
+              : appointments.length === 0
+                ? "No appointments booked today"
+                : "Select patient…"}
+          </option>
+          {appointments.map((a) => (
+            <option key={a.appointment_id} value={a.appointment_id}>
+              {a.time ? `${a.time} · ${a.patient_name}` : a.patient_name}
             </option>
           ))}
         </select>
+        {appointmentsQuery.isError ? (
+          <div className="m-rec-error">Could not load appointments.</div>
+        ) : null}
         <label className="field-label" htmlFor="m-rec-auto-transcribe">Processing</label>
         <label className="m-record-toggle" htmlFor="m-rec-auto-transcribe">
           <input
@@ -635,7 +717,7 @@ function IdlePhase({
           type="button"
           className="m-rec-btn"
           onClick={onStart}
-          disabled={!supported}
+          disabled={!supported || !appointmentId}
           aria-label="Start recording"
         >
           <Mic />

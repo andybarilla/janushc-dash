@@ -170,3 +170,15 @@ func (p *Processor) WriteToAthena(ctx context.Context, practiceID, encounterID s
 	}
 	return nil
 }
+
+func (p *Processor) ListDepartments(ctx context.Context, practiceID string) ([]emr.Department, error) {
+	return p.emr.ListDepartments(ctx, practiceID)
+}
+
+func (p *Processor) ListTodayAppointments(ctx context.Context, practiceID, departmentID string) ([]emr.Appointment, error) {
+	return p.emr.ListTodayAppointments(ctx, practiceID, departmentID)
+}
+
+func (p *Processor) ResolveEncounterID(ctx context.Context, practiceID, appointmentID string) (string, error) {
+	return p.emr.ResolveEncounterID(ctx, practiceID, appointmentID)
+}

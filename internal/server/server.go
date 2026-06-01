@@ -99,6 +99,7 @@ func (s *Server) routes() {
 		r.Get("/api/scribe/encounters", s.scribeHandler.HandleListEncounters)
 		r.Post("/api/scribe/sessions", s.scribeHandler.HandleCreate)
 		r.Get("/api/scribe/sessions", s.scribeHandler.HandleList)
+		r.Get("/api/scribe/appointments", s.scribeHandler.HandleListAppointments)
 		r.Get("/api/scribe/sessions/{id}", s.scribeHandler.HandleGet)
 		r.Delete("/api/scribe/sessions/{id}", s.scribeHandler.HandleDelete)
 		r.Get("/api/scribe/sessions/{id}/audio", s.scribeHandler.HandleAudio)

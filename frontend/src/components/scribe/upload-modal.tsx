@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { ClipboardList, Mic, RotateCcw, Square, X } from "lucide-react";
 import {
   useCreateScribeSession,
+  useScribeDepartments,
   useSubmitTranscript,
+  useTodayAppointments,
   useUploadScribeAudio,
 } from "@/lib/scribe-queries";
-import { defaultDepartmentId, departments } from "@/lib/departments";
 
 const ACCEPTED_FORMATS = ".mp3,.m4a,.wav,.webm,.ogg";
 const RECORDING_MIME_TYPES = [
@@ -55,9 +56,8 @@ function apiErrorMessage(error: unknown) {
 }
 
 export function UploadModal({ open, onClose, onCreated, initialSource = "record" }: Props) {
-  const [patientId, setPatientId] = useState("");
-  const [encounterId, setEncounterId] = useState("");
-  const [departmentId, setDepartmentId] = useState(defaultDepartmentId);
+  const [departmentId, setDepartmentId] = useState("");
+  const [appointmentId, setAppointmentId] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [audioSource, setAudioSource] = useState<AudioSource>(initialSource);
   const [recordingState, setRecordingState] = useState<RecordingState>("idle");
@@ -74,6 +74,8 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
   const createSession = useCreateScribeSession();
   const uploadAudio = useUploadScribeAudio();
   const submitTranscript = useSubmitTranscript();
+  const departmentsQuery = useScribeDepartments();
+  const appointmentsQuery = useTodayAppointments(departmentId);
 
   useEffect(() => {
     if (open) setAudioSource(initialSource);
@@ -96,8 +98,18 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
     return () => window.clearInterval(intervalId);
   }, [recordingState]);
 
+  useEffect(() => {
+    const first = departmentsQuery.data?.[0];
+    if (!departmentId && first) {
+      setDepartmentId(first.id);
+    }
+  }, [departmentId, departmentsQuery.data]);
+
   if (!open) return null;
 
+  const appointments = appointmentsQuery.data ?? [];
+  const selectedAppointment = appointments.find((a) => a.appointment_id === appointmentId);
+  const patientId = selectedAppointment?.patient_id ?? "";
   const busy = createSession.isPending || uploadAudio.isPending || submitTranscript.isPending;
   const recordingSupported =
     typeof navigator !== "undefined" &&
@@ -122,9 +134,7 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
   };
 
   const reset = () => {
-    setPatientId("");
-    setEncounterId("");
-    setDepartmentId(defaultDepartmentId);
+    setAppointmentId("");
     setFile(null);
     setTranscript("");
     setAudioSource(initialSource);
@@ -198,12 +208,12 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
   };
 
   const handleSubmit = async () => {
-    if (!patientId || !encounterId) return;
+    if (!appointmentId || !patientId) return;
     if (audioSource === "paste") {
       if (!transcript.trim()) return;
       const session = await createSession.mutateAsync({
         patient_id: patientId,
-        encounter_id: encounterId,
+        appointment_id: appointmentId,
         department_id: departmentId,
       });
       await submitTranscript.mutateAsync({ id: session.id, transcript });
@@ -214,7 +224,7 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
       if (!file) return;
       const session = await createSession.mutateAsync({
         patient_id: patientId,
-        encounter_id: encounterId,
+        appointment_id: appointmentId,
         department_id: departmentId,
       });
       await uploadAudio.mutateAsync({ id: session.id, file, autoTranscribe });
@@ -268,28 +278,6 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
           </div>
 
           <div>
-            <label className="janus-label" htmlFor="upload-patient">
-              Patient ID
-            </label>
-            <input
-              id="upload-patient"
-              className="janus-input"
-              value={patientId}
-              onChange={(e) => setPatientId(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="janus-label" htmlFor="upload-encounter">
-              Encounter ID
-            </label>
-            <input
-              id="upload-encounter"
-              className="janus-input"
-              value={encounterId}
-              onChange={(e) => setEncounterId(e.target.value)}
-            />
-          </div>
-          <div>
             <label className="janus-label" htmlFor="upload-department">
               Department
             </label>
@@ -297,14 +285,53 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
               id="upload-department"
               className="janus-input"
               value={departmentId}
-              onChange={(e) => setDepartmentId(e.target.value)}
+              onChange={(e) => {
+                setDepartmentId(e.target.value);
+                setAppointmentId("");
+              }}
+              disabled={busy || departmentsQuery.isLoading}
             >
-              {departments.map((department) => (
-                <option key={department.id} value={department.id}>
-                  {department.name}
+              {departmentsQuery.isLoading ? (
+                <option value="">Loading…</option>
+              ) : (
+                departmentsQuery.data?.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))
+              )}
+            </select>
+            {departmentsQuery.isError ? (
+              <div className="janus-error-text">Could not load departments.</div>
+            ) : null}
+          </div>
+          <div>
+            <label className="janus-label" htmlFor="upload-patient">
+              Patient
+            </label>
+            <select
+              id="upload-patient"
+              className="janus-input"
+              value={appointmentId}
+              onChange={(e) => setAppointmentId(e.target.value)}
+              disabled={busy || !departmentId || appointmentsQuery.isLoading}
+            >
+              <option value="">
+                {appointmentsQuery.isLoading
+                  ? "Loading…"
+                  : appointments.length === 0
+                    ? "No appointments booked today"
+                    : "Select patient…"}
+              </option>
+              {appointments.map((a) => (
+                <option key={a.appointment_id} value={a.appointment_id}>
+                  {a.time} · {a.patient_name}
                 </option>
               ))}
             </select>
+            {appointmentsQuery.isError ? (
+              <div className="janus-error-text">Could not load appointments.</div>
+            ) : null}
           </div>
 
           {audioSource === "record" ? (
@@ -444,8 +471,7 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
             disabled={
               busy ||
               recordingState === "recording" ||
-              !patientId ||
-              !encounterId ||
+              !appointmentId ||
               (audioSource === "paste" ? !transcript.trim() : !file)
             }
           >

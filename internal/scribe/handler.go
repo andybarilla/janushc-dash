@@ -58,17 +58,17 @@ func parseAudioUpload(r *http.Request, maxSize int64) (multipart.File, string, e
 }
 
 type createSessionRequest struct {
-	PatientID    string `json:"patient_id"`
-	EncounterID  string `json:"encounter_id"`
-	DepartmentID string `json:"department_id"`
+	PatientID     string `json:"patient_id"`
+	AppointmentID string `json:"appointment_id"`
+	DepartmentID  string `json:"department_id"`
 }
 
 func (r createSessionRequest) validate() error {
 	if r.PatientID == "" {
 		return fmt.Errorf("patient_id required")
 	}
-	if r.EncounterID == "" {
-		return fmt.Errorf("encounter_id required")
+	if r.AppointmentID == "" {
+		return fmt.Errorf("appointment_id required")
 	}
 	if r.DepartmentID == "" {
 		return fmt.Errorf("department_id required")
@@ -99,6 +99,7 @@ type sessionResponse struct {
 	ID            string `json:"id"`
 	PatientID     string `json:"patient_id"`
 	EncounterID   string `json:"encounter_id"`
+	AppointmentID string `json:"appointment_id"`
 	DepartmentID  string `json:"department_id"`
 	Status        string `json:"status"`
 	ErrorMessage  string `json:"error_message,omitempty"`
@@ -455,11 +456,12 @@ func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	session, err := h.queries.CreateScribeSession(r.Context(), database.CreateScribeSessionParams{
-		TenantID:     tenantUUID,
-		UserID:       userUUID,
-		PatientID:    req.PatientID,
-		EncounterID:  req.EncounterID,
-		DepartmentID: req.DepartmentID,
+		TenantID:      tenantUUID,
+		UserID:        userUUID,
+		PatientID:     req.PatientID,
+		EncounterID:   "",
+		AppointmentID: req.AppointmentID,
+		DepartmentID:  req.DepartmentID,
 	})
 	if err != nil {
 		http.Error(w, "failed to create session", http.StatusInternalServerError)
@@ -469,12 +471,13 @@ func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(sessionResponse{
-		ID:           uuidToString(session.ID),
-		PatientID:    session.PatientID,
-		EncounterID:  session.EncounterID,
-		DepartmentID: session.DepartmentID,
-		Status:       session.Status,
-		CreatedAt:    session.CreatedAt.Time.UTC().Format("2006-01-02T15:04:05Z"),
+		ID:            uuidToString(session.ID),
+		PatientID:     session.PatientID,
+		EncounterID:   session.EncounterID,
+		AppointmentID: session.AppointmentID,
+		DepartmentID:  session.DepartmentID,
+		Status:        session.Status,
+		CreatedAt:     session.CreatedAt.Time.UTC().Format("2006-01-02T15:04:05Z"),
 	})
 }
 
@@ -504,6 +507,25 @@ func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+func (h *Handler) HandleListAppointments(w http.ResponseWriter, r *http.Request) {
+	departmentID := r.URL.Query().Get("department_id")
+	if departmentID == "" {
+		http.Error(w, "department_id required", http.StatusBadRequest)
+		return
+	}
+	appointments, err := h.processor.ListTodayAppointments(r.Context(), h.cfg.AthenaPracticeID, departmentID)
+	if err != nil {
+		log.Printf("scribe: list appointments: %v", err)
+		http.Error(w, "failed to load appointments", http.StatusBadGateway)
+		return
+	}
+	if appointments == nil {
+		appointments = []emr.Appointment{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(appointments)
 }
 
 func (h *Handler) HandleDelete(w http.ResponseWriter, r *http.Request) {
@@ -1328,9 +1350,33 @@ func (h *Handler) HandleSend(w http.ResponseWriter, r *http.Request) {
 	// duplicating. Write the provider-reviewed content: the AI output with each
 	// section overridden by its latest edit — writing raw AiOutput would drop
 	// the provider's corrections.
+	encounterID := session.EncounterID
+	if encounterID == "" {
+		resolved, err := h.processor.ResolveEncounterID(r.Context(), h.cfg.AthenaPracticeID, session.AppointmentID)
+		if err != nil {
+			log.Printf("scribe send: resolve encounter for session %s (appt %s): %v", uuidToString(sessionUUID), session.AppointmentID, err)
+			http.Error(w, "could not resolve encounter from appointment — contact support", http.StatusInternalServerError)
+			return
+		}
+		if resolved == "" {
+			http.Error(w, "patient not checked in yet — encounter not available, retry after check-in", http.StatusBadRequest)
+			return
+		}
+		if err := h.queries.SetScribeSessionEncounter(r.Context(), database.SetScribeSessionEncounterParams{
+			ID:          sessionUUID,
+			TenantID:    tenantUUID,
+			EncounterID: resolved,
+		}); err != nil {
+			log.Printf("scribe send: persist resolved encounter for session %s: %v", uuidToString(sessionUUID), err)
+			http.Error(w, "could not save resolved encounter — contact support", http.StatusInternalServerError)
+			return
+		}
+		encounterID = resolved
+	}
+
 	if session.AiOutput != nil {
 		output := effectiveOutput(session.AiOutput, editRows)
-		if writeErr := h.processor.WriteToAthena(r.Context(), h.cfg.AthenaPracticeID, session.EncounterID, output); writeErr != nil {
+		if writeErr := h.processor.WriteToAthena(r.Context(), h.cfg.AthenaPracticeID, encounterID, output); writeErr != nil {
 			log.Printf("scribe send: athena write error for session %s (not marked sent, retryable): %v", uuidToString(sessionUUID), writeErr)
 			http.Error(w, "sent to EHR failed — contact support", http.StatusInternalServerError)
 			return
@@ -1533,12 +1579,13 @@ func (h *Handler) HandleListFeedback(w http.ResponseWriter, r *http.Request) {
 
 func toSessionResponse(s database.ScribeSession) sessionResponse {
 	resp := sessionResponse{
-		ID:           uuidToString(s.ID),
-		PatientID:    s.PatientID,
-		EncounterID:  s.EncounterID,
-		DepartmentID: s.DepartmentID,
-		Status:       s.Status,
-		CreatedAt:    s.CreatedAt.Time.UTC().Format("2006-01-02T15:04:05Z"),
+		ID:            uuidToString(s.ID),
+		PatientID:     s.PatientID,
+		EncounterID:   s.EncounterID,
+		AppointmentID: s.AppointmentID,
+		DepartmentID:  s.DepartmentID,
+		Status:        s.Status,
+		CreatedAt:     s.CreatedAt.Time.UTC().Format("2006-01-02T15:04:05Z"),
 	}
 	if s.ErrorMessage.Valid {
 		resp.ErrorMessage = s.ErrorMessage.String
@@ -1560,6 +1607,7 @@ func toListSessionResponse(s database.ListScribeSessionsRow) sessionResponse {
 		ID:            uuidToString(s.ID),
 		PatientID:     s.PatientID,
 		EncounterID:   s.EncounterID,
+		AppointmentID: s.AppointmentID,
 		DepartmentID:  s.DepartmentID,
 		Status:        s.Status,
 		CreatedAt:     s.CreatedAt.Time.UTC().Format("2006-01-02T15:04:05Z"),
