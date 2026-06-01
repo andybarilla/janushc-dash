@@ -1,7 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronLeft } from "lucide-react";
-import { useCreateScribeSession, useSubmitTranscript } from "@/lib/scribe-queries";
-import { defaultDepartmentId, departments } from "@/lib/departments";
+import {
+  useCreateScribeSession,
+  useScribeDepartments,
+  useSubmitTranscript,
+  useTodayAppointments,
+} from "@/lib/scribe-queries";
 
 function apiErrorMessage(error: unknown): string | null {
   if (error instanceof Error) return error.message;
@@ -18,25 +22,40 @@ interface Props {
 }
 
 export function MPasteView({ onBack, onSaved }: Props) {
-  const [patientId, setPatientId] = useState("");
-  const [department, setDepartment] = useState(defaultDepartmentId);
+  const [department, setDepartment] = useState("");
+  const [appointmentId, setAppointmentId] = useState("");
   const [transcript, setTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const createSession = useCreateScribeSession();
   const submitTranscript = useSubmitTranscript();
+  const departmentsQuery = useScribeDepartments();
+  const appointmentsQuery = useTodayAppointments(department);
+
+  useEffect(() => {
+    const first = departmentsQuery.data?.[0];
+    if (!department && first) {
+      setDepartment(first.id);
+    }
+  }, [department, departmentsQuery.data]);
+
+  const appointments = appointmentsQuery.data ?? [];
+  const selectedAppointment = appointments.find(
+    (a) => a.appointment_id === appointmentId,
+  );
+  const patientId = selectedAppointment?.patient_id ?? "";
 
   const busy = createSession.isPending || submitTranscript.isPending;
-  const canSubmit = !!transcript.trim() && !busy;
+  const canSubmit = !!transcript.trim() && !!appointmentId && !busy;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
+    if (!appointmentId || !patientId) return;
     setError(null);
-    const patient = patientId.trim() || `mobile-${Date.now()}`;
     try {
       const session = await createSession.mutateAsync({
-        patient_id: patient,
-        encounter_id: `enc-${patient}-${new Date().toISOString().replace(/[:.]/g, "-")}`,
+        patient_id: patientId,
+        appointment_id: appointmentId,
         department_id: department,
       });
       await submitTranscript.mutateAsync({ id: session.id, transcript });
@@ -64,30 +83,56 @@ export function MPasteView({ onBack, onSaved }: Props) {
 
       <div className="m-record-stage">
         <div className="m-record-form">
-          <label className="field-label" htmlFor="m-paste-patient">Patient</label>
-          <input
-            id="m-paste-patient"
-            className="field"
-            value={patientId}
-            onChange={(e) => setPatientId(e.target.value)}
-            placeholder="Patient ID"
-            autoComplete="off"
-            disabled={busy}
-          />
           <label className="field-label" htmlFor="m-paste-dept">Department</label>
           <select
             id="m-paste-dept"
             className="field"
             value={department}
-            onChange={(e) => setDepartment(e.target.value)}
-            disabled={busy}
+            onChange={(e) => {
+              setDepartment(e.target.value);
+              setAppointmentId("");
+            }}
+            disabled={busy || departmentsQuery.isLoading}
           >
-            {departments.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
+            {departmentsQuery.isLoading ? (
+              <option value="">Loading…</option>
+            ) : (
+              departmentsQuery.data?.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))
+            )}
+          </select>
+          {departmentsQuery.isError ? (
+            <div className="m-rec-error">Could not load departments.</div>
+          ) : null}
+
+          <label className="field-label" htmlFor="m-paste-patient">Patient</label>
+          <select
+            id="m-paste-patient"
+            className="field"
+            value={appointmentId}
+            onChange={(e) => setAppointmentId(e.target.value)}
+            disabled={busy || !department || appointmentsQuery.isLoading}
+          >
+            <option value="">
+              {appointmentsQuery.isLoading
+                ? "Loading…"
+                : appointments.length === 0
+                  ? "No appointments booked today"
+                  : "Select patient…"}
+            </option>
+            {appointments.map((a) => (
+              <option key={a.appointment_id} value={a.appointment_id}>
+                {a.time} · {a.patient_name}
               </option>
             ))}
           </select>
+          {appointmentsQuery.isError ? (
+            <div className="m-rec-error">Could not load appointments.</div>
+          ) : null}
+
           <label className="field-label" htmlFor="m-paste-transcript">Transcript</label>
           <textarea
             id="m-paste-transcript"

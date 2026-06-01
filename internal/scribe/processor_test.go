@@ -170,6 +170,12 @@ func (fakeProcessorEMR) GetActiveDiagnoses(ctx context.Context, practiceID, pati
 func (fakeProcessorEMR) ListTodayEncounters(ctx context.Context, practiceID, departmentID string) ([]emr.Encounter, error) {
 	return nil, nil
 }
+func (fakeProcessorEMR) ListTodayAppointments(ctx context.Context, practiceID, departmentID string) ([]emr.Appointment, error) {
+	return nil, nil
+}
+func (fakeProcessorEMR) ResolveEncounterID(ctx context.Context, practiceID, appointmentID string) (string, error) {
+	return "", nil
+}
 func (fakeProcessorEMR) WriteEncounterHPI(ctx context.Context, practiceID, encounterID, hpiText string) error {
 	return nil
 }

@@ -11,3 +11,5 @@ frontend/.env.local
 
 # Playwright MCP scratch (snapshots, downloads, console logs)
 .playwright-mcp/
+
+.claude/worktrees

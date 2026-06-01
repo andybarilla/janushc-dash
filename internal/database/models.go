@@ -100,24 +100,25 @@ type ScribeSectionEdit struct {
 }
 
 type ScribeSession struct {
-	ID           pgtype.UUID        `json:"id"`
-	TenantID     pgtype.UUID        `json:"tenant_id"`
-	UserID       pgtype.UUID        `json:"user_id"`
-	PatientID    string             `json:"patient_id"`
-	EncounterID  string             `json:"encounter_id"`
-	DepartmentID string             `json:"department_id"`
-	Status       string             `json:"status"`
-	Transcript   pgtype.Text        `json:"transcript"`
-	AiOutput     []byte             `json:"ai_output"`
-	ErrorMessage pgtype.Text        `json:"error_message"`
-	StartedAt    pgtype.Timestamptz `json:"started_at"`
-	StoppedAt    pgtype.Timestamptz `json:"stopped_at"`
-	CompletedAt  pgtype.Timestamptz `json:"completed_at"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	SentToEhrAt  pgtype.Timestamptz `json:"sent_to_ehr_at"`
-	SentToEhrBy  pgtype.UUID        `json:"sent_to_ehr_by"`
-	RejectedAt   pgtype.Timestamptz `json:"rejected_at"`
-	RejectedBy   pgtype.UUID        `json:"rejected_by"`
+	ID            pgtype.UUID        `json:"id"`
+	TenantID      pgtype.UUID        `json:"tenant_id"`
+	UserID        pgtype.UUID        `json:"user_id"`
+	PatientID     string             `json:"patient_id"`
+	EncounterID   string             `json:"encounter_id"`
+	DepartmentID  string             `json:"department_id"`
+	Status        string             `json:"status"`
+	Transcript    pgtype.Text        `json:"transcript"`
+	AiOutput      []byte             `json:"ai_output"`
+	ErrorMessage  pgtype.Text        `json:"error_message"`
+	StartedAt     pgtype.Timestamptz `json:"started_at"`
+	StoppedAt     pgtype.Timestamptz `json:"stopped_at"`
+	CompletedAt   pgtype.Timestamptz `json:"completed_at"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	SentToEhrAt   pgtype.Timestamptz `json:"sent_to_ehr_at"`
+	SentToEhrBy   pgtype.UUID        `json:"sent_to_ehr_by"`
+	RejectedAt    pgtype.Timestamptz `json:"rejected_at"`
+	RejectedBy    pgtype.UUID        `json:"rejected_by"`
+	AppointmentID string             `json:"appointment_id"`
 }
 
 type ScribeUsageEvent struct {
