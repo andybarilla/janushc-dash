@@ -9,6 +9,7 @@ export interface RecordingDraftMetadata {
   mimeType: string;
   fileExtension: string;
   patientId: string;
+  appointmentId?: string;
   departmentId: string;
   autoTranscribe: boolean;
   startedAt: string;
@@ -31,7 +32,7 @@ type RecordingDraftMetadataInput = Omit<
 type RecordingDraftMetadataPatch = Pick<
   RecordingDraftMetadata,
   "elapsedSeconds" | "patientId" | "departmentId" | "autoTranscribe"
-> & { nextChunkIndex?: number };
+> & { nextChunkIndex?: number; appointmentId?: string };
 
 const METADATA_STORE_NAME = "metadata";
 const CHUNKS_STORE_NAME = "chunks";
