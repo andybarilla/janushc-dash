@@ -2,9 +2,10 @@ import { Audio } from 'expo-av';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, StyleSheet, Switch, Text, View } from 'react-native';
-import { createSession, uploadAudio } from '../api';
 import { useAuth } from '../auth';
-import { PendingItem, processItem } from '../upload-queue';
+import { pendingFor } from '../pending';
+import { runUpload } from '../upload';
+import { PendingItem } from '../upload-queue';
 
 function formatDuration(ms: number) {
   const total = Math.floor(ms / 1000);
@@ -14,9 +15,31 @@ function formatDuration(ms: number) {
   return [h, m, s].map((p) => String(p).padStart(2, '0')).join(':');
 }
 
-export function RecordScreen({ label, onDone }: { label: string; onDone: () => void }) {
+export function RecordScreen({
+  label,
+  resume,
+  onDone,
+  onSettle,
+}: {
+  // Freeform identifier the provider typed (name, initials, patient ID).
+  label: string;
+  // A held attempt for this recording, if any; its session is reused on upload.
+  resume?: PendingItem | null;
+  // Leave the screen and return to the label entry.
+  onDone: () => void;
+  // Record where an upload landed: a still-pending item is held in memory for a
+  // later resume, a `done` item clears any held copy. Called the instant an
+  // attempt settles so no exit path (alert dismiss, back button) can orphan it.
+  onSettle: (item: PendingItem) => void;
+}) {
   const { token, baseUrl, signOut } = useAuth();
-  const opts = useMemo(() => ({ baseUrl, token, onUnauthorized: signOut }), [baseUrl, token, signOut]);
+  // Flag a 401 so the failure prompt is suppressed while the app drops to
+  // sign-in, rather than blaming the network.
+  const signedOut = useRef(false);
+  const opts = useMemo(
+    () => ({ baseUrl, token, onUnauthorized: () => { signedOut.current = true; signOut(); } }),
+    [baseUrl, token, signOut],
+  );
   const recordingRef = useRef<Audio.Recording | null>(null);
 
   const [consent, setConsent] = useState(false);
@@ -93,49 +116,26 @@ export function RecordScreen({ label, onDone }: { label: string; onDone: () => v
   }
 
   async function upload(fileUri: string) {
-    setUploading(true);
-    const item: PendingItem = {
-      id: String(Date.now()),
-      fileUri,
-      label,
-      sessionId: null,
-      status: 'needs-session',
-    };
-    const result = await processItem(item, {
-      createSession: async (it) => (await createSession(opts, { label: it.label })).id,
-      uploadAudio: async (sessionId) => uploadAudio(opts, sessionId, fileUri),
-    });
-    setUploading(false);
-
-    if (result.status === 'done') {
-      Alert.alert('Uploaded', 'Recording sent to the scribe inbox.');
-      onDone();
-    } else {
-      Alert.alert(
-        'Upload incomplete',
-        'The recording is saved on this device. Retry?',
-        [
-          { text: 'Later', style: 'cancel', onPress: onDone },
-          { text: 'Retry', onPress: () => retry(result) },
-        ],
-      );
-    }
+    await attempt(pendingFor(label, fileUri, resume), 'Upload incomplete');
   }
 
-  async function retry(prev: PendingItem) {
+  async function attempt(item: PendingItem, failureTitle: string) {
     setUploading(true);
-    const result = await processItem(prev, {
-      createSession: async (it) => (await createSession(opts, { label: it.label })).id,
-      uploadAudio: async (sessionId) => uploadAudio(opts, sessionId, prev.fileUri),
-    });
+    const result = await runUpload(opts, item);
     setUploading(false);
+    // Hold (or clear, when done) before prompting, so dismissing the alert or
+    // hitting Back can no longer orphan the recording.
+    onSettle(result);
+
     if (result.status === 'done') {
       Alert.alert('Uploaded', 'Recording sent to the scribe inbox.');
       onDone();
+    } else if (signedOut.current) {
+      onDone();
     } else {
-      Alert.alert('Still failing', 'Try again from a better connection.', [
+      Alert.alert(failureTitle, 'The recording is saved on this device. Retry?', [
         { text: 'Later', style: 'cancel', onPress: onDone },
-        { text: 'Retry', onPress: () => retry(result) },
+        { text: 'Retry', onPress: () => attempt(result, 'Still failing') },
       ]);
     }
   }

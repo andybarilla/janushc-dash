@@ -2,18 +2,19 @@ import { normalizeBaseUrl } from './config';
 
 export type Department = { id: string; name: string };
 
-export type Encounter = {
-  encounter_id: string;
+export type Appointment = {
+  appointment_id: string;
   patient_id: string;
   patient_name: string;
+  time: string;
   department_id: string;
-  date: string;
-  start_time: string;
+  status: string;
 };
 
 export type Session = {
   id: string;
   patient_id: string;
+  appointment_id: string;
   encounter_id: string;
   department_id: string;
   status: string;
@@ -26,7 +27,7 @@ export class UnauthorizedError extends Error {
   }
 }
 
-type ApiOptions = {
+export type ApiOptions = {
   baseUrl: string;
   token: string | null;
   onUnauthorized: () => void;
@@ -72,10 +73,10 @@ export function listDepartments(opts: ApiOptions): Promise<Department[]> {
   return request<Department[]>(opts, '/api/scribe/departments', { method: 'GET' });
 }
 
-export function listEncounters(opts: ApiOptions, departmentId: string): Promise<Encounter[]> {
-  return request<Encounter[]>(
+export function listAppointments(opts: ApiOptions, departmentId: string): Promise<Appointment[]> {
+  return request<Appointment[]>(
     opts,
-    `/api/scribe/encounters?department_id=${encodeURIComponent(departmentId)}`,
+    `/api/scribe/appointments?department_id=${encodeURIComponent(departmentId)}`,
     { method: 'GET' },
   );
 }
