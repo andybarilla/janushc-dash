@@ -21,7 +21,7 @@ export function MSessionRow({ session, statusId, wordCount, selected, onClick }:
       onClick={onClick}
     >
       <div className="m-row-top">
-        <div className="m-row-patient">{session.patient_id}</div>
+        <div className="m-row-patient">{session.label || session.patient_id}</div>
         <MStatusPill status={STATUS[statusId]} />
       </div>
       <div className="m-row-enc">
