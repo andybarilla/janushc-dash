@@ -82,7 +82,7 @@ export function listEncounters(opts: ApiOptions, departmentId: string): Promise<
 
 export function createSession(
   opts: ApiOptions,
-  body: { patient_id: string; encounter_id: string; department_id: string },
+  body: { label: string },
 ): Promise<Session> {
   return request<Session>(opts, '/api/scribe/sessions', {
     method: 'POST',
