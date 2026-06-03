@@ -61,9 +61,13 @@ type createSessionRequest struct {
 	PatientID     string `json:"patient_id"`
 	AppointmentID string `json:"appointment_id"`
 	DepartmentID  string `json:"department_id"`
+	Label         string `json:"label"`
 }
 
 func (r createSessionRequest) validate() error {
+	if strings.TrimSpace(r.Label) != "" {
+		return nil // label-only session: no Athena linkage required
+	}
 	if r.PatientID == "" {
 		return fmt.Errorf("patient_id required")
 	}
@@ -101,6 +105,7 @@ type sessionResponse struct {
 	EncounterID   string `json:"encounter_id"`
 	AppointmentID string `json:"appointment_id"`
 	DepartmentID  string `json:"department_id"`
+	Label         string `json:"label,omitempty"`
 	Status        string `json:"status"`
 	ErrorMessage  string `json:"error_message,omitempty"`
 	CreatedAt     string `json:"created_at"`
@@ -462,6 +467,7 @@ func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 		EncounterID:   "",
 		AppointmentID: req.AppointmentID,
 		DepartmentID:  req.DepartmentID,
+		Label:         strings.TrimSpace(req.Label),
 	})
 	if err != nil {
 		http.Error(w, "failed to create session", http.StatusInternalServerError)
@@ -476,6 +482,7 @@ func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 		EncounterID:   session.EncounterID,
 		AppointmentID: session.AppointmentID,
 		DepartmentID:  session.DepartmentID,
+		Label:         session.Label,
 		Status:        session.Status,
 		CreatedAt:     session.CreatedAt.Time.UTC().Format("2006-01-02T15:04:05Z"),
 	})
@@ -1584,6 +1591,7 @@ func toSessionResponse(s database.ScribeSession) sessionResponse {
 		EncounterID:   s.EncounterID,
 		AppointmentID: s.AppointmentID,
 		DepartmentID:  s.DepartmentID,
+		Label:         s.Label,
 		Status:        s.Status,
 		CreatedAt:     s.CreatedAt.Time.UTC().Format("2006-01-02T15:04:05Z"),
 	}
@@ -1609,6 +1617,7 @@ func toListSessionResponse(s database.ListScribeSessionsRow) sessionResponse {
 		EncounterID:   s.EncounterID,
 		AppointmentID: s.AppointmentID,
 		DepartmentID:  s.DepartmentID,
+		Label:         s.Label,
 		Status:        s.Status,
 		CreatedAt:     s.CreatedAt.Time.UTC().Format("2006-01-02T15:04:05Z"),
 		ApprovedCount: int(s.ApprovedCount),

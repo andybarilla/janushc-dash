@@ -13,11 +13,9 @@ const opts = { baseUrl: 'http://x', token: 't', onUnauthorized: () => undefined 
 
 function item(overrides: Partial<PendingItem> = {}): PendingItem {
   return {
-    id: 'appt-1',
-    fileUri: 'file:///appt-1.m4a',
-    patientId: '55',
-    appointmentId: 'appt-1',
-    departmentId: '1',
+    id: 'rec-1',
+    fileUri: 'file:///rec-1.m4a',
+    label: 'Jane D.',
     sessionId: null,
     status: 'needs-session',
     ...overrides,
@@ -29,25 +27,21 @@ beforeEach(() => {
   uploadAudioMock.mockReset();
 });
 
-test('creates a session from the appointment fields, then uploads the recorded file', async () => {
+test('creates a session from the label, then uploads the recorded file', async () => {
   createSessionMock.mockResolvedValue({
     id: 'sess-9',
-    patient_id: '55',
-    appointment_id: 'appt-1',
+    patient_id: '',
+    appointment_id: '',
     encounter_id: '',
-    department_id: '1',
+    department_id: '',
     status: 'created',
   });
   uploadAudioMock.mockResolvedValue();
 
   const result = await runUpload(opts, item());
 
-  expect(createSessionMock).toHaveBeenCalledWith(opts, {
-    patient_id: '55',
-    appointment_id: 'appt-1',
-    department_id: '1',
-  });
-  expect(uploadAudioMock).toHaveBeenCalledWith(opts, 'sess-9', 'file:///appt-1.m4a');
+  expect(createSessionMock).toHaveBeenCalledWith(opts, { label: 'Jane D.' });
+  expect(uploadAudioMock).toHaveBeenCalledWith(opts, 'sess-9', 'file:///rec-1.m4a');
   expect(result.status).toBe('done');
   expect(result.sessionId).toBe('sess-9');
 });
@@ -58,17 +52,17 @@ test('reuses an existing session id without creating a duplicate', async () => {
   const result = await runUpload(opts, item({ sessionId: 'sess-1', status: 'needs-upload' }));
 
   expect(createSessionMock).not.toHaveBeenCalled();
-  expect(uploadAudioMock).toHaveBeenCalledWith(opts, 'sess-1', 'file:///appt-1.m4a');
+  expect(uploadAudioMock).toHaveBeenCalledWith(opts, 'sess-1', 'file:///rec-1.m4a');
   expect(result.status).toBe('done');
 });
 
 test('keeps the session id when only the upload fails', async () => {
   createSessionMock.mockResolvedValue({
     id: 'sess-9',
-    patient_id: '55',
-    appointment_id: 'appt-1',
+    patient_id: '',
+    appointment_id: '',
     encounter_id: '',
-    department_id: '1',
+    department_id: '',
     status: 'created',
   });
   uploadAudioMock.mockRejectedValue(new Error('network down'));

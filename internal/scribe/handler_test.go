@@ -56,6 +56,20 @@ func TestValidateCreateRequest_MissingAppointmentID(t *testing.T) {
 	}
 }
 
+func TestValidateCreateRequest_LabelOnly(t *testing.T) {
+	req := createSessionRequest{Label: "Jane D."}
+	if err := req.validate(); err != nil {
+		t.Errorf("expected label-only request to be valid, got error: %v", err)
+	}
+}
+
+func TestValidateCreateRequest_EmptyLabelAndNoTriple(t *testing.T) {
+	req := createSessionRequest{Label: "   "}
+	if err := req.validate(); err == nil {
+		t.Error("expected error for blank label with no Athena triple")
+	}
+}
+
 func TestValidateProcessRequest_Valid(t *testing.T) {
 	req := processRequest{
 		Transcript: "Provider: Hello. Patient: Hi.",
@@ -523,7 +537,7 @@ func (db *sendFakeDB) QueryRow(ctx context.Context, sql string, args ...interfac
 		s.ID, s.TenantID, s.UserID, s.PatientID, s.EncounterID, s.DepartmentID,
 		s.Status, s.Transcript, s.AiOutput, s.ErrorMessage, s.StartedAt, s.StoppedAt,
 		s.CompletedAt, s.CreatedAt, s.SentToEhrAt, s.SentToEhrBy, s.RejectedAt,
-		s.RejectedBy, s.AppointmentID,
+		s.RejectedBy, s.AppointmentID, s.Label,
 	}}
 }
 

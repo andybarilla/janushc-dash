@@ -57,6 +57,7 @@ export interface ScribeSession {
   patient_id: string;
   encounter_id: string;
   department_id: string;
+  label?: string;
   status: string;
   error_message?: string;
   created_at: string;

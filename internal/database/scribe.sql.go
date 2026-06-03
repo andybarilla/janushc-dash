@@ -12,9 +12,9 @@ import (
 )
 
 const createScribeSession = `-- name: CreateScribeSession :one
-INSERT INTO scribe_sessions (tenant_id, user_id, patient_id, encounter_id, appointment_id, department_id, status)
-VALUES ($1, $2, $3, $4, $5, $6, 'processing')
-RETURNING id, tenant_id, user_id, patient_id, encounter_id, appointment_id, department_id, status,
+INSERT INTO scribe_sessions (tenant_id, user_id, patient_id, encounter_id, appointment_id, department_id, label, status)
+VALUES ($1, $2, $3, $4, $5, $6, $7, 'processing')
+RETURNING id, tenant_id, user_id, patient_id, encounter_id, appointment_id, department_id, label, status,
           transcript, ai_output, error_message, started_at, stopped_at, completed_at, created_at
 `
 
@@ -25,6 +25,7 @@ type CreateScribeSessionParams struct {
 	EncounterID   string      `json:"encounter_id"`
 	AppointmentID string      `json:"appointment_id"`
 	DepartmentID  string      `json:"department_id"`
+	Label         string      `json:"label"`
 }
 
 type CreateScribeSessionRow struct {
@@ -35,6 +36,7 @@ type CreateScribeSessionRow struct {
 	EncounterID   string             `json:"encounter_id"`
 	AppointmentID string             `json:"appointment_id"`
 	DepartmentID  string             `json:"department_id"`
+	Label         string             `json:"label"`
 	Status        string             `json:"status"`
 	Transcript    pgtype.Text        `json:"transcript"`
 	AiOutput      []byte             `json:"ai_output"`
@@ -53,6 +55,7 @@ func (q *Queries) CreateScribeSession(ctx context.Context, arg CreateScribeSessi
 		arg.EncounterID,
 		arg.AppointmentID,
 		arg.DepartmentID,
+		arg.Label,
 	)
 	var i CreateScribeSessionRow
 	err := row.Scan(
@@ -63,6 +66,7 @@ func (q *Queries) CreateScribeSession(ctx context.Context, arg CreateScribeSessi
 		&i.EncounterID,
 		&i.AppointmentID,
 		&i.DepartmentID,
+		&i.Label,
 		&i.Status,
 		&i.Transcript,
 		&i.AiOutput,
@@ -96,7 +100,7 @@ func (q *Queries) DeleteScribeSession(ctx context.Context, arg DeleteScribeSessi
 const getScribeSession = `-- name: GetScribeSession :one
 SELECT id, tenant_id, user_id, patient_id, encounter_id, department_id, status,
        transcript, ai_output, error_message, started_at, stopped_at, completed_at, created_at,
-       sent_to_ehr_at, sent_to_ehr_by, rejected_at, rejected_by, appointment_id
+       sent_to_ehr_at, sent_to_ehr_by, rejected_at, rejected_by, appointment_id, label
 FROM scribe_sessions
 WHERE id = $1 AND tenant_id = $2
 `
@@ -129,6 +133,7 @@ func (q *Queries) GetScribeSession(ctx context.Context, arg GetScribeSessionPara
 		&i.RejectedAt,
 		&i.RejectedBy,
 		&i.AppointmentID,
+		&i.Label,
 	)
 	return i, err
 }
@@ -147,7 +152,7 @@ approved_counts AS (
     GROUP BY session_id
 )
 SELECT
-    s.id, s.tenant_id, s.user_id, s.patient_id, s.encounter_id, s.appointment_id, s.department_id,
+    s.id, s.tenant_id, s.user_id, s.patient_id, s.encounter_id, s.appointment_id, s.department_id, s.label,
     s.status, s.error_message, s.started_at, s.stopped_at, s.completed_at, s.created_at,
     s.sent_to_ehr_at, s.rejected_at,
     COALESCE(ac.approved_count, 0)::int AS approved_count
@@ -166,6 +171,7 @@ type ListScribeSessionsRow struct {
 	EncounterID   string             `json:"encounter_id"`
 	AppointmentID string             `json:"appointment_id"`
 	DepartmentID  string             `json:"department_id"`
+	Label         string             `json:"label"`
 	Status        string             `json:"status"`
 	ErrorMessage  pgtype.Text        `json:"error_message"`
 	StartedAt     pgtype.Timestamptz `json:"started_at"`
@@ -194,6 +200,7 @@ func (q *Queries) ListScribeSessions(ctx context.Context, tenantID pgtype.UUID) 
 			&i.EncounterID,
 			&i.AppointmentID,
 			&i.DepartmentID,
+			&i.Label,
 			&i.Status,
 			&i.ErrorMessage,
 			&i.StartedAt,

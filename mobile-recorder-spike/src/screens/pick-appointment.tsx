@@ -102,7 +102,7 @@ export function PickAppointmentScreen({
               <Text style={styles.pendingTitle}>Pending uploads</Text>
               {pending.map((p) => (
                 <View key={p.id} style={styles.pendingRow}>
-                  <Text style={styles.pendingName}>Appointment {p.appointmentId}</Text>
+                  <Text style={styles.pendingName}>{p.label}</Text>
                   {resuming === p.id ? (
                     <ActivityIndicator />
                   ) : (

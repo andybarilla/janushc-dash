@@ -1,13 +1,13 @@
 -- name: CreateScribeSession :one
-INSERT INTO scribe_sessions (tenant_id, user_id, patient_id, encounter_id, appointment_id, department_id, status)
-VALUES ($1, $2, $3, $4, $5, $6, 'processing')
-RETURNING id, tenant_id, user_id, patient_id, encounter_id, appointment_id, department_id, status,
+INSERT INTO scribe_sessions (tenant_id, user_id, patient_id, encounter_id, appointment_id, department_id, label, status)
+VALUES ($1, $2, $3, $4, $5, $6, $7, 'processing')
+RETURNING id, tenant_id, user_id, patient_id, encounter_id, appointment_id, department_id, label, status,
           transcript, ai_output, error_message, started_at, stopped_at, completed_at, created_at;
 
 -- name: GetScribeSession :one
 SELECT id, tenant_id, user_id, patient_id, encounter_id, department_id, status,
        transcript, ai_output, error_message, started_at, stopped_at, completed_at, created_at,
-       sent_to_ehr_at, sent_to_ehr_by, rejected_at, rejected_by, appointment_id
+       sent_to_ehr_at, sent_to_ehr_by, rejected_at, rejected_by, appointment_id, label
 FROM scribe_sessions
 WHERE id = $1 AND tenant_id = $2;
 
@@ -41,7 +41,7 @@ approved_counts AS (
     GROUP BY session_id
 )
 SELECT
-    s.id, s.tenant_id, s.user_id, s.patient_id, s.encounter_id, s.appointment_id, s.department_id,
+    s.id, s.tenant_id, s.user_id, s.patient_id, s.encounter_id, s.appointment_id, s.department_id, s.label,
     s.status, s.error_message, s.started_at, s.stopped_at, s.completed_at, s.created_at,
     s.sent_to_ehr_at, s.rejected_at,
     COALESCE(ac.approved_count, 0)::int AS approved_count

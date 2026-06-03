@@ -2,7 +2,6 @@ import { Audio } from 'expo-av';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, StyleSheet, Switch, Text, View } from 'react-native';
-import { Appointment } from '../api';
 import { useAuth } from '../auth';
 import { pendingFor } from '../pending';
 import { runUpload } from '../upload';
@@ -17,15 +16,16 @@ function formatDuration(ms: number) {
 }
 
 export function RecordScreen({
-  appointment,
+  label,
   resume,
   onDone,
   onSettle,
 }: {
-  appointment: Appointment;
-  // A held attempt for this appointment, if any; its session is reused on upload.
+  // Freeform identifier the provider typed (name, initials, patient ID).
+  label: string;
+  // A held attempt for this recording, if any; its session is reused on upload.
   resume?: PendingItem | null;
-  // Leave the screen and return to the appointment list.
+  // Leave the screen and return to the label entry.
   onDone: () => void;
   // Record where an upload landed: a still-pending item is held in memory for a
   // later resume, a `done` item clears any held copy. Called the instant an
@@ -116,7 +116,7 @@ export function RecordScreen({
   }
 
   async function upload(fileUri: string) {
-    await attempt(pendingFor(appointment, fileUri, resume), 'Upload incomplete');
+    await attempt(pendingFor(label, fileUri, resume), 'Upload incomplete');
   }
 
   async function attempt(item: PendingItem, failureTitle: string) {
@@ -142,8 +142,7 @@ export function RecordScreen({
 
   return (
     <View style={styles.screen}>
-      <Text style={styles.patient}>{appointment.patient_name || appointment.patient_id}</Text>
-      <Text style={styles.meta}>Appointment {appointment.appointment_id}</Text>
+      <Text style={styles.patient}>{label}</Text>
 
       <View style={styles.row}>
         <Text style={styles.body}>Consent confirmed</Text>
@@ -166,7 +165,7 @@ export function RecordScreen({
         />
       )}
 
-      {!isRecording && !uploading && <Button title="Back to appointments" onPress={() => onDone()} />}
+      {!isRecording && !uploading && <Button title="Back" onPress={onDone} />}
     </View>
   );
 }
@@ -174,7 +173,6 @@ export function RecordScreen({
 const styles = StyleSheet.create({
   screen: { flex: 1, padding: 24, gap: 16, backgroundColor: '#ffffff' },
   patient: { fontSize: 22, fontWeight: '700', color: '#0f172a' },
-  meta: { color: '#64748b' },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   body: { color: '#1e293b' },
   timer: { fontSize: 48, textAlign: 'center', fontVariant: ['tabular-nums'], color: '#0f172a' },

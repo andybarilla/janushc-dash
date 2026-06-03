@@ -1,14 +1,11 @@
-import { Appointment } from './api';
 import { pendingFor, upsertPending } from './pending';
 import { PendingItem } from './upload-queue';
 
 function item(overrides: Partial<PendingItem> = {}): PendingItem {
   return {
-    id: 'appt-1',
-    fileUri: 'file:///tmp/appt-1.m4a',
-    patientId: '55',
-    appointmentId: 'appt-1',
-    departmentId: '1',
+    id: 'rec-1',
+    fileUri: 'file:///tmp/rec-1.m4a',
+    label: 'Jane D.',
     sessionId: null,
     status: 'needs-session',
     ...overrides,
@@ -31,47 +28,36 @@ test('drops a recording once it reaches done', () => {
 });
 
 test('leaves other recordings untouched', () => {
-  const other = item({ id: 'appt-2', appointmentId: 'appt-2' });
+  const other = item({ id: 'rec-2' });
   const result = upsertPending([other], item({ status: 'needs-upload' }));
   expect(result).toContainEqual(other);
   expect(result).toHaveLength(2);
 });
 
-function appointment(): Appointment {
-  return {
-    appointment_id: 'appt-1',
-    patient_id: '55',
-    patient_name: 'Pat',
-    time: '09:00',
-    department_id: '1',
-    status: '2',
-  };
-}
-
 test('pendingFor builds a fresh needs-session item with no held attempt', () => {
-  const result = pendingFor(appointment(), 'file:///new.m4a');
+  const result = pendingFor('Jane D.', 'file:///new.m4a');
   expect(result).toMatchObject({
-    id: 'appt-1',
-    appointmentId: 'appt-1',
-    patientId: '55',
-    departmentId: '1',
+    label: 'Jane D.',
     fileUri: 'file:///new.m4a',
     sessionId: null,
     status: 'needs-session',
   });
+  expect(typeof result.id).toBe('string');
+  expect(result.id.length).toBeGreaterThan(0);
 });
 
 test('pendingFor reuses a held session so a re-record does not duplicate it', () => {
   const held = item({ status: 'needs-upload', sessionId: 'sess-1' });
-  const result = pendingFor(appointment(), 'file:///rerecord.m4a', held);
+  const result = pendingFor('Jane D.', 'file:///rerecord.m4a', held);
   expect(result.sessionId).toBe('sess-1');
   expect(result.status).toBe('needs-upload');
   expect(result.fileUri).toBe('file:///rerecord.m4a');
+  expect(result.id).toBe('rec-1');
 });
 
 test('pendingFor ignores a held attempt that never created a session', () => {
   const held = item({ status: 'needs-session', sessionId: null });
-  const result = pendingFor(appointment(), 'file:///rerecord.m4a', held);
+  const result = pendingFor('Jane D.', 'file:///rerecord.m4a', held);
   expect(result.sessionId).toBeNull();
   expect(result.status).toBe('needs-session');
 });

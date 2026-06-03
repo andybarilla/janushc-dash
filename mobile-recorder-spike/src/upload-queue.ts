@@ -3,9 +3,7 @@ export type PendingStatus = 'needs-session' | 'needs-upload' | 'done';
 export type PendingItem = {
   id: string;
   fileUri: string;
-  patientId: string;
-  appointmentId: string;
-  departmentId: string;
+  label: string;
   sessionId: string | null;
   status: PendingStatus;
 };

@@ -6,14 +6,7 @@ import { PendingItem, processItem } from './upload-queue';
 // catches API errors and returns the item at its furthest-reached status.
 export function runUpload(opts: ApiOptions, item: PendingItem): Promise<PendingItem> {
   return processItem(item, {
-    createSession: async (it) =>
-      (
-        await createSession(opts, {
-          patient_id: it.patientId,
-          appointment_id: it.appointmentId,
-          department_id: it.departmentId,
-        })
-      ).id,
+    createSession: async (it) => (await createSession(opts, { label: it.label })).id,
     uploadAudio: (sessionId, it) => uploadAudio(opts, sessionId, it.fileUri),
   });
 }
