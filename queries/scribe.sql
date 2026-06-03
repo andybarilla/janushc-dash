@@ -5,9 +5,9 @@ RETURNING id, tenant_id, user_id, patient_id, encounter_id, appointment_id, depa
           transcript, ai_output, error_message, started_at, stopped_at, completed_at, created_at;
 
 -- name: GetScribeSession :one
-SELECT id, tenant_id, user_id, patient_id, encounter_id, department_id, label, status,
+SELECT id, tenant_id, user_id, patient_id, encounter_id, department_id, status,
        transcript, ai_output, error_message, started_at, stopped_at, completed_at, created_at,
-       sent_to_ehr_at, sent_to_ehr_by, rejected_at, rejected_by, appointment_id
+       sent_to_ehr_at, sent_to_ehr_by, rejected_at, rejected_by, appointment_id, label
 FROM scribe_sessions
 WHERE id = $1 AND tenant_id = $2;
 

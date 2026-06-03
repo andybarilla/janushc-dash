@@ -98,9 +98,9 @@ func (q *Queries) DeleteScribeSession(ctx context.Context, arg DeleteScribeSessi
 }
 
 const getScribeSession = `-- name: GetScribeSession :one
-SELECT id, tenant_id, user_id, patient_id, encounter_id, department_id, label, status,
+SELECT id, tenant_id, user_id, patient_id, encounter_id, department_id, status,
        transcript, ai_output, error_message, started_at, stopped_at, completed_at, created_at,
-       sent_to_ehr_at, sent_to_ehr_by, rejected_at, rejected_by, appointment_id
+       sent_to_ehr_at, sent_to_ehr_by, rejected_at, rejected_by, appointment_id, label
 FROM scribe_sessions
 WHERE id = $1 AND tenant_id = $2
 `
@@ -110,32 +110,9 @@ type GetScribeSessionParams struct {
 	TenantID pgtype.UUID `json:"tenant_id"`
 }
 
-type GetScribeSessionRow struct {
-	ID            pgtype.UUID        `json:"id"`
-	TenantID      pgtype.UUID        `json:"tenant_id"`
-	UserID        pgtype.UUID        `json:"user_id"`
-	PatientID     string             `json:"patient_id"`
-	EncounterID   string             `json:"encounter_id"`
-	DepartmentID  string             `json:"department_id"`
-	Label         string             `json:"label"`
-	Status        string             `json:"status"`
-	Transcript    pgtype.Text        `json:"transcript"`
-	AiOutput      []byte             `json:"ai_output"`
-	ErrorMessage  pgtype.Text        `json:"error_message"`
-	StartedAt     pgtype.Timestamptz `json:"started_at"`
-	StoppedAt     pgtype.Timestamptz `json:"stopped_at"`
-	CompletedAt   pgtype.Timestamptz `json:"completed_at"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
-	SentToEhrAt   pgtype.Timestamptz `json:"sent_to_ehr_at"`
-	SentToEhrBy   pgtype.UUID        `json:"sent_to_ehr_by"`
-	RejectedAt    pgtype.Timestamptz `json:"rejected_at"`
-	RejectedBy    pgtype.UUID        `json:"rejected_by"`
-	AppointmentID string             `json:"appointment_id"`
-}
-
-func (q *Queries) GetScribeSession(ctx context.Context, arg GetScribeSessionParams) (GetScribeSessionRow, error) {
+func (q *Queries) GetScribeSession(ctx context.Context, arg GetScribeSessionParams) (ScribeSession, error) {
 	row := q.db.QueryRow(ctx, getScribeSession, arg.ID, arg.TenantID)
-	var i GetScribeSessionRow
+	var i ScribeSession
 	err := row.Scan(
 		&i.ID,
 		&i.TenantID,
@@ -143,7 +120,6 @@ func (q *Queries) GetScribeSession(ctx context.Context, arg GetScribeSessionPara
 		&i.PatientID,
 		&i.EncounterID,
 		&i.DepartmentID,
-		&i.Label,
 		&i.Status,
 		&i.Transcript,
 		&i.AiOutput,
@@ -157,6 +133,7 @@ func (q *Queries) GetScribeSession(ctx context.Context, arg GetScribeSessionPara
 		&i.RejectedAt,
 		&i.RejectedBy,
 		&i.AppointmentID,
+		&i.Label,
 	)
 	return i, err
 }
