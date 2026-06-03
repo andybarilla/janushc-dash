@@ -132,6 +132,8 @@ export function ReviewScreen({
   const inPipeline = isInPipeline(statusId);
 
   const hasSections = !!session.ai_output;
+  // Label-only sessions (mobile freeform identifier) have no Athena linkage, so
+  // Send-to-EHR is hidden. Assumes a session is never both label and Athena-linked.
   const isLabelOnly = !!session.label?.trim();
   const approvedCount = (Object.keys(approvals) as SectionKey[]).filter(
     (k) => approvals[k],

@@ -173,7 +173,7 @@ export function RecordScreen({ label, onDone }: { label: string; onDone: () => v
 const styles = StyleSheet.create({
   screen: { flex: 1, padding: 24, gap: 16, backgroundColor: '#ffffff' },
   patient: { fontSize: 22, fontWeight: '700', color: '#0f172a' },
-row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   body: { color: '#1e293b' },
   timer: { fontSize: 48, textAlign: 'center', fontVariant: ['tabular-nums'], color: '#0f172a' },
 });
