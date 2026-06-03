@@ -2321,3 +2321,8 @@
   min-height: 360px;
   resize: vertical;
 }
+
+.janus-review-hint {
+  color: var(--janus-text-light);
+  font-size: 0.875rem;
+}

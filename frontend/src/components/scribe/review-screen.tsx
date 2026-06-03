@@ -132,6 +132,7 @@ export function ReviewScreen({
   const inPipeline = isInPipeline(statusId);
 
   const hasSections = !!session.ai_output;
+  const isLabelOnly = !!session.label?.trim();
   const approvedCount = (Object.keys(approvals) as SectionKey[]).filter(
     (k) => approvals[k],
   ).length;
@@ -241,7 +242,7 @@ export function ReviewScreen({
                 Reject
               </button>
             ) : null}
-            {canApprove ? (
+            {canApprove && !isLabelOnly ? (
               <button
                 type="button"
                 className="janus-btn janus-btn-primary"
@@ -258,6 +259,11 @@ export function ReviewScreen({
                 {isSent ? <Check /> : <Send />}
                 {isSent ? "Sent to EHR" : "Send to EHR"}
               </button>
+            ) : null}
+            {isLabelOnly ? (
+              <span className="janus-review-hint">
+                No EHR link — copy each section into Athena manually.
+              </span>
             ) : null}
           </div>
         </div>
