@@ -2,7 +2,7 @@ import { Audio } from 'expo-av';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, StyleSheet, Switch, Text, View } from 'react-native';
-import { createSession, Encounter, uploadAudio } from '../api';
+import { createSession, uploadAudio } from '../api';
 import { useAuth } from '../auth';
 import { PendingItem, processItem } from '../upload-queue';
 
@@ -14,7 +14,7 @@ function formatDuration(ms: number) {
   return [h, m, s].map((p) => String(p).padStart(2, '0')).join(':');
 }
 
-export function RecordScreen({ encounter, onDone }: { encounter: Encounter; onDone: () => void }) {
+export function RecordScreen({ label, onDone }: { label: string; onDone: () => void }) {
   const { token, baseUrl, signOut } = useAuth();
   const opts = useMemo(() => ({ baseUrl, token, onUnauthorized: signOut }), [baseUrl, token, signOut]);
   const recordingRef = useRef<Audio.Recording | null>(null);
@@ -95,21 +95,14 @@ export function RecordScreen({ encounter, onDone }: { encounter: Encounter; onDo
   async function upload(fileUri: string) {
     setUploading(true);
     const item: PendingItem = {
-      id: encounter.encounter_id,
+      id: String(Date.now()),
       fileUri,
-      patientId: encounter.patient_id,
-      encounterId: encounter.encounter_id,
-      departmentId: encounter.department_id,
+      label,
       sessionId: null,
       status: 'needs-session',
     };
     const result = await processItem(item, {
-      createSession: async (it) =>
-        (await createSession(opts, {
-          patient_id: it.patientId,
-          encounter_id: it.encounterId,
-          department_id: it.departmentId,
-        })).id,
+      createSession: async (it) => (await createSession(opts, { label: it.label })).id,
       uploadAudio: async (sessionId) => uploadAudio(opts, sessionId, fileUri),
     });
     setUploading(false);
@@ -132,12 +125,7 @@ export function RecordScreen({ encounter, onDone }: { encounter: Encounter; onDo
   async function retry(prev: PendingItem) {
     setUploading(true);
     const result = await processItem(prev, {
-      createSession: async (it) =>
-        (await createSession(opts, {
-          patient_id: it.patientId,
-          encounter_id: it.encounterId,
-          department_id: it.departmentId,
-        })).id,
+      createSession: async (it) => (await createSession(opts, { label: it.label })).id,
       uploadAudio: async (sessionId) => uploadAudio(opts, sessionId, prev.fileUri),
     });
     setUploading(false);
@@ -154,8 +142,7 @@ export function RecordScreen({ encounter, onDone }: { encounter: Encounter; onDo
 
   return (
     <View style={styles.screen}>
-      <Text style={styles.patient}>{encounter.patient_name || encounter.patient_id}</Text>
-      <Text style={styles.meta}>Encounter {encounter.encounter_id}</Text>
+      <Text style={styles.patient}>{label}</Text>
 
       <View style={styles.row}>
         <Text style={styles.body}>Consent confirmed</Text>

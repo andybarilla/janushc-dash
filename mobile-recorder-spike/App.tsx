@@ -1,15 +1,14 @@
 import Constants from 'expo-constants';
 import { useState } from 'react';
 import { ActivityIndicator, StatusBar, StyleSheet, View } from 'react-native';
-import { Encounter } from './src/api';
 import { AuthProvider, useAuth } from './src/auth';
-import { PickEncounterScreen } from './src/screens/pick-encounter';
+import { LabelEntryScreen } from './src/screens/label-entry';
 import { RecordScreen } from './src/screens/record';
 import { SignInScreen } from './src/screens/sign-in';
 
 function Root() {
   const { ready, token } = useAuth();
-  const [selected, setSelected] = useState<Encounter | null>(null);
+  const [label, setLabel] = useState<string | null>(null);
 
   if (!ready) {
     return (
@@ -20,8 +19,8 @@ function Root() {
   }
 
   if (!token) return <SignInScreen />;
-  if (selected) return <RecordScreen encounter={selected} onDone={() => setSelected(null)} />;
-  return <PickEncounterScreen onSelect={setSelected} />;
+  if (label) return <RecordScreen label={label} onDone={() => setLabel(null)} />;
+  return <LabelEntryScreen onSelect={setLabel} />;
 }
 
 export default function App() {
