@@ -119,6 +119,7 @@ type ScribeSession struct {
 	RejectedAt    pgtype.Timestamptz `json:"rejected_at"`
 	RejectedBy    pgtype.UUID        `json:"rejected_by"`
 	AppointmentID string             `json:"appointment_id"`
+	Label         string             `json:"label"`
 }
 
 type ScribeUsageEvent struct {
