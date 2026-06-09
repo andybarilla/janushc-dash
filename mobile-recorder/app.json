@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "JanusHC Recorder Spike",
-    "slug": "janushc-recorder-spike",
+    "name": "JanusHC Recorder",
+    "slug": "janushc-recorder",
     "scheme": "janushcrecorder",
     "version": "0.1.0",
     "orientation": "portrait",
     "ios": {
-      "bundleIdentifier": "com.janushc.recorder.spike",
+      "bundleIdentifier": "com.janushc.recorder",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "JanusHC records visit audio so it can be transcribed and summarized for clinician review.",
         "UIBackgroundModes": [
@@ -16,11 +16,13 @@
       }
     },
     "android": {
-      "package": "com.janushc.recorder.spike",
+      "package": "com.janushc.recorder",
       "permissions": [
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_MICROPHONE",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
     },
     "plugins": [
@@ -33,11 +35,12 @@
       "@react-native-google-signin/google-signin"
     ],
     "extra": {
-      "apiBaseUrl": "http://localhost:8080",
+      "apiBaseUrl": "https://dash.janushc.com",
       "googleWebClientId": "REPLACE_WITH_GOOGLE_CLIENT_ID",
       "eas": {
-        "projectId": "c140e7c5-2100-4b74-a1b6-4469c7ee92c8"
+        "projectId": "d2cbdcc8-a9f4-4ab9-a0d2-d3863afea49b"
       }
-    }
+    },
+    "owner": "andybarilla"
   }
 }
