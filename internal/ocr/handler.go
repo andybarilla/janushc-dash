@@ -334,3 +334,104 @@ func statusForLoadError(err error) int {
 		return http.StatusBadRequest
 	}
 }
+
+type processRequest struct {
+	PatientID     string `json:"patient_id"`
+	AppointmentID string `json:"appointment_id"`
+	DepartmentID  string `json:"department_id"`
+}
+
+func (req processRequest) validate() error {
+	if req.PatientID == "" {
+		return fmt.Errorf("patient_id required")
+	}
+	if req.AppointmentID == "" {
+		return fmt.Errorf("appointment_id required")
+	}
+	if req.DepartmentID == "" {
+		return fmt.Errorf("department_id required")
+	}
+	return nil
+}
+
+type processResponse struct {
+	ScribeSessionID string `json:"scribe_session_id"`
+}
+
+// HandleProcess promotes an extracted document into the scribe pipeline: it
+// creates a scribe_session seeded with the OCR text as transcript plus the chosen
+// patient binding, runs the existing processor, and links the session back to the
+// document. The created session is excluded from the scribe list (document_id IS
+// NOT NULL); the client navigates to /scribe/sessions/:id to review it.
+func (h *Handler) HandleProcess(w http.ResponseWriter, r *http.Request) {
+	doc, docUUID, tenantUUID, err := h.loadDocument(r)
+	if err != nil {
+		http.Error(w, err.Error(), statusForLoadError(err))
+		return
+	}
+	if doc.Status != "extracted" || !doc.ExtractedText.Valid {
+		http.Error(w, "document is not ready to process", http.StatusBadRequest)
+		return
+	}
+	if doc.ScribeSessionID.Valid {
+		http.Error(w, "document already processed", http.StatusBadRequest)
+		return
+	}
+
+	var req processRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := req.validate(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	session, err := h.queries.CreateDocumentScribeSession(r.Context(), database.CreateDocumentScribeSessionParams{
+		TenantID:      tenantUUID,
+		UserID:        doc.UserID,
+		PatientID:     req.PatientID,
+		AppointmentID: req.AppointmentID,
+		DepartmentID:  req.DepartmentID,
+		Transcript:    pgtype.Text{String: doc.ExtractedText.String, Valid: true},
+		DocumentID:    docUUID,
+	})
+	if err != nil {
+		http.Error(w, "failed to create session", http.StatusInternalServerError)
+		return
+	}
+
+	// Link the document to its session immediately so the UI can navigate even if
+	// processing then fails.
+	_ = h.queries.SetOCRDocumentScribeSession(r.Context(), database.SetOCRDocumentScribeSessionParams{
+		ID:              docUUID,
+		TenantID:        tenantUUID,
+		ScribeSessionID: session.ID,
+	})
+
+	result, procErr := h.processor.Process(r.Context(), h.cfg.AthenaPracticeID, req.PatientID, doc.ExtractedText.String)
+	if procErr != nil {
+		log.Printf("ocr process error for document %s: %v", uuidToString(docUUID), procErr)
+		_ = h.queries.UpdateScribeSessionError(r.Context(), database.UpdateScribeSessionErrorParams{
+			ID:           session.ID,
+			TenantID:     tenantUUID,
+			ErrorMessage: pgtype.Text{String: procErr.Error(), Valid: true},
+		})
+		http.Error(w, "processing failed", http.StatusInternalServerError)
+		return
+	}
+
+	outputJSON, _ := json.Marshal(result.Output)
+	if err := h.queries.UpdateScribeSessionComplete(r.Context(), database.UpdateScribeSessionCompleteParams{
+		ID:       session.ID,
+		TenantID: tenantUUID,
+		AiOutput: outputJSON,
+	}); err != nil {
+		http.Error(w, "failed to save results", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(processResponse{ScribeSessionID: uuidToString(session.ID)})
+}
