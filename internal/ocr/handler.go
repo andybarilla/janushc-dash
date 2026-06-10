@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/andybarilla/janushc-dash/internal/auth"
@@ -220,5 +221,116 @@ func (h *Handler) extractAsync(tenantID, docID, key string) {
 		ExtractedText: pgtype.Text{String: text, Valid: true},
 	}); err != nil {
 		log.Printf("ocr save text error for document %s: %v", docID, err)
+	}
+}
+
+// HandleList returns the tenant's documents, newest first.
+func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	tenantUUID := pgtype.UUID{}
+	if err := tenantUUID.Scan(claims.TenantID); err != nil {
+		http.Error(w, "invalid tenant context", http.StatusBadRequest)
+		return
+	}
+
+	docs, err := h.queries.ListOCRDocuments(r.Context(), tenantUUID)
+	if err != nil {
+		http.Error(w, "failed to list documents", http.StatusInternalServerError)
+		return
+	}
+	result := make([]documentResponse, 0, len(docs))
+	for _, d := range docs {
+		result = append(result, toDocumentResponse(d))
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(result)
+}
+
+func (h *Handler) loadDocument(r *http.Request) (database.OcrDocument, pgtype.UUID, pgtype.UUID, error) {
+	claims := auth.ClaimsFromContext(r.Context())
+	docUUID := pgtype.UUID{}
+	tenantUUID := pgtype.UUID{}
+	if claims == nil {
+		return database.OcrDocument{}, docUUID, tenantUUID, fmt.Errorf("unauthorized")
+	}
+	if err := docUUID.Scan(chi.URLParam(r, "id")); err != nil {
+		return database.OcrDocument{}, docUUID, tenantUUID, fmt.Errorf("invalid document id")
+	}
+	if err := tenantUUID.Scan(claims.TenantID); err != nil {
+		return database.OcrDocument{}, docUUID, tenantUUID, fmt.Errorf("invalid tenant context")
+	}
+	doc, err := h.queries.GetOCRDocument(r.Context(), database.GetOCRDocumentParams{ID: docUUID, TenantID: tenantUUID})
+	if err != nil {
+		return database.OcrDocument{}, docUUID, tenantUUID, fmt.Errorf("not found")
+	}
+	return doc, docUUID, tenantUUID, nil
+}
+
+// HandleGet returns one document (the frontend polls this while extracting).
+func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
+	doc, _, _, err := h.loadDocument(r)
+	if err != nil {
+		http.Error(w, err.Error(), statusForLoadError(err))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(toDocumentResponse(doc))
+}
+
+// HandleFile streams the original uploaded file from S3.
+func (h *Handler) HandleFile(w http.ResponseWriter, r *http.Request) {
+	doc, _, _, err := h.loadDocument(r)
+	if err != nil {
+		http.Error(w, err.Error(), statusForLoadError(err))
+		return
+	}
+	claims := auth.ClaimsFromContext(r.Context())
+	key := documentS3Key(claims.TenantID, uuidToString(doc.ID), doc.OriginalFilename)
+	body, contentType, err := h.client.GetObject(r.Context(), key)
+	if err != nil {
+		http.Error(w, "file not found", http.StatusNotFound)
+		return
+	}
+	defer body.Close()
+	if contentType == "" {
+		contentType = doc.ContentType
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", doc.OriginalFilename))
+	_, _ = io.Copy(w, body)
+}
+
+// HandleDelete removes the document row and its S3 object.
+func (h *Handler) HandleDelete(w http.ResponseWriter, r *http.Request) {
+	doc, docUUID, tenantUUID, err := h.loadDocument(r)
+	if err != nil {
+		http.Error(w, err.Error(), statusForLoadError(err))
+		return
+	}
+	claims := auth.ClaimsFromContext(r.Context())
+	key := documentS3Key(claims.TenantID, uuidToString(doc.ID), doc.OriginalFilename)
+	if delErr := h.client.DeleteObject(r.Context(), key); delErr != nil {
+		log.Printf("ocr delete s3 object error for document %s: %v", uuidToString(doc.ID), delErr)
+	}
+	rows, err := h.queries.DeleteOCRDocument(r.Context(), database.DeleteOCRDocumentParams{ID: docUUID, TenantID: tenantUUID})
+	if err != nil || rows == 0 {
+		http.Error(w, "failed to delete document", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func statusForLoadError(err error) int {
+	switch err.Error() {
+	case "unauthorized":
+		return http.StatusUnauthorized
+	case "not found":
+		return http.StatusNotFound
+	default:
+		return http.StatusBadRequest
 	}
 }
