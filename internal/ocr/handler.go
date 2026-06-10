@@ -39,6 +39,21 @@ var allowedExts = map[string]bool{
 	".pdf": true, ".png": true, ".jpg": true, ".jpeg": true, ".tif": true, ".tiff": true,
 }
 
+func contentTypeForFilename(filename string) string {
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".pdf":
+		return "application/pdf"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".tif", ".tiff":
+		return "image/tiff"
+	default:
+		return "application/octet-stream"
+	}
+}
+
 func validateDocumentExt(ext string) error {
 	if !allowedExts[strings.ToLower(ext)] {
 		return fmt.Errorf("unsupported file type %q (allowed: pdf, png, jpg, jpeg, tif, tiff)", ext)
@@ -290,16 +305,14 @@ func (h *Handler) HandleFile(w http.ResponseWriter, r *http.Request) {
 	}
 	claims := auth.ClaimsFromContext(r.Context())
 	key := documentS3Key(claims.TenantID, uuidToString(doc.ID), doc.OriginalFilename)
-	body, contentType, err := h.client.GetObject(r.Context(), key)
+	body, _, err := h.client.GetObject(r.Context(), key)
 	if err != nil {
 		http.Error(w, "file not found", http.StatusNotFound)
 		return
 	}
 	defer body.Close()
-	if contentType == "" {
-		contentType = doc.ContentType
-	}
-	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Type", contentTypeForFilename(doc.OriginalFilename))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", doc.OriginalFilename))
 	_, _ = io.Copy(w, body)
 }
@@ -378,6 +391,13 @@ func (h *Handler) HandleProcess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	claims := auth.ClaimsFromContext(r.Context())
+	userUUID := pgtype.UUID{}
+	if err := userUUID.Scan(claims.UserID); err != nil {
+		http.Error(w, "invalid user context", http.StatusBadRequest)
+		return
+	}
+
 	var req processRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -390,7 +410,7 @@ func (h *Handler) HandleProcess(w http.ResponseWriter, r *http.Request) {
 
 	session, err := h.queries.CreateDocumentScribeSession(r.Context(), database.CreateDocumentScribeSessionParams{
 		TenantID:      tenantUUID,
-		UserID:        doc.UserID,
+		UserID:        userUUID,
 		PatientID:     req.PatientID,
 		AppointmentID: req.AppointmentID,
 		DepartmentID:  req.DepartmentID,
@@ -401,14 +421,6 @@ func (h *Handler) HandleProcess(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to create session", http.StatusInternalServerError)
 		return
 	}
-
-	// Link the document to its session immediately so the UI can navigate even if
-	// processing then fails.
-	_ = h.queries.SetOCRDocumentScribeSession(r.Context(), database.SetOCRDocumentScribeSessionParams{
-		ID:              docUUID,
-		TenantID:        tenantUUID,
-		ScribeSessionID: session.ID,
-	})
 
 	result, procErr := h.processor.Process(r.Context(), h.cfg.AthenaPracticeID, req.PatientID, doc.ExtractedText.String)
 	if procErr != nil {
@@ -431,6 +443,12 @@ func (h *Handler) HandleProcess(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to save results", http.StatusInternalServerError)
 		return
 	}
+
+	_ = h.queries.SetOCRDocumentScribeSession(r.Context(), database.SetOCRDocumentScribeSessionParams{
+		ID:              docUUID,
+		TenantID:        tenantUUID,
+		ScribeSessionID: session.ID,
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(processResponse{ScribeSessionID: uuidToString(session.ID)})

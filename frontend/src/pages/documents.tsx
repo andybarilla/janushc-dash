@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "@/lib/api";
 import {
   useDocuments,
   useDocument,
@@ -170,14 +171,20 @@ function DocumentDetail({ id, onDeleted, onProcessed }: DocumentDetailProps) {
             <button className="btn btn-secondary btn-sm" onClick={downloadText}>
               Download
             </button>
-            <a
-              href={`/api/ocr/documents/${id}/file`}
-              target="_blank"
-              rel="noreferrer"
+            <button
               className="btn btn-secondary btn-sm"
+              onClick={async () => {
+                try {
+                  const blob = await api.fetchBlob(`/api/ocr/documents/${id}/file`);
+                  const url = URL.createObjectURL(blob);
+                  window.open(url, "_blank", "noopener");
+                } catch (e) {
+                  console.error("failed to open file", e);
+                }
+              }}
             >
               View original
-            </a>
+            </button>
             {doc.scribe_session_id ? (
               <button
                 className="btn btn-primary btn-sm"
