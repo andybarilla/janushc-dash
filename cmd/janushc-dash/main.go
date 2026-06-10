@@ -18,6 +18,7 @@ import (
 	"github.com/andybarilla/janushc-dash/internal/config"
 	"github.com/andybarilla/janushc-dash/internal/database"
 	"github.com/andybarilla/janushc-dash/internal/emr/athena"
+	"github.com/andybarilla/janushc-dash/internal/ocr"
 	"github.com/andybarilla/janushc-dash/internal/scribe"
 	"github.com/andybarilla/janushc-dash/internal/server"
 	"github.com/andybarilla/janushc-dash/internal/transcribe"
@@ -150,7 +151,15 @@ func main() {
 	scribeProcessor := scribe.NewProcessor(bedrockClient, athenaClient)
 	scribeHandler := scribe.NewHandler(queries, scribeProcessor, cfg, transcribeBatchClient, athenaClient)
 
+	// OCR document upload reuses the transcribe S3 bucket (ocr/ prefix) and the
+	// scribe processor for the optional clinical-note pipeline.
+	ocrClient, err := ocr.NewClient(context.Background(), cfg.AWSRegion, cfg.AWSTranscribeBucket)
+	if err != nil {
+		log.Fatalf("failed to create OCR client: %v", err)
+	}
+	ocrHandler := ocr.NewHandler(queries, scribeProcessor, ocrClient, cfg)
+
 	// Start server
-	srv := server.New(cfg, pool, queries, authHandler, approvalHandler, usersHandler, scribeHandler)
+	srv := server.New(cfg, pool, queries, authHandler, approvalHandler, usersHandler, scribeHandler, ocrHandler)
 	log.Fatal(srv.Start())
 }
