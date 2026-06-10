@@ -22,6 +22,7 @@ import (
 	"github.com/andybarilla/janushc-dash/internal/config"
 	"github.com/andybarilla/janushc-dash/internal/database"
 	"github.com/andybarilla/janushc-dash/internal/emr"
+	"github.com/andybarilla/janushc-dash/internal/ocr"
 	"github.com/andybarilla/janushc-dash/internal/transcribe"
 )
 
@@ -31,10 +32,16 @@ type Handler struct {
 	cfg       *config.Config
 	batch     *transcribe.BatchClient
 	emr       emr.EMR
+	ocrClient *ocr.Client
 }
 
-func NewHandler(queries *database.Queries, processor *Processor, cfg *config.Config, batch *transcribe.BatchClient, emrClient emr.EMR) *Handler {
-	return &Handler{queries: queries, processor: processor, cfg: cfg, batch: batch, emr: emrClient}
+func NewHandler(queries *database.Queries, processor *Processor, cfg *config.Config, batch *transcribe.BatchClient, emrClient emr.EMR, ocrClient *ocr.Client) *Handler {
+	return &Handler{queries: queries, processor: processor, cfg: cfg, batch: batch, emr: emrClient, ocrClient: ocrClient}
+}
+
+func documentS3Key(tenantID, sessionID, filename string) string {
+	ext := strings.ToLower(filepath.Ext(filename))
+	return fmt.Sprintf("scribe-documents/%s/%s%s", tenantID, sessionID, ext)
 }
 
 const maxUploadSize = 100 << 20 // 100 MB
@@ -134,11 +141,12 @@ type sectionStateCore struct {
 
 type sessionDetailResponse struct {
 	sessionResponse
-	Transcript     string                  `json:"transcript,omitempty"`
-	AIOutput       *ScribeOutput           `json:"ai_output,omitempty"`
-	Sections       map[string]sectionState `json:"sections"`
-	AudioAvailable bool                    `json:"audio_available"`
-	Usage          *usageSummaryResponse   `json:"usage,omitempty"`
+	Transcript       string                  `json:"transcript,omitempty"`
+	AIOutput         *ScribeOutput           `json:"ai_output,omitempty"`
+	Sections         map[string]sectionState `json:"sections"`
+	AudioAvailable   bool                    `json:"audio_available"`
+	DocumentFilename string                  `json:"document_filename,omitempty"`
+	Usage            *usageSummaryResponse   `json:"usage,omitempty"`
 }
 
 type usageSummaryResponse struct {
@@ -603,8 +611,9 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := sessionDetailResponse{
-		sessionResponse: toSessionResponse(session),
-		AudioAvailable:  h.sessionAudioAvailable(claims.TenantID, sessionID),
+		sessionResponse:  toSessionResponse(session),
+		AudioAvailable:   h.sessionAudioAvailable(claims.TenantID, sessionID),
+		DocumentFilename: session.DocumentFilename,
 	}
 	if session.Transcript.Valid {
 		resp.Transcript = session.Transcript.String
@@ -1134,6 +1143,212 @@ func (h *Handler) processSessionAsync(tenantID, sessionID, audioPath, ext, patie
 		return
 	}
 	log.Printf("scribe async [%s] complete", sessionID)
+}
+
+func (h *Handler) HandleUploadDocument(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	sessionID := chi.URLParam(r, "id")
+	sessionUUID := pgtype.UUID{}
+	if err := sessionUUID.Scan(sessionID); err != nil {
+		http.Error(w, "invalid session ID", http.StatusBadRequest)
+		return
+	}
+	tenantUUID := pgtype.UUID{}
+	if err := tenantUUID.Scan(claims.TenantID); err != nil {
+		http.Error(w, "invalid tenant context", http.StatusBadRequest)
+		return
+	}
+
+	session, err := h.queries.GetScribeSession(r.Context(), database.GetScribeSessionParams{
+		ID:       sessionUUID,
+		TenantID: tenantUUID,
+	})
+	if err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if session.Status == "complete" {
+		http.Error(w, "session already complete", http.StatusBadRequest)
+		return
+	}
+
+	if !h.ocrClient.Configured() {
+		http.Error(w, "OCR storage not configured (set AWS_TRANSCRIBE_BUCKET)", http.StatusInternalServerError)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, ocr.MaxUploadSize)
+	file, header, err := r.FormFile("document")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	if err := ocr.ValidateExt(ext); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	key := documentS3Key(claims.TenantID, sessionID, header.Filename)
+	if err := h.ocrClient.PutObject(r.Context(), key, data, ocr.ContentTypeForFilename(header.Filename)); err != nil {
+		log.Printf("scribe document upload s3 error for session %s: %v", sessionID, err)
+		_ = h.queries.UpdateScribeSessionError(r.Context(), database.UpdateScribeSessionErrorParams{
+			ID:           sessionUUID,
+			TenantID:     tenantUUID,
+			ErrorMessage: pgtype.Text{String: fmt.Sprintf("upload document to S3 failed: %v", err), Valid: true},
+		})
+		http.Error(w, "failed to upload document", http.StatusInternalServerError)
+		return
+	}
+
+	if err := h.queries.SetScribeSessionDocumentFilename(r.Context(), database.SetScribeSessionDocumentFilenameParams{
+		ID:               sessionUUID,
+		TenantID:         tenantUUID,
+		DocumentFilename: header.Filename,
+	}); err != nil {
+		log.Printf("scribe document filename save error for session %s: %v", sessionID, err)
+		http.Error(w, "failed to save document filename", http.StatusInternalServerError)
+		return
+	}
+
+	go h.processDocumentAsync(claims.TenantID, sessionID, key, session.PatientID)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	_ = json.NewEncoder(w).Encode(toSessionResponse(session))
+}
+
+func (h *Handler) processDocumentAsync(tenantID, sessionID, key, patientID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
+	sessionUUID := pgtype.UUID{}
+	if err := sessionUUID.Scan(sessionID); err != nil {
+		log.Printf("scribe doc async invalid session ID %s: %v", sessionID, err)
+		return
+	}
+	tenantUUID := pgtype.UUID{}
+	if err := tenantUUID.Scan(tenantID); err != nil {
+		log.Printf("scribe doc async invalid tenant %s: %v", tenantID, err)
+		return
+	}
+	setError := func(msg string) {
+		_ = h.queries.UpdateScribeSessionError(ctx, database.UpdateScribeSessionErrorParams{
+			ID:           sessionUUID,
+			TenantID:     tenantUUID,
+			ErrorMessage: pgtype.Text{String: msg, Valid: true},
+		})
+	}
+
+	log.Printf("scribe doc async [%s] starting OCR for %s", sessionID, key)
+	jobID, err := h.ocrClient.StartTextDetection(ctx, key)
+	if err != nil {
+		log.Printf("scribe doc async [%s] start OCR error: %v", sessionID, err)
+		setError("failed to start OCR")
+		return
+	}
+
+	text, err := h.ocrClient.WaitTextDetection(ctx, jobID, 5*time.Second)
+	if err != nil {
+		log.Printf("scribe doc async [%s] OCR wait error: %v", sessionID, err)
+		setError("OCR failed")
+		return
+	}
+	log.Printf("scribe doc async [%s] OCR complete, %d chars", sessionID, len(text))
+
+	if err := h.queries.UpdateScribeSessionProcessing(ctx, database.UpdateScribeSessionProcessingParams{
+		ID:         sessionUUID,
+		TenantID:   tenantUUID,
+		Transcript: pgtype.Text{String: text, Valid: true},
+	}); err != nil {
+		log.Printf("scribe doc async [%s] save transcript error: %v", sessionID, err)
+		setError(fmt.Sprintf("save transcript failed: %v", err))
+		return
+	}
+
+	processResult, err := h.processor.Process(ctx, h.cfg.AthenaPracticeID, patientID, text)
+	if err != nil {
+		log.Printf("scribe doc async [%s] AI process error: %v", sessionID, err)
+		var processErr *ProcessError
+		if errors.As(err, &processErr) {
+			h.recordLLMUsage(ctx, sessionUUID, sessionID, processErr.Usage)
+		}
+		setError(err.Error())
+		return
+	}
+
+	h.recordLLMUsage(ctx, sessionUUID, sessionID, processResult.Usage)
+
+	outputJSON, _ := json.Marshal(processResult.Output)
+	if err := h.queries.UpdateScribeSessionComplete(ctx, database.UpdateScribeSessionCompleteParams{
+		ID:       sessionUUID,
+		TenantID: tenantUUID,
+		AiOutput: outputJSON,
+	}); err != nil {
+		log.Printf("scribe doc async [%s] save AI output error: %v", sessionID, err)
+		setError(fmt.Sprintf("save AI output failed: %v", err))
+		return
+	}
+	log.Printf("scribe doc async [%s] complete", sessionID)
+}
+
+func (h *Handler) HandleDocument(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	sessionID := chi.URLParam(r, "id")
+	sessionUUID := pgtype.UUID{}
+	if err := sessionUUID.Scan(sessionID); err != nil {
+		http.Error(w, "invalid session ID", http.StatusBadRequest)
+		return
+	}
+	tenantUUID := pgtype.UUID{}
+	if err := tenantUUID.Scan(claims.TenantID); err != nil {
+		http.Error(w, "invalid tenant context", http.StatusBadRequest)
+		return
+	}
+
+	session, err := h.queries.GetScribeSession(r.Context(), database.GetScribeSessionParams{
+		ID:       sessionUUID,
+		TenantID: tenantUUID,
+	})
+	if err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if session.DocumentFilename == "" {
+		http.Error(w, "document not found", http.StatusNotFound)
+		return
+	}
+
+	key := documentS3Key(claims.TenantID, sessionID, session.DocumentFilename)
+	body, _, err := h.ocrClient.GetObject(r.Context(), key)
+	if err != nil {
+		http.Error(w, "document not found", http.StatusNotFound)
+		return
+	}
+	defer body.Close()
+
+	w.Header().Set("Content-Type", ocr.ContentTypeForFilename(session.DocumentFilename))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", session.DocumentFilename))
+	_, _ = io.Copy(w, body)
 }
 
 func (h *Handler) HandleEditSection(w http.ResponseWriter, r *http.Request) {

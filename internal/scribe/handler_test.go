@@ -313,7 +313,7 @@ func TestSaveSessionAudio_PersistsAndRewinds(t *testing.T) {
 	}
 	defer file.Close()
 
-	h := NewHandler(nil, nil, &config.Config{ScribeAudioDir: t.TempDir()}, nil, nil)
+	h := NewHandler(nil, nil, &config.Config{ScribeAudioDir: t.TempDir()}, nil, nil, nil)
 	if _, err := h.saveSessionAudio(file, "tenant-1", "session-1", ext); err != nil {
 		t.Fatalf("saveSessionAudio: %v", err)
 	}
@@ -338,7 +338,7 @@ func TestSaveSessionAudio_PersistsAndRewinds(t *testing.T) {
 }
 
 func TestHandleListAppointmentsRequiresDepartment(t *testing.T) {
-	h := NewHandler(nil, nil, &config.Config{}, nil, nil)
+	h := NewHandler(nil, nil, &config.Config{}, nil, nil, nil)
 	rec := httptest.NewRecorder()
 	h.HandleListAppointments(rec, httptest.NewRequest(http.MethodGet, "/api/scribe/appointments", nil))
 	if rec.Code != http.StatusBadRequest {
@@ -348,7 +348,7 @@ func TestHandleListAppointmentsRequiresDepartment(t *testing.T) {
 
 func TestHandleListAppointmentsReturnsJSONArray(t *testing.T) {
 	processor := &Processor{emr: fakeProcessorEMR{}}
-	h := NewHandler(nil, processor, &config.Config{}, nil, nil)
+	h := NewHandler(nil, processor, &config.Config{}, nil, nil, nil)
 	rec := httptest.NewRecorder()
 	h.HandleListAppointments(rec, httptest.NewRequest(http.MethodGet, "/api/scribe/appointments?department_id=1", nil))
 	if rec.Code != http.StatusOK {
@@ -537,7 +537,7 @@ func (db *sendFakeDB) QueryRow(ctx context.Context, sql string, args ...interfac
 		s.ID, s.TenantID, s.UserID, s.PatientID, s.EncounterID, s.DepartmentID,
 		s.Status, s.Transcript, s.AiOutput, s.ErrorMessage, s.StartedAt, s.StoppedAt,
 		s.CompletedAt, s.CreatedAt, s.SentToEhrAt, s.SentToEhrBy, s.RejectedAt,
-		s.RejectedBy, s.AppointmentID, s.Label, s.DocumentID,
+		s.RejectedBy, s.AppointmentID, s.Label, s.DocumentFilename,
 	}}
 }
 
@@ -620,7 +620,7 @@ func approvedStateRows(sections ...string) [][]interface{} {
 }
 
 func newSendHandler(db *sendFakeDB, emrClient *sendFakeEMR) *Handler {
-	return NewHandler(database.New(db), &Processor{emr: emrClient}, &config.Config{}, nil, emrClient)
+	return NewHandler(database.New(db), &Processor{emr: emrClient}, &config.Config{}, nil, emrClient, nil)
 }
 
 func sendRequest(sessionID string) *http.Request {

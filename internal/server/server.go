@@ -19,7 +19,6 @@ import (
 	"github.com/andybarilla/janushc-dash/internal/auth"
 	"github.com/andybarilla/janushc-dash/internal/config"
 	"github.com/andybarilla/janushc-dash/internal/database"
-	"github.com/andybarilla/janushc-dash/internal/ocr"
 	"github.com/andybarilla/janushc-dash/internal/scribe"
 	"github.com/andybarilla/janushc-dash/internal/users"
 )
@@ -33,10 +32,9 @@ type Server struct {
 	approvalHandler *approval.Handler
 	usersHandler    *users.Handler
 	scribeHandler   *scribe.Handler
-	ocrHandler      *ocr.Handler
 }
 
-func New(cfg *config.Config, db *pgxpool.Pool, queries *database.Queries, authHandler *auth.Handler, approvalHandler *approval.Handler, usersHandler *users.Handler, scribeHandler *scribe.Handler, ocrHandler *ocr.Handler) *Server {
+func New(cfg *config.Config, db *pgxpool.Pool, queries *database.Queries, authHandler *auth.Handler, approvalHandler *approval.Handler, usersHandler *users.Handler, scribeHandler *scribe.Handler) *Server {
 	s := &Server{
 		cfg:             cfg,
 		db:              db,
@@ -46,7 +44,6 @@ func New(cfg *config.Config, db *pgxpool.Pool, queries *database.Queries, authHa
 		approvalHandler: approvalHandler,
 		usersHandler:    usersHandler,
 		scribeHandler:   scribeHandler,
-		ocrHandler:      ocrHandler,
 	}
 	s.setupMiddleware()
 	s.routes()
@@ -123,12 +120,8 @@ func (s *Server) routes() {
 		r.With(auth.RequireRole("physician")).
 			Put("/api/scribe/sessions/{id}/sections/{section}", s.scribeHandler.HandleEditSection)
 
-		r.With(middleware.Timeout(5*time.Minute)).Post("/api/ocr/documents", s.ocrHandler.HandleUpload)
-		r.Get("/api/ocr/documents", s.ocrHandler.HandleList)
-		r.Get("/api/ocr/documents/{id}", s.ocrHandler.HandleGet)
-		r.Get("/api/ocr/documents/{id}/file", s.ocrHandler.HandleFile)
-		r.Delete("/api/ocr/documents/{id}", s.ocrHandler.HandleDelete)
-		r.With(middleware.Timeout(5*time.Minute)).Post("/api/ocr/documents/{id}/process", s.ocrHandler.HandleProcess)
+		r.With(middleware.Timeout(5*time.Minute)).Post("/api/scribe/sessions/{id}/upload-document", s.scribeHandler.HandleUploadDocument)
+		r.Get("/api/scribe/sessions/{id}/document", s.scribeHandler.HandleDocument)
 	})
 
 	// SPA static file serving

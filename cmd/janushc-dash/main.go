@@ -147,19 +147,18 @@ func main() {
 		log.Printf("WARNING: AWS_TRANSCRIBE_BUCKET is not set; scribe audio uploads will fail until it is configured")
 	}
 
-	// Create scribe dependencies
-	scribeProcessor := scribe.NewProcessor(bedrockClient, athenaClient)
-	scribeHandler := scribe.NewHandler(queries, scribeProcessor, cfg, transcribeBatchClient, athenaClient)
-
-	// OCR document upload reuses the transcribe S3 bucket (ocr/ prefix) and the
-	// scribe processor for the optional clinical-note pipeline.
+	// OCR document upload reuses the transcribe S3 bucket (scribe-documents/ prefix)
+	// and routes through the scribe pipeline (OCR text -> 4-section note).
 	ocrClient, err := ocr.NewClient(context.Background(), cfg.AWSRegion, cfg.AWSTranscribeBucket)
 	if err != nil {
 		log.Fatalf("failed to create OCR client: %v", err)
 	}
-	ocrHandler := ocr.NewHandler(queries, scribeProcessor, ocrClient, cfg)
+
+	// Create scribe dependencies
+	scribeProcessor := scribe.NewProcessor(bedrockClient, athenaClient)
+	scribeHandler := scribe.NewHandler(queries, scribeProcessor, cfg, transcribeBatchClient, athenaClient, ocrClient)
 
 	// Start server
-	srv := server.New(cfg, pool, queries, authHandler, approvalHandler, usersHandler, scribeHandler, ocrHandler)
+	srv := server.New(cfg, pool, queries, authHandler, approvalHandler, usersHandler, scribeHandler)
 	log.Fatal(srv.Start())
 }
