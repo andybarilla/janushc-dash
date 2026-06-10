@@ -80,6 +80,7 @@ export interface ScribeSessionDetail extends ScribeSession {
   sent_to_ehr_at?: string;
   rejected_at?: string;
   usage?: ScribeUsageSummary;
+  document_filename?: string;
 }
 
 export interface ScribeDepartment {
@@ -329,6 +330,23 @@ export function useUploadScribeAudio() {
       formData.append("auto_transcribe", String(autoTranscribe));
       return api.upload<ScribeSession>(
         `/api/scribe/sessions/${id}/upload`,
+        formData
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["scribeSessions"] });
+    },
+  });
+}
+
+export function useUploadScribeDocument() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, file }: { id: string; file: File }) => {
+      const formData = new FormData();
+      formData.append("document", file);
+      return api.upload<ScribeSession>(
+        `/api/scribe/sessions/${id}/upload-document`,
         formData
       );
     },

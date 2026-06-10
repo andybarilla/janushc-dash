@@ -11,7 +11,6 @@ import { useCurrentUser } from "@/lib/queries";
 import { AppShell, type AppShellUser } from "@/components/layout/app-shell";
 import LoginPage from "@/pages/login";
 import ScribePage from "@/pages/scribe";
-import DocumentsPage from "@/pages/documents";
 import TeamPage from "@/pages/team";
 
 interface AdminRouteProps {
@@ -64,7 +63,6 @@ export default function App(): ReactElement {
         <Route path="/login" element={<LoginPage />} />
         <Route element={<AuthenticatedLayout />}>
           <Route path="/scribe/*" element={<ScribePage />} />
-          <Route path="/documents/*" element={<DocumentsPage />} />
           <Route
             path="/team"
             element={

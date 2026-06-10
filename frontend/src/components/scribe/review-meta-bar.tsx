@@ -2,12 +2,14 @@ import { useState } from "react";
 import {
   Clock,
   DollarSign,
+  ExternalLink,
   FileText,
   Inbox,
   MessageSquare,
   Play,
   UserRound,
 } from "lucide-react";
+import { api } from "@/lib/api";
 import type {
   ScribeSessionDetail,
   ScribeUsageSummary,
@@ -29,6 +31,12 @@ interface Props {
 
 type Panel = "audio" | "cost" | null;
 
+async function openDocument(sessionId: string) {
+  const blob = await api.fetchBlob(`/api/scribe/sessions/${sessionId}/document`);
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener");
+}
+
 function shortCost(usage?: ScribeUsageSummary): string | null {
   if (!usage) return null;
   const micros = usage.total_actual_cost_micros ?? usage.total_estimated_cost_micros;
@@ -46,7 +54,9 @@ export function ReviewMetaBar({
   hasSections,
 }: Props) {
   const [panel, setPanel] = useState<Panel>(null);
+  const [documentOpening, setDocumentOpening] = useState(false);
   const audioAvailable = hasSections || session.audio_available;
+  const documentAvailable = !!session.document_filename;
   const cost = shortCost(session.usage);
 
   const toggle = (next: Panel) =>
@@ -91,6 +101,24 @@ export function ReviewMetaBar({
             >
               <Play />
               Audio
+            </button>
+          ) : null}
+          {documentAvailable ? (
+            <button
+              type="button"
+              className="janus-meta-pill"
+              disabled={documentOpening}
+              onClick={async () => {
+                setDocumentOpening(true);
+                try {
+                  await openDocument(session.id);
+                } finally {
+                  setDocumentOpening(false);
+                }
+              }}
+            >
+              <ExternalLink />
+              {documentOpening ? "Opening…" : "View original document"}
             </button>
           ) : null}
           <button

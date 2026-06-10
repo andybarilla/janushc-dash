@@ -13,7 +13,6 @@ import {
   Microscope,
   Moon,
   Pill,
-  ScanText,
   Search,
   Settings,
   Sun,
@@ -61,7 +60,6 @@ const SECTION_LABELS: Record<NavEntry["section"], string> = {
 
 const MODULE_LABEL_BY_PATH: Record<string, string> = {
   "/scribe": "Scribe",
-  "/documents": "Documents",
   "/team": "Team",
 };
 
@@ -93,7 +91,6 @@ export function AppShell({ user }: AppShellProps) {
 
   const items: NavEntry[] = [
     { id: "scribe", label: "Scribe", icon: Mic, section: "workspace", path: "/scribe" },
-    { id: "documents", label: "Documents", icon: ScanText, section: "workspace", path: "/documents" },
     { id: "approvals", label: "Approvals", icon: CheckCircle, section: "workspace" },
     { id: "patients", label: "Patients", icon: UserRound, section: "workspace" },
     { id: "schedule", label: "Schedule", icon: CalendarDays, section: "workspace" },
