@@ -537,7 +537,7 @@ func (db *sendFakeDB) QueryRow(ctx context.Context, sql string, args ...interfac
 		s.ID, s.TenantID, s.UserID, s.PatientID, s.EncounterID, s.DepartmentID,
 		s.Status, s.Transcript, s.AiOutput, s.ErrorMessage, s.StartedAt, s.StoppedAt,
 		s.CompletedAt, s.CreatedAt, s.SentToEhrAt, s.SentToEhrBy, s.RejectedAt,
-		s.RejectedBy, s.AppointmentID, s.Label,
+		s.RejectedBy, s.AppointmentID, s.Label, s.DocumentID,
 	}}
 }
 

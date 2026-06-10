@@ -100,7 +100,7 @@ func (q *Queries) DeleteScribeSession(ctx context.Context, arg DeleteScribeSessi
 const getScribeSession = `-- name: GetScribeSession :one
 SELECT id, tenant_id, user_id, patient_id, encounter_id, department_id, status,
        transcript, ai_output, error_message, started_at, stopped_at, completed_at, created_at,
-       sent_to_ehr_at, sent_to_ehr_by, rejected_at, rejected_by, appointment_id, label
+       sent_to_ehr_at, sent_to_ehr_by, rejected_at, rejected_by, appointment_id, label, document_id
 FROM scribe_sessions
 WHERE id = $1 AND tenant_id = $2
 `
@@ -134,6 +134,7 @@ func (q *Queries) GetScribeSession(ctx context.Context, arg GetScribeSessionPara
 		&i.RejectedBy,
 		&i.AppointmentID,
 		&i.Label,
+		&i.DocumentID,
 	)
 	return i, err
 }
@@ -158,7 +159,7 @@ SELECT
     COALESCE(ac.approved_count, 0)::int AS approved_count
 FROM scribe_sessions s
 LEFT JOIN approved_counts ac ON ac.session_id = s.id
-WHERE s.tenant_id = $1
+WHERE s.tenant_id = $1 AND s.document_id IS NULL
 ORDER BY s.created_at DESC
 LIMIT 50
 `
