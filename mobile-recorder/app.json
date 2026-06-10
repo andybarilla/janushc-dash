@@ -36,7 +36,7 @@
     ],
     "extra": {
       "apiBaseUrl": "https://dash.janushc.com",
-      "googleWebClientId": "REPLACE_WITH_GOOGLE_CLIENT_ID",
+      "googleWebClientId": "175000401230-u37jfpd36bi14555o4sb950di3kcv7r4.apps.googleusercontent.com",
       "eas": {
         "projectId": "d2cbdcc8-a9f4-4ab9-a0d2-d3863afea49b"
       }
