@@ -5,6 +5,12 @@
     "scheme": "janushcrecorder",
     "version": "0.1.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#666666"
+    },
     "ios": {
       "bundleIdentifier": "com.janushc.recorder",
       "infoPlist": {
@@ -17,6 +23,10 @@
     },
     "android": {
       "package": "com.janushc.recorder",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#666666"
+      },
       "permissions": [
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_MICROPHONE",
@@ -24,6 +34,9 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       [
