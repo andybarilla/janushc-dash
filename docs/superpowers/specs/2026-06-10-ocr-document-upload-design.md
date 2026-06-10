@@ -45,9 +45,8 @@ New table `ocr_documents`:
 | `id` | UUID PK | `gen_random_uuid()` |
 | `tenant_id` | UUID NOT NULL | FK `tenants(id)` |
 | `user_id` | UUID NOT NULL | FK `users(id)` |
-| `original_filename` | TEXT NOT NULL | |
+| `original_filename` | TEXT NOT NULL | the S3 object key is derived from `tenant_id`, `id`, and this filename's extension (`ocr/{tenant}/{id}{ext}`) rather than stored — mirrors scribe audio path derivation |
 | `content_type` | TEXT NOT NULL | e.g. `application/pdf`, `image/png` |
-| `s3_key` | TEXT NOT NULL | object key in the OCR bucket; reused for "view original" |
 | `status` | TEXT NOT NULL | `uploaded` / `extracting` / `extracted` / `error`, default `uploaded` |
 | `error_message` | TEXT | |
 | `extracted_text` | TEXT | populated when `status = extracted` |
