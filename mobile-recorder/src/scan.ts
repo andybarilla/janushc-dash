@@ -1,6 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { PDFDocument } from 'pdf-lib';
-import DocumentScanner, { ResponseType } from 'react-native-document-scanner-plugin';
+import DocumentScanner, { ResponseType, ScanDocumentResponseStatus } from 'react-native-document-scanner-plugin';
 
 // Launches the native document scanner, then assembles the returned JPEG pages
 // into a single PDF written to the app cache. Returns the PDF's file URI, or null
@@ -11,13 +11,14 @@ export async function scanToPdf(): Promise<string | null> {
     croppedImageQuality: 60,
     responseType: ResponseType.ImageFilePath,
   });
-  if (status !== 'success' || !scannedImages || scannedImages.length === 0) {
+  if (status !== ScanDocumentResponseStatus.Success || !scannedImages || scannedImages.length === 0) {
     return null;
   }
 
   const doc = await PDFDocument.create();
-  for (const uri of scannedImages) {
-    const base64 = await FileSystem.readAsStringAsync(uri, {
+  for (const image of scannedImages) {
+    const fileUri = image.startsWith('file://') ? image : `file://${image}`;
+    const base64 = await FileSystem.readAsStringAsync(fileUri, {
       encoding: FileSystem.EncodingType.Base64,
     });
     const img = await doc.embedJpg(base64);

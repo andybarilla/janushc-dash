@@ -12,6 +12,7 @@ jest.mock('react-native-document-scanner-plugin', () => ({
   __esModule: true,
   default: { scanDocument: (...args: unknown[]) => mockScanDocument(...args) },
   ResponseType: { ImageFilePath: 'imageFilePath', Base64: 'base64' },
+  ScanDocumentResponseStatus: { Success: 'success' },
 }));
 
 jest.mock('expo-file-system/legacy', () => ({
@@ -77,4 +78,13 @@ test('assembles all pages into one PDF and writes it to cache', async () => {
   );
   expect(uri).toEqual(expect.stringContaining('file:///cache/'));
   expect(uri).toEqual(expect.stringContaining('.pdf'));
+});
+
+test('prefixes a bare android path with file:// before reading', async () => {
+  mockScanDocument.mockResolvedValue({
+    status: 'success',
+    scannedImages: ['/data/user/0/app/cache/scan.jpg'],
+  });
+  await scanToPdf();
+  expect(mockRead).toHaveBeenCalledWith('file:///data/user/0/app/cache/scan.jpg', { encoding: 'base64' });
 });
