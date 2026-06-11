@@ -1,5 +1,30 @@
 # OCR Document Upload — Design
 
+> **Revised 2026-06-10 — supersedes the separate-entity design below.**
+> Scope changed after the initial implementation: uploaded documents now go *only*
+> through the same post-processing as audio transcriptions (the 4-section split),
+> with no text-only path. Because the text-only path was the sole justification for a
+> first-class `ocr_documents` entity, documents are now modeled as **a scribe-session
+> input source** — exactly like recorded audio:
+> - The session is created up front with patient/appointment/department binding (the
+>   existing scribe new-session flow), via a new "Upload document" source in the
+>   upload modal.
+> - The uploaded file is stored in S3 and OCR'd by AWS Textract; the extracted text
+>   becomes the session `transcript`, which the existing `scribe.Processor` splits
+>   into HPI / Assessment & Plan / Physical Exam / diagnoses-labs. Approval and Athena
+>   write-back are unchanged.
+> - Schema: a single `scribe_sessions.document_filename` column (no `ocr_documents`
+>   table, no `document_id`). It marks a session as document-sourced and lets the
+>   review screen serve the original file ("View original document").
+> - `internal/ocr` keeps the Textract client + text assembly + validation helpers; the
+>   upload/async-OCR/process pipeline lives in the scribe handler (`HandleUploadDocument`
+>   → `processDocumentAsync`, mirroring `processSessionAsync`), reusing `recordLLMUsage`.
+> - No standalone Documents page/route/nav; document sessions appear in the normal
+>   scribe list beside audio ones.
+>
+> The sections below describe the original (now-replaced) standalone-entity approach
+> and are retained for historical context only.
+
 ## Summary
 
 Add a web-only feature to upload documents (images, multi-page PDFs), extract their

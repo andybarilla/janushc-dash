@@ -1,5 +1,11 @@
 # OCR Document Upload Implementation Plan
 
+> **Revised 2026-06-10 (post-implementation):** scope changed so uploads only go
+> through the audio-style 4-section processing (no text-only path). Documents are now a
+> scribe-session input source, not a standalone entity — see the revision note atop
+> `../specs/2026-06-10-ocr-document-upload-design.md`. The task breakdown below reflects
+> the original standalone-entity build; the shipped code follows the revised design.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let web users upload documents (images, multi-page PDFs), extract text via AWS Textract, then optionally route that text through the existing scribe clinical-note pipeline.
