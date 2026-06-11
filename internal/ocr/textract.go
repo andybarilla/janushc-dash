@@ -14,7 +14,12 @@ import (
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/aws-sdk-go-v2/service/textract"
 	"github.com/aws/aws-sdk-go-v2/service/textract/types"
+	"github.com/aws/smithy-go"
 )
+
+// permissionProbeJobID is a syntactically plausible but nonexistent Textract job
+// id used to probe permissions without starting a real job.
+const permissionProbeJobID = "00000000000000000000000000000000000000000000000000000000000000ff"
 
 // Client wraps AWS Textract (async document text detection) plus the S3 bucket
 // used to stage uploaded documents for Textract and for original-file retrieval.
@@ -160,4 +165,31 @@ func (c *Client) collectText(ctx context.Context, jobID string) (string, error) 
 		nextToken = out.NextToken
 	}
 	return AssembleText(blocks), nil
+}
+
+// CheckPermissions probes Textract with a harmless GetDocumentTextDetection call.
+// IAM authorization is evaluated before the (nonexistent) job id is validated, so a
+// missing textract permission surfaces as AccessDenied. It returns an error only
+// when the credentials lack Textract permission; the expected "invalid job id"
+// response and transient/network errors are treated as permission-present.
+func (c *Client) CheckPermissions(ctx context.Context) error {
+	_, err := c.textract.GetDocumentTextDetection(ctx, &textract.GetDocumentTextDetectionInput{
+		JobId: aws.String(permissionProbeJobID),
+	})
+	if isAccessDenied(err) {
+		return err
+	}
+	return nil
+}
+
+// isAccessDenied reports whether err is an AWS authorization failure.
+func isAccessDenied(err error) bool {
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.ErrorCode() {
+		case "AccessDeniedException", "UnauthorizedException":
+			return true
+		}
+	}
+	return false
 }

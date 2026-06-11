@@ -10,6 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/textract v1.41.6
 	github.com/aws/aws-sdk-go-v2/service/transcribe v1.54.6
 	github.com/aws/aws-sdk-go-v2/service/transcribestreaming v1.34.5
+	github.com/aws/smithy-go v1.27.1
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/cors v1.2.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -34,7 +35,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.13 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.17 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.9 // indirect
-	github.com/aws/smithy-go v1.27.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect

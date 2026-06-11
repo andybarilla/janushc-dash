@@ -153,6 +153,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to create OCR client: %v", err)
 	}
+	// Probe Textract permissions in the background so a misconfigured IAM principal
+	// is surfaced at boot rather than on the first document upload. Non-fatal.
+	if cfg.AWSTranscribeBucket != "" {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if permErr := ocrClient.CheckPermissions(ctx); permErr != nil {
+				log.Printf("WARNING: AWS Textract permission check failed; document OCR uploads will fail until the credentials are granted textract:StartDocumentTextDetection and textract:GetDocumentTextDetection: %v", permErr)
+			}
+		}()
+	}
 
 	// Create scribe dependencies
 	scribeProcessor := scribe.NewProcessor(bedrockClient, athenaClient)
