@@ -20,8 +20,10 @@
     "expo-dev-client": "~6.0.21",
     "expo-file-system": "~19.0.23",
     "expo-keep-awake": "~15.0.8",
+    "pdf-lib": "^1.17.1",
     "react": "19.1.0",
-    "react-native": "0.81.5"
+    "react-native": "0.81.5",
+    "react-native-document-scanner-plugin": "^2.0.4"
   },
   "devDependencies": {
     "@types/jest": "29.5.14",
