@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { ClipboardList, Mic, RotateCcw, Square, X } from "lucide-react";
+import { ClipboardList, FileText, Mic, RotateCcw, Square, X } from "lucide-react";
 import {
   useCreateScribeSession,
   useScribeDepartments,
   useSubmitTranscript,
   useTodayAppointments,
   useUploadScribeAudio,
+  useUploadScribeDocument,
 } from "@/lib/scribe-queries";
 
 const ACCEPTED_FORMATS = ".mp3,.m4a,.wav,.webm,.ogg";
+const ACCEPTED_DOCUMENT_FORMATS = ".pdf,.png,.jpg,.jpeg,.tif,.tiff";
 const RECORDING_MIME_TYPES = [
   "audio/webm;codecs=opus",
   "audio/webm",
@@ -20,10 +22,10 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onCreated?: (sessionId: string) => void;
-  initialSource?: AudioSource;
+  initialSource?: EncounterSource;
 }
 
-type AudioSource = "record" | "paste";
+type EncounterSource = "record" | "paste" | "document";
 
 type RecordingState = "idle" | "recording" | "recorded";
 
@@ -59,7 +61,8 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
   const [departmentId, setDepartmentId] = useState("");
   const [appointmentId, setAppointmentId] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [audioSource, setAudioSource] = useState<AudioSource>(initialSource);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [encounterSource, setEncounterSource] = useState<EncounterSource>(initialSource);
   const [recordingState, setRecordingState] = useState<RecordingState>("idle");
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
@@ -67,18 +70,20 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
   const [transcript, setTranscript] = useState("");
   const [recordingError, setRecordingError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const documentInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
   const createSession = useCreateScribeSession();
   const uploadAudio = useUploadScribeAudio();
+  const uploadDocument = useUploadScribeDocument();
   const submitTranscript = useSubmitTranscript();
   const departmentsQuery = useScribeDepartments();
   const appointmentsQuery = useTodayAppointments(departmentId);
 
   useEffect(() => {
-    if (open) setAudioSource(initialSource);
+    if (open) setEncounterSource(initialSource);
   }, [open, initialSource]);
 
   useEffect(() => {
@@ -110,7 +115,11 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
   const appointments = appointmentsQuery.data ?? [];
   const selectedAppointment = appointments.find((a) => a.appointment_id === appointmentId);
   const patientId = selectedAppointment?.patient_id ?? "";
-  const busy = createSession.isPending || uploadAudio.isPending || submitTranscript.isPending;
+  const busy =
+    createSession.isPending ||
+    uploadAudio.isPending ||
+    uploadDocument.isPending ||
+    submitTranscript.isPending;
   const recordingSupported =
     typeof navigator !== "undefined" &&
     !!navigator.mediaDevices?.getUserMedia &&
@@ -118,6 +127,7 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
   const error =
     apiErrorMessage(createSession.error) ||
     apiErrorMessage(uploadAudio.error) ||
+    apiErrorMessage(uploadDocument.error) ||
     apiErrorMessage(submitTranscript.error) ||
     recordingError ||
     null;
@@ -128,7 +138,7 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
     setRecordingSeconds(0);
     setRecordingState("idle");
     setRecordingError(null);
-    if (audioSource === "record") {
+    if (encounterSource === "record") {
       setFile(null);
     }
   };
@@ -136,19 +146,33 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
   const reset = () => {
     setAppointmentId("");
     setFile(null);
+    setDocumentFile(null);
     setTranscript("");
-    setAudioSource(initialSource);
+    setEncounterSource(initialSource);
     clearRecording();
     if (fileInputRef.current) fileInputRef.current.value = "";
+    if (documentInputRef.current) documentInputRef.current.value = "";
   };
 
-  const handleSourceChange = (source: AudioSource) => {
-    setAudioSource(source);
+  const handleSourceChange = (source: EncounterSource) => {
+    setEncounterSource(source);
     setRecordingError(null);
     if (source === "paste") {
       clearRecording();
       setFile(null);
+      setDocumentFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
+      if (documentInputRef.current) documentInputRef.current.value = "";
+    } else if (source === "document") {
+      clearRecording();
+      setFile(null);
+      setTranscript("");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } else {
+      // record
+      setDocumentFile(null);
+      setTranscript("");
+      if (documentInputRef.current) documentInputRef.current.value = "";
     }
   };
 
@@ -209,7 +233,7 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
 
   const handleSubmit = async () => {
     if (!appointmentId || !patientId) return;
-    if (audioSource === "paste") {
+    if (encounterSource === "paste") {
       if (!transcript.trim()) return;
       const session = await createSession.mutateAsync({
         patient_id: patientId,
@@ -217,6 +241,17 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
         department_id: departmentId,
       });
       await submitTranscript.mutateAsync({ id: session.id, transcript });
+      onCreated?.(session.id);
+      reset();
+      onClose();
+    } else if (encounterSource === "document") {
+      if (!documentFile) return;
+      const session = await createSession.mutateAsync({
+        patient_id: patientId,
+        appointment_id: appointmentId,
+        department_id: departmentId,
+      });
+      await uploadDocument.mutateAsync({ id: session.id, file: documentFile });
       onCreated?.(session.id);
       reset();
       onClose();
@@ -234,6 +269,22 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
     }
   };
 
+  const headIcon =
+    encounterSource === "paste" ? (
+      <ClipboardList style={{ width: 18, height: 18, color: "var(--janus-primary)" }} />
+    ) : encounterSource === "document" ? (
+      <FileText style={{ width: 18, height: 18, color: "var(--janus-primary)" }} />
+    ) : (
+      <Mic style={{ width: 18, height: 18, color: "var(--janus-primary)" }} />
+    );
+
+  const headTitle =
+    encounterSource === "paste"
+      ? "Add encounter transcript"
+      : encounterSource === "document"
+        ? "Upload encounter document"
+        : "Add encounter audio";
+
   return (
     <div className="janus-modal-backdrop" onClick={onClose}>
       <div
@@ -243,10 +294,8 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="janus-modal-head">
-          {audioSource === "paste"
-            ? <ClipboardList style={{ width: 18, height: 18, color: "var(--janus-primary)" }} />
-            : <Mic style={{ width: 18, height: 18, color: "var(--janus-primary)" }} />}
-          <h3>{audioSource === "paste" ? "Add encounter transcript" : "Add encounter audio"}</h3>
+          {headIcon}
+          <h3>{headTitle}</h3>
           <button
             type="button"
             className="janus-icon-btn"
@@ -258,10 +307,10 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
           </button>
         </div>
         <div className="janus-modal-body">
-          <div className="janus-segmented-control" role="tablist" aria-label="Audio source">
+          <div className="janus-segmented-control" role="tablist" aria-label="Encounter source">
             <button
               type="button"
-              className={audioSource === "record" ? "active" : ""}
+              className={encounterSource === "record" ? "active" : ""}
               onClick={() => handleSourceChange("record")}
               disabled={busy || recordingState === "recording"}
             >
@@ -269,11 +318,19 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
             </button>
             <button
               type="button"
-              className={audioSource === "paste" ? "active" : ""}
+              className={encounterSource === "paste" ? "active" : ""}
               onClick={() => handleSourceChange("paste")}
               disabled={busy || recordingState === "recording"}
             >
               Paste transcript
+            </button>
+            <button
+              type="button"
+              className={encounterSource === "document" ? "active" : ""}
+              onClick={() => handleSourceChange("document")}
+              disabled={busy || recordingState === "recording"}
+            >
+              Upload document
             </button>
           </div>
 
@@ -334,7 +391,7 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
             ) : null}
           </div>
 
-          {audioSource === "record" ? (
+          {encounterSource === "record" ? (
             <div className="janus-recording-panel">
               <input
                 ref={fileInputRef}
@@ -432,7 +489,7 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
               </div>
             </div>
           ) : null}
-          {audioSource === "paste" ? (
+          {encounterSource === "paste" ? (
             <div>
               <label className="janus-label" htmlFor="upload-transcript">
                 Transcript
@@ -449,9 +506,40 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
               />
             </div>
           ) : null}
+          {encounterSource === "document" ? (
+            <div className="janus-recording-panel">
+              <input
+                ref={documentInputRef}
+                type="file"
+                accept={ACCEPTED_DOCUMENT_FORMATS}
+                onChange={(e) => setDocumentFile(e.target.files?.[0] ?? null)}
+                style={{ display: "none" }}
+              />
+              <div className="janus-recording-actions">
+                <button
+                  type="button"
+                  className="janus-btn janus-btn-ghost janus-btn-sm"
+                  onClick={() => documentInputRef.current?.click()}
+                  disabled={busy}
+                >
+                  <FileText />
+                  Choose document
+                </button>
+              </div>
+              {documentFile ? (
+                <div className="janus-help-text">
+                  {documentFile.name} ({(documentFile.size / 1024 / 1024).toFixed(1)} MB)
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {error ? (
             <div className="janus-error-text">
-              {audioSource === "paste" ? `Processing failed: ${error}` : `Audio failed: ${error}`}
+              {encounterSource === "paste"
+                ? `Processing failed: ${error}`
+                : encounterSource === "document"
+                  ? `Upload failed: ${error}`
+                  : `Audio failed: ${error}`}
             </div>
           ) : null}
         </div>
@@ -472,12 +560,16 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
               busy ||
               recordingState === "recording" ||
               !appointmentId ||
-              (audioSource === "paste" ? !transcript.trim() : !file)
+              (encounterSource === "paste"
+                ? !transcript.trim()
+                : encounterSource === "document"
+                  ? !documentFile
+                  : !file)
             }
           >
             {busy
               ? "Processing…"
-              : audioSource === "paste" || autoTranscribe
+              : encounterSource === "paste" || encounterSource === "document" || autoTranscribe
                 ? "Save & process"
                 : "Save audio"}
           </button>

@@ -119,6 +119,9 @@ func (s *Server) routes() {
 			Post("/api/scribe/sessions/{id}/reject", s.scribeHandler.HandleReject)
 		r.With(auth.RequireRole("physician")).
 			Put("/api/scribe/sessions/{id}/sections/{section}", s.scribeHandler.HandleEditSection)
+
+		r.With(middleware.Timeout(5*time.Minute)).Post("/api/scribe/sessions/{id}/upload-document", s.scribeHandler.HandleUploadDocument)
+		r.Get("/api/scribe/sessions/{id}/document", s.scribeHandler.HandleDocument)
 	})
 
 	// SPA static file serving

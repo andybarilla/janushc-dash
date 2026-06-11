@@ -18,6 +18,7 @@ import (
 	"github.com/andybarilla/janushc-dash/internal/config"
 	"github.com/andybarilla/janushc-dash/internal/database"
 	"github.com/andybarilla/janushc-dash/internal/emr/athena"
+	"github.com/andybarilla/janushc-dash/internal/ocr"
 	"github.com/andybarilla/janushc-dash/internal/scribe"
 	"github.com/andybarilla/janushc-dash/internal/server"
 	"github.com/andybarilla/janushc-dash/internal/transcribe"
@@ -146,9 +147,27 @@ func main() {
 		log.Printf("WARNING: AWS_TRANSCRIBE_BUCKET is not set; scribe audio uploads will fail until it is configured")
 	}
 
+	// OCR document upload reuses the transcribe S3 bucket (scribe-documents/ prefix)
+	// and routes through the scribe pipeline (OCR text -> 4-section note).
+	ocrClient, err := ocr.NewClient(context.Background(), cfg.AWSRegion, cfg.AWSTranscribeBucket)
+	if err != nil {
+		log.Fatalf("failed to create OCR client: %v", err)
+	}
+	// Probe Textract permissions in the background so a misconfigured IAM principal
+	// is surfaced at boot rather than on the first document upload. Non-fatal.
+	if cfg.AWSTranscribeBucket != "" {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if permErr := ocrClient.CheckPermissions(ctx); permErr != nil {
+				log.Printf("WARNING: AWS Textract permission check failed; document OCR uploads will fail until the credentials are granted textract:StartDocumentTextDetection and textract:GetDocumentTextDetection: %v", permErr)
+			}
+		}()
+	}
+
 	// Create scribe dependencies
 	scribeProcessor := scribe.NewProcessor(bedrockClient, athenaClient)
-	scribeHandler := scribe.NewHandler(queries, scribeProcessor, cfg, transcribeBatchClient, athenaClient)
+	scribeHandler := scribe.NewHandler(queries, scribeProcessor, cfg, transcribeBatchClient, athenaClient, ocrClient)
 
 	// Start server
 	srv := server.New(cfg, pool, queries, authHandler, approvalHandler, usersHandler, scribeHandler)

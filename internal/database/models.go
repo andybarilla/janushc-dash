@@ -50,6 +50,20 @@ type AuditLog struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
+type OcrDocument struct {
+	ID               pgtype.UUID        `json:"id"`
+	TenantID         pgtype.UUID        `json:"tenant_id"`
+	UserID           pgtype.UUID        `json:"user_id"`
+	OriginalFilename string             `json:"original_filename"`
+	ContentType      string             `json:"content_type"`
+	Status           string             `json:"status"`
+	ErrorMessage     pgtype.Text        `json:"error_message"`
+	ExtractedText    pgtype.Text        `json:"extracted_text"`
+	ScribeSessionID  pgtype.UUID        `json:"scribe_session_id"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	ExtractedAt      pgtype.Timestamptz `json:"extracted_at"`
+}
+
 type Protocol struct {
 	ID                         pgtype.UUID        `json:"id"`
 	TenantID                   pgtype.UUID        `json:"tenant_id"`
@@ -120,6 +134,7 @@ type ScribeSession struct {
 	RejectedBy    pgtype.UUID        `json:"rejected_by"`
 	AppointmentID string             `json:"appointment_id"`
 	Label         string             `json:"label"`
+	DocumentID    pgtype.UUID        `json:"document_id"`
 }
 
 type ScribeUsageEvent struct {
