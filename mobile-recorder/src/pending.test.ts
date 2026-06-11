@@ -6,6 +6,7 @@ function item(overrides: Partial<PendingItem> = {}): PendingItem {
     id: 'rec-1',
     fileUri: 'file:///tmp/rec-1.m4a',
     label: 'Jane D.',
+    kind: 'audio',
     sessionId: null,
     status: 'needs-session',
     ...overrides,
@@ -35,10 +36,11 @@ test('leaves other recordings untouched', () => {
 });
 
 test('pendingFor builds a fresh needs-session item with no held attempt', () => {
-  const result = pendingFor('Jane D.', 'file:///new.m4a');
+  const result = pendingFor('Jane D.', 'file:///new.m4a', 'audio');
   expect(result).toMatchObject({
     label: 'Jane D.',
     fileUri: 'file:///new.m4a',
+    kind: 'audio',
     sessionId: null,
     status: 'needs-session',
   });
@@ -48,7 +50,7 @@ test('pendingFor builds a fresh needs-session item with no held attempt', () => 
 
 test('pendingFor reuses a held session so a re-record does not duplicate it', () => {
   const held = item({ status: 'needs-upload', sessionId: 'sess-1' });
-  const result = pendingFor('Jane D.', 'file:///rerecord.m4a', held);
+  const result = pendingFor('Jane D.', 'file:///rerecord.m4a', 'audio', held);
   expect(result.sessionId).toBe('sess-1');
   expect(result.status).toBe('needs-upload');
   expect(result.fileUri).toBe('file:///rerecord.m4a');
@@ -57,7 +59,12 @@ test('pendingFor reuses a held session so a re-record does not duplicate it', ()
 
 test('pendingFor ignores a held attempt that never created a session', () => {
   const held = item({ status: 'needs-session', sessionId: null });
-  const result = pendingFor('Jane D.', 'file:///rerecord.m4a', held);
+  const result = pendingFor('Jane D.', 'file:///rerecord.m4a', 'audio', held);
   expect(result.sessionId).toBeNull();
   expect(result.status).toBe('needs-session');
+});
+
+test('pendingFor records the document kind', () => {
+  const result = pendingFor('Jane D.', 'file:///scan.pdf', 'document');
+  expect(result.kind).toBe('document');
 });

@@ -116,3 +116,27 @@ export async function uploadAudio(opts: ApiOptions, sessionId: string, fileUri: 
     throw new Error(`upload failed: HTTP ${res.status} ${text}`);
   }
 }
+
+// Uploads an assembled document PDF to an existing session, kicking off the
+// backend OCR flow. Mirrors uploadAudio's multipart + 401 handling.
+export async function uploadDocument(opts: ApiOptions, sessionId: string, fileUri: string): Promise<void> {
+  const form = new FormData();
+  form.append('document', {
+    uri: fileUri,
+    name: `janushc-${sessionId}.pdf`,
+    type: 'application/pdf',
+  } as unknown as Blob);
+
+  const res = await fetch(
+    `${normalizeBaseUrl(opts.baseUrl)}/api/scribe/sessions/${sessionId}/upload-document`,
+    { method: 'POST', headers: authHeaders(opts.token), body: form },
+  );
+  if (res.status === 401) {
+    opts.onUnauthorized();
+    throw new UnauthorizedError();
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`document upload failed: HTTP ${res.status} ${text}`);
+  }
+}

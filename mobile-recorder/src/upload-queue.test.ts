@@ -5,6 +5,7 @@ function baseItem(): PendingItem {
     id: 'r1',
     fileUri: 'file:///tmp/r1.m4a',
     label: 'Jane D.',
+    kind: 'audio',
     sessionId: null,
     status: 'needs-session',
   };
@@ -17,7 +18,7 @@ test('creates a session then uploads, reaching done', async () => {
       calls.push('create');
       return 'sess-1';
     },
-    uploadAudio: async (sessionId) => {
+    upload: async (sessionId) => {
       calls.push(`upload:${sessionId}`);
     },
   });
@@ -36,7 +37,7 @@ test('skips session creation when sessionId already exists', async () => {
       calls.push('create');
       return 'should-not-happen';
     },
-    uploadAudio: async (sessionId) => {
+    upload: async (sessionId) => {
       calls.push(`upload:${sessionId}`);
     },
   });
@@ -46,11 +47,9 @@ test('skips session creation when sessionId already exists', async () => {
 });
 
 test('upload failure keeps the session id for a later resume', async () => {
-  const item: PendingItem = { ...baseItem() };
-
-  const result = await processItem(item, {
+  const result = await processItem(baseItem(), {
     createSession: async () => 'sess-1',
-    uploadAudio: async () => {
+    upload: async () => {
       throw new Error('network down');
     },
   });
@@ -66,11 +65,21 @@ test('session creation failure stays at needs-session and skips upload', async (
       calls.push('create');
       throw new Error('network down');
     },
-    uploadAudio: async (sessionId) => {
+    upload: async (sessionId) => {
       calls.push(`upload:${sessionId}`);
     },
   });
   expect(calls).toEqual(['create']);
   expect(result.status).toBe('needs-session');
   expect(result.sessionId).toBeNull();
+});
+
+test('a document item carries kind through to done', async () => {
+  const item: PendingItem = { ...baseItem(), kind: 'document', fileUri: 'file:///tmp/scan.pdf' };
+  const result = await processItem(item, {
+    createSession: async () => 'sess-2',
+    upload: async () => undefined,
+  });
+  expect(result.kind).toBe('document');
+  expect(result.status).toBe('done');
 });

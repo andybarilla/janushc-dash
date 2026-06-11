@@ -1,13 +1,19 @@
-import { PendingItem } from './upload-queue';
+import { PendingItem, PendingKind } from './upload-queue';
 
-// Builds the pending item for a freshly recorded file. When an earlier attempt
-// is still held with a session, the new recording reuses that session instead
-// of creating a duplicate (and orphaning the first).
-export function pendingFor(label: string, fileUri: string, held?: PendingItem | null): PendingItem {
+// Builds the pending item for a freshly captured file. When an earlier attempt
+// is still held with a session, the new capture reuses that session instead of
+// creating a duplicate (and orphaning the first).
+export function pendingFor(
+  label: string,
+  fileUri: string,
+  kind: PendingKind,
+  held?: PendingItem | null,
+): PendingItem {
   return {
     id: held?.id ?? String(Date.now()),
     fileUri,
     label,
+    kind,
     sessionId: held?.sessionId ?? null,
     status: held?.sessionId ? 'needs-upload' : 'needs-session',
   };
