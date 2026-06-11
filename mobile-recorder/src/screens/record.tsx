@@ -116,7 +116,7 @@ export function RecordScreen({
   }
 
   async function upload(fileUri: string) {
-    await attempt(pendingFor(label, fileUri, resume), 'Upload incomplete');
+    await attempt(pendingFor(label, fileUri, 'audio', resume), 'Upload incomplete');
   }
 
   async function attempt(item: PendingItem, failureTitle: string) {

@@ -3,20 +3,29 @@ import { useState } from 'react';
 import { ActivityIndicator, StatusBar, StyleSheet, View } from 'react-native';
 import { AuthProvider, useAuth } from './src/auth';
 import { upsertPending } from './src/pending';
+import { CaptureMode, ChooseModeScreen } from './src/screens/choose-mode';
 import { LabelEntryScreen } from './src/screens/label-entry';
 import { RecordScreen } from './src/screens/record';
+import { ScanScreen } from './src/screens/scan';
 import { SignInScreen } from './src/screens/sign-in';
 import { PendingItem } from './src/upload-queue';
 
 function Root() {
   const { ready, token } = useAuth();
   const [label, setLabel] = useState<string | null>(null);
-  // Recordings whose upload has not yet succeeded, held in memory so "Later"
-  // does not orphan them. Not persisted across an app restart (deliberate v1).
+  const [mode, setMode] = useState<CaptureMode | null>(null);
+  // Captures whose upload has not yet succeeded, held in memory so "Later" does
+  // not orphan them. Not persisted across an app restart (deliberate v1).
   const [pending, setPending] = useState<PendingItem[]>([]);
 
   function settle(item: PendingItem) {
     setPending((prev) => upsertPending(prev, item));
+  }
+
+  // Return to label entry after a capture settles or the user backs out.
+  function reset() {
+    setMode(null);
+    setLabel(null);
   }
 
   if (!ready) {
@@ -28,21 +37,16 @@ function Root() {
   }
 
   if (!token) return <SignInScreen />;
-  if (label) {
-    // resume is null in label mode: a freeform label is not a stable, unique key
-    // (two patients could share initials), so we never reuse a held session
-    // across recordings. The hold still guards against orphaning within a single
-    // record session. Resume-by-key returns when the appointment picker does.
-    return (
-      <RecordScreen
-        label={label}
-        resume={null}
-        onSettle={settle}
-        onDone={() => setLabel(null)}
-      />
-    );
+  if (!label) return <LabelEntryScreen onSelect={(l) => { setLabel(l); setMode(null); }} />;
+  if (!mode) {
+    return <ChooseModeScreen label={label} onChoose={setMode} onBack={reset} />;
   }
-  return <LabelEntryScreen onSelect={setLabel} />;
+  if (mode === 'record') {
+    // resume is null: a freeform label is not a stable, unique key (two patients
+    // could share initials), so we never reuse a held session across captures.
+    return <RecordScreen label={label} resume={null} onSettle={settle} onDone={reset} />;
+  }
+  return <ScanScreen label={label} onSettle={settle} onDone={reset} />;
 }
 
 export default function App() {

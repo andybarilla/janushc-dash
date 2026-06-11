@@ -1,21 +1,24 @@
 export type PendingStatus = 'needs-session' | 'needs-upload' | 'done';
 
+export type PendingKind = 'audio' | 'document';
+
 export type PendingItem = {
   id: string;
   fileUri: string;
   label: string;
+  kind: PendingKind;
   sessionId: string | null;
   status: PendingStatus;
 };
 
 export type ProcessDeps = {
   createSession: (item: PendingItem) => Promise<string>;
-  uploadAudio: (sessionId: string, item: PendingItem) => Promise<void>;
+  upload: (sessionId: string, item: PendingItem) => Promise<void>;
 };
 
-// Advances one pending recording as far as it can. On failure it returns the
-// item with the furthest-reached status (and any session id) so a later retry
-// resumes at the right step instead of creating a duplicate session.
+// Advances one pending item as far as it can. On failure it returns the item
+// with the furthest-reached status (and any session id) so a later retry resumes
+// at the right step instead of creating a duplicate session.
 export async function processItem(item: PendingItem, deps: ProcessDeps): Promise<PendingItem> {
   let sessionId = item.sessionId;
 
@@ -28,7 +31,7 @@ export async function processItem(item: PendingItem, deps: ProcessDeps): Promise
   }
 
   try {
-    await deps.uploadAudio(sessionId, item);
+    await deps.upload(sessionId, item);
   } catch {
     return { ...item, sessionId, status: 'needs-upload' };
   }
