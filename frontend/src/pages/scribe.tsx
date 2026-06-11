@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMatch, useNavigate, useSearchParams } from "react-router-dom";
-import { ClipboardList, Mic } from "lucide-react";
+import { FileText, Mic } from "lucide-react";
 import {
   useAddFeedback,
   useApproveSection,
@@ -88,7 +88,7 @@ function DesktopScribe() {
   const [notesDefaultSection, setNotesDefaultSection] =
     useState<SectionKey | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [uploadSource, setUploadSource] = useState<"record" | "paste">("record");
+  const [uploadSource, setUploadSource] = useState<"record" | "document">("record");
 
   const {
     data: selectedDetail,
@@ -280,12 +280,12 @@ function DesktopScribe() {
                 type="button"
                 className="janus-btn janus-btn-secondary janus-btn-sm"
                 onClick={() => {
-                  setUploadSource("paste");
+                  setUploadSource("document");
                   setUploadOpen(true);
                 }}
               >
-                <ClipboardList />
-                Paste transcript
+                <FileText />
+                Upload document
               </button>
             </div>
           </div>
