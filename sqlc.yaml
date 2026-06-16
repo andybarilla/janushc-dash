@@ -38,3 +38,8 @@ sql:
           - db_type: "BIGINT"
             nullable: true
             go_type: "github.com/jackc/pgtype.Int8"
+          - db_type: "JSONB"
+            go_type: "github.com/jackc/pgtype.JSONB"
+          - db_type: "JSONB"
+            nullable: true
+            go_type: "github.com/jackc/pgtype.JSONB"

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/mattn/go-sqlite3"
 
 	"github.com/andybarilla/janushc-dash/internal/auth"

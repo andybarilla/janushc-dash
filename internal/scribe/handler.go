@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgtype"
 
 	"github.com/andybarilla/janushc-dash/internal/auth"
 	"github.com/andybarilla/janushc-dash/internal/config"
@@ -1417,7 +1417,7 @@ func (h *Handler) HandleEditSection(w http.ResponseWriter, r *http.Request) {
 	if err := h.queries.RecordSectionEdit(r.Context(), database.RecordSectionEditParams{
 		SessionID: sessionUUID,
 		Section:   section,
-		Content:   body.Content,
+		Content:   pgtype.JSONB(body.Content),
 		EditedBy:  userUUID,
 	}); err != nil {
 		http.Error(w, "failed to record edit", http.StatusInternalServerError)

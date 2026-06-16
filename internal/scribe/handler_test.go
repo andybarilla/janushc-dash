@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/andybarilla/janushc-dash/internal/auth"
 	"github.com/andybarilla/janushc-dash/internal/config"
@@ -751,7 +751,7 @@ func TestShouldAutoTranscribe(t *testing.T) {
 		value string
 		want  bool
 	}{
-		{"", true},           // absent → default true
+		{"", true}, // absent → default true
 		{"true", true},
 		{"1", true},
 		{"yes", true},
@@ -760,7 +760,7 @@ func TestShouldAutoTranscribe(t *testing.T) {
 		{"0", false},
 		{"off", false},
 		{"no", false},
-		{"FALSE", false},     // case-insensitive
+		{"FALSE", false}, // case-insensitive
 		{"OFF", false},
 	}
 	for _, tc := range cases {

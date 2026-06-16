@@ -5,8 +5,6 @@
 package database
 
 import (
-	"encoding/json"
-
 	"github.com/jackc/pgtype"
 )
 
@@ -31,7 +29,7 @@ type ApprovalItem struct {
 	StaffName     pgtype.Text        `json:"staff_name"`
 	OrderDate     pgtype.Date        `json:"order_date"`
 	Flagged       bool               `json:"flagged"`
-	FlagReasons   json.RawMessage    `json:"flag_reasons"`
+	FlagReasons   pgtype.JSONB       `json:"flag_reasons"`
 	Status        string             `json:"status"`
 	ReviewedAt    pgtype.Timestamptz `json:"reviewed_at"`
 	ReviewedBy    pgtype.UUID        `json:"reviewed_by"`
@@ -48,7 +46,7 @@ type AuditLog struct {
 	Action       string             `json:"action"`
 	ResourceType string             `json:"resource_type"`
 	ResourceID   pgtype.Text        `json:"resource_id"`
-	Details      json.RawMessage    `json:"details"`
+	Details      pgtype.JSONB       `json:"details"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
@@ -96,7 +94,7 @@ type ScribeSectionEdit struct {
 	ID        pgtype.UUID        `json:"id"`
 	SessionID pgtype.UUID        `json:"session_id"`
 	Section   string             `json:"section"`
-	Content   json.RawMessage    `json:"content"`
+	Content   pgtype.JSONB       `json:"content"`
 	EditedBy  pgtype.UUID        `json:"edited_by"`
 	At        pgtype.Timestamptz `json:"at"`
 }
@@ -110,7 +108,7 @@ type ScribeSession struct {
 	DepartmentID     string             `json:"department_id"`
 	Status           string             `json:"status"`
 	Transcript       pgtype.Text        `json:"transcript"`
-	AiOutput         json.RawMessage    `json:"ai_output"`
+	AiOutput         pgtype.JSONB       `json:"ai_output"`
 	ErrorMessage     pgtype.Text        `json:"error_message"`
 	StartedAt        pgtype.Timestamptz `json:"started_at"`
 	StoppedAt        pgtype.Timestamptz `json:"stopped_at"`
@@ -142,8 +140,8 @@ type ScribeUsageEvent struct {
 	ActualCostMicros        pgtype.Int8        `json:"actual_cost_micros"`
 	Currency                string             `json:"currency"`
 	PricingSource           string             `json:"pricing_source"`
-	RateSnapshot            json.RawMessage    `json:"rate_snapshot"`
-	Metadata                json.RawMessage    `json:"metadata"`
+	RateSnapshot            pgtype.JSONB       `json:"rate_snapshot"`
+	Metadata                pgtype.JSONB       `json:"metadata"`
 	CreatedAt               pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
 }
