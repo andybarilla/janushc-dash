@@ -7,26 +7,27 @@ package database
 
 import (
 	"context"
+	"encoding/json"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgtype"
 )
 
 const createAuditEntry = `-- name: CreateAuditEntry :exec
 INSERT INTO audit_log (tenant_id, user_id, action, resource_type, resource_id, details)
-VALUES ($1, $2, $3, $4, $5, $6)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6)
 `
 
 type CreateAuditEntryParams struct {
-	TenantID     pgtype.UUID `json:"tenant_id"`
-	UserID       pgtype.UUID `json:"user_id"`
-	Action       string      `json:"action"`
-	ResourceType string      `json:"resource_type"`
-	ResourceID   pgtype.Text `json:"resource_id"`
-	Details      []byte      `json:"details"`
+	TenantID     pgtype.UUID     `json:"tenant_id"`
+	UserID       pgtype.UUID     `json:"user_id"`
+	Action       string          `json:"action"`
+	ResourceType string          `json:"resource_type"`
+	ResourceID   pgtype.Text     `json:"resource_id"`
+	Details      json.RawMessage `json:"details"`
 }
 
 func (q *Queries) CreateAuditEntry(ctx context.Context, arg CreateAuditEntryParams) error {
-	_, err := q.db.Exec(ctx, createAuditEntry,
+	_, err := q.db.ExecContext(ctx, createAuditEntry,
 		arg.TenantID,
 		arg.UserID,
 		arg.Action,
@@ -40,18 +41,18 @@ func (q *Queries) CreateAuditEntry(ctx context.Context, arg CreateAuditEntryPara
 const listAuditEntries = `-- name: ListAuditEntries :many
 SELECT id, tenant_id, user_id, action, resource_type, resource_id, details, created_at
 FROM audit_log
-WHERE tenant_id = $1
+WHERE tenant_id = ?1
 ORDER BY created_at DESC
-LIMIT $2
+LIMIT ?2
 `
 
 type ListAuditEntriesParams struct {
 	TenantID pgtype.UUID `json:"tenant_id"`
-	Limit    int32       `json:"limit"`
+	Limit    int64       `json:"limit"`
 }
 
 func (q *Queries) ListAuditEntries(ctx context.Context, arg ListAuditEntriesParams) ([]AuditLog, error) {
-	rows, err := q.db.Query(ctx, listAuditEntries, arg.TenantID, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, listAuditEntries, arg.TenantID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -72,6 +73,9 @@ func (q *Queries) ListAuditEntries(ctx context.Context, arg ListAuditEntriesPara
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

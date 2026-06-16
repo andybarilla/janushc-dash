@@ -8,18 +8,18 @@ package database
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgtype"
 )
 
 const createTenantUser = `-- name: CreateTenantUser :one
 INSERT INTO users (tenant_id, email, password_hash, role, name)
-VALUES ($1, lower($2), '', $3, $4)
+VALUES (?1, lower(?2), '', ?3, ?4)
 RETURNING id, tenant_id, email, role, name, created_at, updated_at
 `
 
 type CreateTenantUserParams struct {
 	TenantID pgtype.UUID `json:"tenant_id"`
-	Lower    string      `json:"lower"`
+	LOWER    string      `json:"LOWER"`
 	Role     string      `json:"role"`
 	Name     string      `json:"name"`
 }
@@ -35,9 +35,9 @@ type CreateTenantUserRow struct {
 }
 
 func (q *Queries) CreateTenantUser(ctx context.Context, arg CreateTenantUserParams) (CreateTenantUserRow, error) {
-	row := q.db.QueryRow(ctx, createTenantUser,
+	row := q.db.QueryRowContext(ctx, createTenantUser,
 		arg.TenantID,
-		arg.Lower,
+		arg.LOWER,
 		arg.Role,
 		arg.Name,
 	)
@@ -56,7 +56,7 @@ func (q *Queries) CreateTenantUser(ctx context.Context, arg CreateTenantUserPara
 
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (tenant_id, email, password_hash, role, name)
-VALUES ($1, $2, $3, $4, $5)
+VALUES (?1, ?2, ?3, ?4, ?5)
 RETURNING id, tenant_id, email, password_hash, role, name, created_at, updated_at
 `
 
@@ -80,7 +80,7 @@ type CreateUserRow struct {
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error) {
-	row := q.db.QueryRow(ctx, createUser,
+	row := q.db.QueryRowContext(ctx, createUser,
 		arg.TenantID,
 		arg.Email,
 		arg.PasswordHash,
@@ -104,7 +104,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT id, tenant_id, email, password_hash, role, name, created_at, updated_at
 FROM users
-WHERE tenant_id = $1 AND email = $2
+WHERE tenant_id = ?1 AND email = ?2
 `
 
 type GetUserByEmailParams struct {
@@ -124,7 +124,7 @@ type GetUserByEmailRow struct {
 }
 
 func (q *Queries) GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) (GetUserByEmailRow, error) {
-	row := q.db.QueryRow(ctx, getUserByEmail, arg.TenantID, arg.Email)
+	row := q.db.QueryRowContext(ctx, getUserByEmail, arg.TenantID, arg.Email)
 	var i GetUserByEmailRow
 	err := row.Scan(
 		&i.ID,
@@ -142,7 +142,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) 
 const getUserByEmailOnly = `-- name: GetUserByEmailOnly :one
 SELECT id, tenant_id, email, password_hash, role, name, created_at, updated_at
 FROM users
-WHERE lower(email) = lower($1)
+WHERE lower(email) = lower(?1)
 `
 
 type GetUserByEmailOnlyRow struct {
@@ -157,7 +157,7 @@ type GetUserByEmailOnlyRow struct {
 }
 
 func (q *Queries) GetUserByEmailOnly(ctx context.Context, lower string) (GetUserByEmailOnlyRow, error) {
-	row := q.db.QueryRow(ctx, getUserByEmailOnly, lower)
+	row := q.db.QueryRowContext(ctx, getUserByEmailOnly, lower)
 	var i GetUserByEmailOnlyRow
 	err := row.Scan(
 		&i.ID,
@@ -175,7 +175,7 @@ func (q *Queries) GetUserByEmailOnly(ctx context.Context, lower string) (GetUser
 const getUserByID = `-- name: GetUserByID :one
 SELECT id, tenant_id, email, password_hash, role, name, created_at, updated_at
 FROM users
-WHERE id = $1
+WHERE id = ?1
 `
 
 type GetUserByIDRow struct {
@@ -190,7 +190,7 @@ type GetUserByIDRow struct {
 }
 
 func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (GetUserByIDRow, error) {
-	row := q.db.QueryRow(ctx, getUserByID, id)
+	row := q.db.QueryRowContext(ctx, getUserByID, id)
 	var i GetUserByIDRow
 	err := row.Scan(
 		&i.ID,
@@ -208,7 +208,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (GetUserByIDR
 const listUsersByTenant = `-- name: ListUsersByTenant :many
 SELECT id, tenant_id, email, role, name, created_at, updated_at
 FROM users
-WHERE tenant_id = $1
+WHERE tenant_id = ?1
 ORDER BY name ASC, email ASC
 `
 
@@ -223,7 +223,7 @@ type ListUsersByTenantRow struct {
 }
 
 func (q *Queries) ListUsersByTenant(ctx context.Context, tenantID pgtype.UUID) ([]ListUsersByTenantRow, error) {
-	rows, err := q.db.Query(ctx, listUsersByTenant, tenantID)
+	rows, err := q.db.QueryContext(ctx, listUsersByTenant, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -243,6 +243,9 @@ func (q *Queries) ListUsersByTenant(ctx context.Context, tenantID pgtype.UUID) (
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

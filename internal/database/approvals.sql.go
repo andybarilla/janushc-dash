@@ -7,45 +7,50 @@ package database
 
 import (
 	"context"
+	"encoding/json"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgtype"
 )
 
 const batchApproveItems = `-- name: BatchApproveItems :exec
 UPDATE approval_items
-SET status = 'approved', batch_id = $1, reviewed_at = now(), reviewed_by = $2
-WHERE tenant_id = $3 AND id = ANY($4::uuid[]) AND status IN ('pending', 'needs_review')
+SET status = 'approved', batch_id = ?1, reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ?2
+WHERE tenant_id = ?3
+  AND id IN (SELECT value FROM json_each(?4))
+  AND status IN ('pending', 'needs_review')
 `
 
 type BatchApproveItemsParams struct {
-	BatchID    pgtype.UUID   `json:"batch_id"`
-	ReviewedBy pgtype.UUID   `json:"reviewed_by"`
-	TenantID   pgtype.UUID   `json:"tenant_id"`
-	Column4    []pgtype.UUID `json:"column_4"`
+	BatchID    pgtype.UUID `json:"batch_id"`
+	ReviewedBy pgtype.UUID `json:"reviewed_by"`
+	TenantID   pgtype.UUID `json:"tenant_id"`
+	JsonEach   interface{} `json:"json_each"`
 }
 
 func (q *Queries) BatchApproveItems(ctx context.Context, arg BatchApproveItemsParams) error {
-	_, err := q.db.Exec(ctx, batchApproveItems,
+	_, err := q.db.ExecContext(ctx, batchApproveItems,
 		arg.BatchID,
 		arg.ReviewedBy,
 		arg.TenantID,
-		arg.Column4,
+		arg.JsonEach,
 	)
 	return err
 }
 
 const countFlaggedInBatch = `-- name: CountFlaggedInBatch :one
 SELECT COUNT(*) FROM approval_items
-WHERE tenant_id = $1 AND id = ANY($2::uuid[]) AND flagged = true
+WHERE tenant_id = ?1
+  AND id IN (SELECT value FROM json_each(?2))
+  AND flagged = true
 `
 
 type CountFlaggedInBatchParams struct {
-	TenantID pgtype.UUID   `json:"tenant_id"`
-	Column2  []pgtype.UUID `json:"column_2"`
+	TenantID pgtype.UUID `json:"tenant_id"`
+	JsonEach interface{} `json:"json_each"`
 }
 
 func (q *Queries) CountFlaggedInBatch(ctx context.Context, arg CountFlaggedInBatchParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countFlaggedInBatch, arg.TenantID, arg.Column2)
+	row := q.db.QueryRowContext(ctx, countFlaggedInBatch, arg.TenantID, arg.JsonEach)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -53,19 +58,19 @@ func (q *Queries) CountFlaggedInBatch(ctx context.Context, arg CountFlaggedInBat
 
 const createApprovalBatch = `-- name: CreateApprovalBatch :one
 INSERT INTO approval_batches (tenant_id, approved_by, order_count, flagged_count)
-VALUES ($1, $2, $3, $4)
+VALUES (?1, ?2, ?3, ?4)
 RETURNING id, tenant_id, approved_by, approved_at, order_count, flagged_count
 `
 
 type CreateApprovalBatchParams struct {
 	TenantID     pgtype.UUID `json:"tenant_id"`
 	ApprovedBy   pgtype.UUID `json:"approved_by"`
-	OrderCount   int32       `json:"order_count"`
-	FlaggedCount int32       `json:"flagged_count"`
+	OrderCount   int64       `json:"order_count"`
+	FlaggedCount int64       `json:"flagged_count"`
 }
 
 func (q *Queries) CreateApprovalBatch(ctx context.Context, arg CreateApprovalBatchParams) (ApprovalBatch, error) {
-	row := q.db.QueryRow(ctx, createApprovalBatch,
+	row := q.db.QueryRowContext(ctx, createApprovalBatch,
 		arg.TenantID,
 		arg.ApprovedBy,
 		arg.OrderCount,
@@ -85,7 +90,7 @@ func (q *Queries) CreateApprovalBatch(ctx context.Context, arg CreateApprovalBat
 
 const createProtocol = `-- name: CreateProtocol :one
 INSERT INTO protocols (tenant_id, name, procedure_name, standard_dosage, max_lab_age_days, requires_established_patient)
-VALUES ($1, $2, $3, $4, $5, $6)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6)
 RETURNING id, tenant_id, name, procedure_name, standard_dosage, max_lab_age_days, requires_established_patient, active, created_at, updated_at
 `
 
@@ -94,12 +99,12 @@ type CreateProtocolParams struct {
 	Name                       string      `json:"name"`
 	ProcedureName              string      `json:"procedure_name"`
 	StandardDosage             pgtype.Text `json:"standard_dosage"`
-	MaxLabAgeDays              int32       `json:"max_lab_age_days"`
+	MaxLabAgeDays              int64       `json:"max_lab_age_days"`
 	RequiresEstablishedPatient bool        `json:"requires_established_patient"`
 }
 
 func (q *Queries) CreateProtocol(ctx context.Context, arg CreateProtocolParams) (Protocol, error) {
-	row := q.db.QueryRow(ctx, createProtocol,
+	row := q.db.QueryRowContext(ctx, createProtocol,
 		arg.TenantID,
 		arg.Name,
 		arg.ProcedureName,
@@ -129,12 +134,12 @@ SELECT id, batch_id, tenant_id, emr_order_id, patient_id, patient_name,
        status, reviewed_at, reviewed_by, created_at,
        encounter_id, department_id, order_type
 FROM approval_items
-WHERE tenant_id = $1 AND status IN ('pending', 'needs_review')
+WHERE tenant_id = ?1 AND status IN ('pending', 'needs_review')
 ORDER BY flagged DESC, order_date ASC
 `
 
 func (q *Queries) ListPendingApprovalItems(ctx context.Context, tenantID pgtype.UUID) ([]ApprovalItem, error) {
-	rows, err := q.db.Query(ctx, listPendingApprovalItems, tenantID)
+	rows, err := q.db.QueryContext(ctx, listPendingApprovalItems, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -167,6 +172,9 @@ func (q *Queries) ListPendingApprovalItems(ctx context.Context, tenantID pgtype.
 		}
 		items = append(items, i)
 	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -177,11 +185,11 @@ const listProtocols = `-- name: ListProtocols :many
 SELECT id, tenant_id, name, procedure_name, standard_dosage, max_lab_age_days,
        requires_established_patient, active, created_at, updated_at
 FROM protocols
-WHERE tenant_id = $1 AND active = true
+WHERE tenant_id = ?1 AND active = true
 `
 
 func (q *Queries) ListProtocols(ctx context.Context, tenantID pgtype.UUID) ([]Protocol, error) {
-	rows, err := q.db.Query(ctx, listProtocols, tenantID)
+	rows, err := q.db.QueryContext(ctx, listProtocols, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -205,6 +213,9 @@ func (q *Queries) ListProtocols(ctx context.Context, tenantID pgtype.UUID) ([]Pr
 		}
 		items = append(items, i)
 	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -213,7 +224,7 @@ func (q *Queries) ListProtocols(ctx context.Context, tenantID pgtype.UUID) ([]Pr
 
 const upsertApprovalItem = `-- name: UpsertApprovalItem :exec
 INSERT INTO approval_items (tenant_id, emr_order_id, patient_id, patient_name, procedure_name, dosage, staff_name, order_date, flagged, flag_reasons, status, encounter_id, department_id, order_type)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
 ON CONFLICT (tenant_id, emr_order_id) DO UPDATE SET
   patient_name = EXCLUDED.patient_name,
   dosage = EXCLUDED.dosage,
@@ -227,24 +238,24 @@ ON CONFLICT (tenant_id, emr_order_id) DO UPDATE SET
 `
 
 type UpsertApprovalItemParams struct {
-	TenantID      pgtype.UUID `json:"tenant_id"`
-	EmrOrderID    string      `json:"emr_order_id"`
-	PatientID     string      `json:"patient_id"`
-	PatientName   string      `json:"patient_name"`
-	ProcedureName string      `json:"procedure_name"`
-	Dosage        pgtype.Text `json:"dosage"`
-	StaffName     pgtype.Text `json:"staff_name"`
-	OrderDate     pgtype.Date `json:"order_date"`
-	Flagged       bool        `json:"flagged"`
-	FlagReasons   []byte      `json:"flag_reasons"`
-	Status        string      `json:"status"`
-	EncounterID   pgtype.Text `json:"encounter_id"`
-	DepartmentID  pgtype.Text `json:"department_id"`
-	OrderType     pgtype.Text `json:"order_type"`
+	TenantID      pgtype.UUID     `json:"tenant_id"`
+	EmrOrderID    string          `json:"emr_order_id"`
+	PatientID     string          `json:"patient_id"`
+	PatientName   string          `json:"patient_name"`
+	ProcedureName string          `json:"procedure_name"`
+	Dosage        pgtype.Text     `json:"dosage"`
+	StaffName     pgtype.Text     `json:"staff_name"`
+	OrderDate     pgtype.Date     `json:"order_date"`
+	Flagged       bool            `json:"flagged"`
+	FlagReasons   json.RawMessage `json:"flag_reasons"`
+	Status        string          `json:"status"`
+	EncounterID   pgtype.Text     `json:"encounter_id"`
+	DepartmentID  pgtype.Text     `json:"department_id"`
+	OrderType     pgtype.Text     `json:"order_type"`
 }
 
 func (q *Queries) UpsertApprovalItem(ctx context.Context, arg UpsertApprovalItemParams) error {
-	_, err := q.db.Exec(ctx, upsertApprovalItem,
+	_, err := q.db.ExecContext(ctx, upsertApprovalItem,
 		arg.TenantID,
 		arg.EmrOrderID,
 		arg.PatientID,

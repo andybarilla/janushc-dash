@@ -1,14 +1,15 @@
 FROM golang:1.25-alpine AS builder
+RUN apk add --no-cache gcc musl-dev
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /janushc-dash ./cmd/janushc-dash \
-    && CGO_ENABLED=0 go build -o /batch-transcribe-recordings ./cmd/batch-transcribe-recordings \
-    && CGO_ENABLED=0 go build -o /import-transcripts ./cmd/import-transcripts
+RUN CGO_ENABLED=1 go build -o /janushc-dash ./cmd/janushc-dash \
+    && CGO_ENABLED=1 go build -o /batch-transcribe-recordings ./cmd/batch-transcribe-recordings \
+    && CGO_ENABLED=1 go build -o /import-transcripts ./cmd/import-transcripts
 
 # Install migrate for production migrations
-RUN go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.18.1
+RUN go install -tags 'sqlite3' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.18.1
 
 FROM node:22-alpine AS frontend
 ARG VITE_GOOGLE_CLIENT_ID

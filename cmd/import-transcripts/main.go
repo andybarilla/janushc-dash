@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -14,10 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/andybarilla/janushc-dash/internal/bedrock"
 	"github.com/andybarilla/janushc-dash/internal/config"
@@ -77,19 +77,22 @@ func main() {
 	if err != nil {
 		log.Fatalf("load config: %v", err)
 	}
-	pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
+	db, err := sql.Open("sqlite3", sqliteDSN(cfg.DatabaseURL))
 	if err != nil {
 		log.Fatalf("connect database: %v", err)
 	}
-	defer pool.Close()
+	defer db.Close()
+	if _, err := db.ExecContext(context.Background(), "PRAGMA foreign_keys = ON"); err != nil {
+		log.Fatalf("enable foreign keys: %v", err)
+	}
 
 	ctx := context.Background()
-	tenantID, userID, err := resolveTenantUser(ctx, pool, opts.tenantName, opts.userEmail)
+	tenantID, userID, err := resolveTenantUser(ctx, db, opts.tenantName, opts.userEmail)
 	if err != nil {
 		log.Fatalf("resolve tenant/user: %v", err)
 	}
 
-	queries := database.New(pool)
+	queries := database.New(db)
 	var processor *scribe.Processor
 	if opts.process {
 		bedrockClient, err := bedrock.NewClient(ctx, cfg.AWSRegion, cfg.BedrockModelID)
@@ -102,7 +105,7 @@ func main() {
 
 	var failed int
 	for i, plan := range plans {
-		if err := importOne(ctx, pool, queries, processor, cfg, tenantID, userID, plan, opts); err != nil {
+		if err := importOne(ctx, db, queries, processor, cfg, tenantID, userID, plan, opts); err != nil {
 			log.Printf("[%d/%d] failed %s: %v", i+1, len(plans), plan.path, err)
 			failed++
 			continue
@@ -132,7 +135,7 @@ func buildImportPlan(path string, index int, opts options) importPlan {
 	}
 }
 
-func importOne(parent context.Context, pool *pgxpool.Pool, queries *database.Queries, processor *scribe.Processor, cfg *config.Config, tenantID, userID pgtype.UUID, plan importPlan, opts options) error {
+func importOne(parent context.Context, db *sql.DB, queries *database.Queries, processor *scribe.Processor, cfg *config.Config, tenantID, userID pgtype.UUID, plan importPlan, opts options) error {
 	transcriptBytes, err := os.ReadFile(plan.path)
 	if err != nil {
 		return fmt.Errorf("read transcript: %w", err)
@@ -142,7 +145,7 @@ func importOne(parent context.Context, pool *pgxpool.Pool, queries *database.Que
 		return errors.New("empty transcript")
 	}
 
-	existingID, err := existingSessionID(parent, pool, tenantID, plan.encounterID)
+	existingID, err := existingSessionID(parent, db, tenantID, plan.encounterID)
 	if err != nil {
 		return err
 	}
@@ -151,7 +154,7 @@ func importOne(parent context.Context, pool *pgxpool.Pool, queries *database.Que
 			log.Printf("skipping %s; session already exists for encounter %s", plan.path, plan.encounterID)
 			return nil
 		}
-		if _, err := pool.Exec(parent, `DELETE FROM scribe_sessions WHERE tenant_id = $1 AND encounter_id = $2`, tenantID, plan.encounterID); err != nil {
+		if _, err := db.ExecContext(parent, `DELETE FROM scribe_sessions WHERE tenant_id = ?1 AND encounter_id = ?2`, tenantID, plan.encounterID); err != nil {
 			return fmt.Errorf("delete existing session: %w", err)
 		}
 	}
@@ -174,7 +177,7 @@ func importOne(parent context.Context, pool *pgxpool.Pool, queries *database.Que
 		return fmt.Errorf("store transcript: %w", err)
 	}
 	if !opts.process {
-		_, err := pool.Exec(parent, `UPDATE scribe_sessions SET status = 'complete', completed_at = now() WHERE id = $1 AND tenant_id = $2`, session.ID, tenantID)
+		_, err := db.ExecContext(parent, `UPDATE scribe_sessions SET status = 'complete', completed_at = CURRENT_TIMESTAMP WHERE id = ?1 AND tenant_id = ?2`, session.ID, tenantID)
 		if err != nil {
 			return fmt.Errorf("mark transcript imported: %w", err)
 		}
@@ -206,13 +209,13 @@ func importOne(parent context.Context, pool *pgxpool.Pool, queries *database.Que
 	return nil
 }
 
-func resolveTenantUser(ctx context.Context, pool *pgxpool.Pool, tenantName, userEmail string) (pgtype.UUID, pgtype.UUID, error) {
+func resolveTenantUser(ctx context.Context, db *sql.DB, tenantName, userEmail string) (pgtype.UUID, pgtype.UUID, error) {
 	var tenantID, userID pgtype.UUID
-	err := pool.QueryRow(ctx, `
+	err := db.QueryRowContext(ctx, `
 		SELECT t.id, u.id
 		FROM tenants t
 		JOIN users u ON u.tenant_id = t.id
-		WHERE t.name = $1 AND u.email = $2
+		WHERE t.name = ?1 AND u.email = ?2
 	`, tenantName, userEmail).Scan(&tenantID, &userID)
 	if err != nil {
 		return tenantID, userID, err
@@ -220,16 +223,27 @@ func resolveTenantUser(ctx context.Context, pool *pgxpool.Pool, tenantName, user
 	return tenantID, userID, nil
 }
 
-func existingSessionID(ctx context.Context, pool *pgxpool.Pool, tenantID pgtype.UUID, encounterID string) (pgtype.UUID, error) {
+func existingSessionID(ctx context.Context, db *sql.DB, tenantID pgtype.UUID, encounterID string) (pgtype.UUID, error) {
 	var id pgtype.UUID
-	err := pool.QueryRow(ctx, `SELECT id FROM scribe_sessions WHERE tenant_id = $1 AND encounter_id = $2 LIMIT 1`, tenantID, encounterID).Scan(&id)
-	if errors.Is(err, pgx.ErrNoRows) {
+	err := db.QueryRowContext(ctx, `SELECT id FROM scribe_sessions WHERE tenant_id = ?1 AND encounter_id = ?2 LIMIT 1`, tenantID, encounterID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
 		return pgtype.UUID{}, nil
 	}
 	if err != nil {
 		return pgtype.UUID{}, fmt.Errorf("check existing session: %w", err)
 	}
 	return id, nil
+}
+
+func sqliteDSN(databaseURL string) string {
+	dsn := strings.TrimPrefix(databaseURL, "sqlite3://")
+	dsn = strings.TrimPrefix(dsn, "sqlite://")
+	if !strings.Contains(dsn, "?") {
+		dsn += "?_foreign_keys=on"
+	} else if !strings.Contains(dsn, "_foreign_keys=") {
+		dsn += "&_foreign_keys=on"
+	}
+	return dsn
 }
 
 func transcriptFiles(input string) ([]string, error) {

@@ -13,9 +13,9 @@ Physician workflow automation platform for independent practices. Integrates wit
 
 ## Tech Stack
 
-- **Backend:** Go (chi router, SQLC, pgx/v5)
+- **Backend:** Go (chi router, SQLC, database/sql)
 - **Frontend:** Vite + React (TypeScript, TanStack Query, Tailwind CSS)
-- **Database:** PostgreSQL 16
+- **Database:** SQLite locally; Turso/libSQL is the intended remote SQLite option if needed
 - **AI:** AWS Bedrock (Claude) for smart flagging and summarization
 - **EMR:** athenahealth API (behind abstraction layer)
 
@@ -37,7 +37,7 @@ The easiest way to develop — no port conflicts, everything pre-configured.
    ```
 
 3. The devcontainer automatically:
-   - Starts PostgreSQL
+   - Prepares local SQLite storage
    - Runs database migrations
    - Installs frontend dependencies
    - Starts the Go backend (with hot-reload via air) and Vite dev server
@@ -51,10 +51,10 @@ The easiest way to develop — no port conflicts, everything pre-configured.
 
 ### Local Dev (without devcontainer)
 
-1. Copy env and start Postgres:
+1. Copy env and prepare local storage:
    ```bash
    cp .env.example .env
-   docker compose -f docker-compose.dev.yml up -d
+   make dev-up
    ```
 
 2. Run migrations and start the backend:
@@ -90,23 +90,16 @@ make sqlc           # Regenerate SQLC query code
 make seed           # Seed dev data
 ```
 
-### Hosted Postgres
+### SQLite
 
-For a shared dev/demo database on Supabase, Neon, or another hosted Postgres provider:
+By default the backend uses `tmp/janushc-dash.db`. Set `DATABASE_URL` to another SQLite path or `sqlite://...` URL when needed.
 
 ```bash
-# 1. Put the hosted connection string in HOSTED_DATABASE_URL with sslmode=require.
-# 2. Create schema:
-make migrate-hosted
-
-# 3a. For a fresh demo database:
-make seed-hosted
-
-# 3b. Or copy current local data into a freshly migrated hosted database:
-make db-copy-to-hosted
+make migrate-up
+make seed
 ```
 
-After migration, set `DATABASE_URL` to the hosted connection string locally and in deployment.
+For a remote SQLite database, Turso/libSQL is the natural next target. This repo currently uses the local SQLite driver; adding Turso should be a driver/config change once the deployment target is chosen.
 
 To import generated transcript text files into the Scribe session table and run Bedrock processing:
 
@@ -146,7 +139,7 @@ internal/
   emr/                  # EMR interface abstraction
     athena/             # athenahealth API client
   server/               # Chi router setup, middleware, routes
-migrations/             # PostgreSQL migrations (golang-migrate)
+migrations/             # SQLite migrations (golang-migrate)
 queries/                # SQLC query definitions
 scripts/                # Seed script
 frontend/               # Vite + React frontend

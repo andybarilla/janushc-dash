@@ -1,5 +1,5 @@
 CREATE TABLE scribe_usage_events (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(6)))),
     session_id UUID NOT NULL REFERENCES scribe_sessions(id) ON DELETE CASCADE,
     event_type TEXT NOT NULL CHECK (event_type IN ('transcription', 'llm')),
     provider TEXT NOT NULL,
@@ -15,10 +15,10 @@ CREATE TABLE scribe_usage_events (
     actual_cost_micros BIGINT,
     currency TEXT NOT NULL DEFAULT 'USD',
     pricing_source TEXT NOT NULL DEFAULT 'configured_rate',
-    rate_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
-    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    rate_snapshot JSONB NOT NULL DEFAULT '{}',
+    metadata JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_scribe_usage_events_session ON scribe_usage_events (session_id, created_at);

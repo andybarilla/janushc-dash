@@ -1,7 +1,3 @@
--- Add admin role
-ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('physician', 'staff', 'admin'));
-
 -- Ensure tenant exists
 INSERT INTO tenants (name, athena_practice_id)
 VALUES ('Janus Healthcare', '195900')

@@ -8,12 +8,12 @@ package database
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgtype"
 )
 
 const createTenant = `-- name: CreateTenant :one
 INSERT INTO tenants (name, athena_practice_id)
-VALUES ($1, $2)
+VALUES (?1, ?2)
 RETURNING id, name, athena_practice_id, created_at, updated_at
 `
 
@@ -31,7 +31,7 @@ type CreateTenantRow struct {
 }
 
 func (q *Queries) CreateTenant(ctx context.Context, arg CreateTenantParams) (CreateTenantRow, error) {
-	row := q.db.QueryRow(ctx, createTenant, arg.Name, arg.AthenaPracticeID)
+	row := q.db.QueryRowContext(ctx, createTenant, arg.Name, arg.AthenaPracticeID)
 	var i CreateTenantRow
 	err := row.Scan(
 		&i.ID,
@@ -46,7 +46,7 @@ func (q *Queries) CreateTenant(ctx context.Context, arg CreateTenantParams) (Cre
 const getTenantByID = `-- name: GetTenantByID :one
 SELECT id, name, athena_practice_id, created_at, updated_at
 FROM tenants
-WHERE id = $1
+WHERE id = ?1
 `
 
 type GetTenantByIDRow struct {
@@ -58,7 +58,7 @@ type GetTenantByIDRow struct {
 }
 
 func (q *Queries) GetTenantByID(ctx context.Context, id pgtype.UUID) (GetTenantByIDRow, error) {
-	row := q.db.QueryRow(ctx, getTenantByID, id)
+	row := q.db.QueryRowContext(ctx, getTenantByID, id)
 	var i GetTenantByIDRow
 	err := row.Scan(
 		&i.ID,
@@ -73,7 +73,7 @@ func (q *Queries) GetTenantByID(ctx context.Context, id pgtype.UUID) (GetTenantB
 const getTenantByName = `-- name: GetTenantByName :one
 SELECT id, name, athena_practice_id, created_at, updated_at
 FROM tenants
-WHERE name = $1
+WHERE name = ?1
 `
 
 type GetTenantByNameRow struct {
@@ -85,7 +85,7 @@ type GetTenantByNameRow struct {
 }
 
 func (q *Queries) GetTenantByName(ctx context.Context, name string) (GetTenantByNameRow, error) {
-	row := q.db.QueryRow(ctx, getTenantByName, name)
+	row := q.db.QueryRowContext(ctx, getTenantByName, name)
 	var i GetTenantByNameRow
 	err := row.Scan(
 		&i.ID,

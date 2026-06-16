@@ -145,9 +145,9 @@ func toUsageSummaryResponse(row database.GetScribeUsageSummaryForSessionRow) *us
 	}
 	resp := &usageSummaryResponse{
 		TotalEstimatedCostMicros: row.TotalEstimatedCostMicros,
-		TotalActualCostMicros:    int8Ptr(row.TotalActualCostMicros),
+		TotalActualCostMicros:    nullableInt64Ptr(row.TotalActualCostMicros),
 		Currency:                 "USD",
-		CostBasis:                CostBasis(row.EventCount, row.ActualEventCount),
+		CostBasis:                CostBasis(int32(row.EventCount), int32(row.ActualEventCount)),
 	}
 	transcriptionProvider, hasTranscriptionProvider := interfaceString(row.TranscriptionProvider)
 	transcriptionOperation, hasTranscriptionOperation := interfaceString(row.TranscriptionOperation)
@@ -155,10 +155,10 @@ func toUsageSummaryResponse(row database.GetScribeUsageSummaryForSessionRow) *us
 		resp.Transcription = &transcriptionUsageResponse{
 			Provider:                transcriptionProvider,
 			Operation:               transcriptionOperation,
-			AudioDurationSeconds:    numericFloat64Ptr(row.TranscriptionAudioDurationSeconds),
-			BillableDurationSeconds: int8Ptr(row.TranscriptionBillableDurationSeconds),
-			EstimatedCostMicros:     row.TranscriptionEstimatedCostMicros,
-			ActualCostMicros:        int8Ptr(row.TranscriptionActualCostMicros),
+			AudioDurationSeconds:    nullableFloat64Ptr(row.TranscriptionAudioDurationSeconds),
+			BillableDurationSeconds: nullableInt64Ptr(row.TranscriptionBillableDurationSeconds),
+			EstimatedCostMicros:     int64Value(row.TranscriptionEstimatedCostMicros),
+			ActualCostMicros:        nullableInt64Ptr(row.TranscriptionActualCostMicros),
 			Currency:                "USD",
 		}
 	}
@@ -170,11 +170,11 @@ func toUsageSummaryResponse(row database.GetScribeUsageSummaryForSessionRow) *us
 			Provider:            llmProvider,
 			Operation:           llmOperation,
 			ModelID:             modelID,
-			InputTokens:         row.LlmInputTokens,
-			OutputTokens:        row.LlmOutputTokens,
-			TotalTokens:         row.LlmTotalTokens,
-			EstimatedCostMicros: row.LlmEstimatedCostMicros,
-			ActualCostMicros:    int8Ptr(row.LlmActualCostMicros),
+			InputTokens:         int64Value(row.LlmInputTokens),
+			OutputTokens:        int64Value(row.LlmOutputTokens),
+			TotalTokens:         int64Value(row.LlmTotalTokens),
+			EstimatedCostMicros: int64Value(row.LlmEstimatedCostMicros),
+			ActualCostMicros:    nullableInt64Ptr(row.LlmActualCostMicros),
 			Currency:            "USD",
 		}
 	}
@@ -194,6 +194,58 @@ func numericFloat64Ptr(value pgtype.Numeric) *float64 {
 		return nil
 	}
 	return &floatValue.Float64
+}
+
+func nullableInt64Ptr(value interface{}) *int64 {
+	switch v := value.(type) {
+	case nil:
+		return nil
+	case int64:
+		return &v
+	case int:
+		n := int64(v)
+		return &n
+	case float64:
+		n := int64(v)
+		return &n
+	case pgtype.Int8:
+		return int8Ptr(v)
+	}
+	return nil
+}
+
+func int64Value(value interface{}) int64 {
+	if ptr := nullableInt64Ptr(value); ptr != nil {
+		return *ptr
+	}
+	return 0
+}
+
+func nullableFloat64Ptr(value interface{}) *float64 {
+	switch v := value.(type) {
+	case nil:
+		return nil
+	case float64:
+		return &v
+	case int64:
+		f := float64(v)
+		return &f
+	case []byte:
+		return parseFloat64Ptr(string(v))
+	case string:
+		return parseFloat64Ptr(v)
+	case pgtype.Numeric:
+		return numericFloat64Ptr(v)
+	}
+	return nil
+}
+
+func parseFloat64Ptr(value string) *float64 {
+	f, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return nil
+	}
+	return &f
 }
 
 func interfaceString(value interface{}) (string, bool) {

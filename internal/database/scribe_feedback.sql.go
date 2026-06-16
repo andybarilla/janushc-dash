@@ -8,12 +8,12 @@ package database
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgtype"
 )
 
 const createFeedback = `-- name: CreateFeedback :one
 INSERT INTO scribe_feedback (session_id, section, category, body, user_id)
-VALUES ($1, $2, $3, $4, $5)
+VALUES (?1, ?2, ?3, ?4, ?5)
 RETURNING id, session_id, section, category, body, user_id, at
 `
 
@@ -26,7 +26,7 @@ type CreateFeedbackParams struct {
 }
 
 func (q *Queries) CreateFeedback(ctx context.Context, arg CreateFeedbackParams) (ScribeFeedback, error) {
-	row := q.db.QueryRow(ctx, createFeedback,
+	row := q.db.QueryRowContext(ctx, createFeedback,
 		arg.SessionID,
 		arg.Section,
 		arg.Category,
@@ -51,7 +51,7 @@ SELECT f.id, f.session_id, f.section, f.category, f.body, f.user_id, f.at,
        u.name AS author_name
 FROM scribe_feedback f
 JOIN users u ON u.id = f.user_id
-WHERE f.session_id = $1
+WHERE f.session_id = ?1
 ORDER BY f.at ASC
 `
 
@@ -67,7 +67,7 @@ type GetSessionFeedbackRow struct {
 }
 
 func (q *Queries) GetSessionFeedback(ctx context.Context, sessionID pgtype.UUID) ([]GetSessionFeedbackRow, error) {
-	rows, err := q.db.Query(ctx, getSessionFeedback, sessionID)
+	rows, err := q.db.QueryContext(ctx, getSessionFeedback, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +88,9 @@ func (q *Queries) GetSessionFeedback(ctx context.Context, sessionID pgtype.UUID)
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

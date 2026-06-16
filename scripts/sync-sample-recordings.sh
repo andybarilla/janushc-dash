@@ -128,7 +128,6 @@ main() {
 
   if bool_true "$RUN_IMPORT"; then
     echo "Importing transcripts into JanusHC"
-    compose up -d postgres
     # shellcheck disable=SC2086
     compose run --rm \
       -v "$TRANSCRIPTS_DIR:/app/tmp/transcripts:ro" \

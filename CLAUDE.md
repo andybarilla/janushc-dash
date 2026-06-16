@@ -10,7 +10,7 @@ janushc-dash is a physician workflow automation platform for independent practic
 
 **Development Context**
 
-- Tech stack: Go 1.25+ (chi, SQLC, pgx/v5), React 19 (Vite, TypeScript, TanStack Query, Tailwind CSS), PostgreSQL 16
+- Tech stack: Go 1.25+ (chi, SQLC, database/sql, SQLite), React 19 (Vite, TypeScript, TanStack Query, Tailwind CSS)
 - Auth: JWT-based (custom login endpoint, token stored in localStorage)
 - AI: AWS Bedrock (Claude) for smart flagging and summarization
 - EMR: athenahealth API (behind abstraction layer)
@@ -33,7 +33,7 @@ janushc-dash is a physician workflow automation platform for independent practic
 ```
 cmd/janushc-dash/   — Go entrypoint
 internal/           — Go packages (approval, auth, bedrock, config, database, emr, server)
-migrations/         — PostgreSQL migrations (golang-migrate)
+migrations/         — SQLite migrations (golang-migrate)
 queries/            — sqlc SQL query files
 frontend/           — Vite + React + TypeScript SPA
   src/lib/          — API client, auth context, query hooks
@@ -51,7 +51,6 @@ This project is managed by [Rook](https://github.com/andybarilla/rook), workspac
 
 - `api` — build (.)
 - `frontend` — build (.)
-- `postgres` — postgres:16-alpine
 
 ### Commands
 
