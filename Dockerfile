@@ -2,6 +2,7 @@ FROM golang:1.25-alpine AS builder
 RUN apk add --no-cache gcc musl-dev
 WORKDIR /app
 COPY go.mod go.sum ./
+COPY internal/pgtypecompat/go.mod ./internal/pgtypecompat/go.mod
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=1 go build -o /janushc-dash ./cmd/janushc-dash \
