@@ -13,3 +13,5 @@ frontend/.env.local
 .playwright-mcp/
 
 .claude/worktrees
+
+data/*.db

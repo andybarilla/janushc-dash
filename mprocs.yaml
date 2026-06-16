@@ -1,7 +1,4 @@
 procs:
-  infra:
-    shell: "docker-compose -f docker-compose.dev.yml up"
-    stop: SIGINT
   web:
     cmd: ["mise", "x", "--", "npm", "run", "dev"]
     cwd: frontend

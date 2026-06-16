@@ -7,7 +7,6 @@ package database
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/jackc/pgtype"
 )
@@ -27,7 +26,7 @@ ORDER BY section
 
 type GetSessionSectionEditsRow struct {
 	Section  string             `json:"section"`
-	Content  json.RawMessage    `json:"content"`
+	Content  pgtype.JSONB       `json:"content"`
 	EditedBy pgtype.UUID        `json:"edited_by"`
 	At       pgtype.Timestamptz `json:"at"`
 }
@@ -141,10 +140,10 @@ VALUES (?1, ?2, ?3, ?4)
 `
 
 type RecordSectionEditParams struct {
-	SessionID pgtype.UUID     `json:"session_id"`
-	Section   string          `json:"section"`
-	Content   json.RawMessage `json:"content"`
-	EditedBy  pgtype.UUID     `json:"edited_by"`
+	SessionID pgtype.UUID  `json:"session_id"`
+	Section   string       `json:"section"`
+	Content   pgtype.JSONB `json:"content"`
+	EditedBy  pgtype.UUID  `json:"edited_by"`
 }
 
 func (q *Queries) RecordSectionEdit(ctx context.Context, arg RecordSectionEditParams) error {

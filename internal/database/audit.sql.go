@@ -7,7 +7,6 @@ package database
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/jackc/pgtype"
 )
@@ -18,12 +17,12 @@ VALUES (?1, ?2, ?3, ?4, ?5, ?6)
 `
 
 type CreateAuditEntryParams struct {
-	TenantID     pgtype.UUID     `json:"tenant_id"`
-	UserID       pgtype.UUID     `json:"user_id"`
-	Action       string          `json:"action"`
-	ResourceType string          `json:"resource_type"`
-	ResourceID   pgtype.Text     `json:"resource_id"`
-	Details      json.RawMessage `json:"details"`
+	TenantID     pgtype.UUID  `json:"tenant_id"`
+	UserID       pgtype.UUID  `json:"user_id"`
+	Action       string       `json:"action"`
+	ResourceType string       `json:"resource_type"`
+	ResourceID   pgtype.Text  `json:"resource_id"`
+	Details      pgtype.JSONB `json:"details"`
 }
 
 func (q *Queries) CreateAuditEntry(ctx context.Context, arg CreateAuditEntryParams) error {

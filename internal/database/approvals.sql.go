@@ -7,7 +7,6 @@ package database
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/jackc/pgtype"
 )
@@ -238,20 +237,20 @@ ON CONFLICT (tenant_id, emr_order_id) DO UPDATE SET
 `
 
 type UpsertApprovalItemParams struct {
-	TenantID      pgtype.UUID     `json:"tenant_id"`
-	EmrOrderID    string          `json:"emr_order_id"`
-	PatientID     string          `json:"patient_id"`
-	PatientName   string          `json:"patient_name"`
-	ProcedureName string          `json:"procedure_name"`
-	Dosage        pgtype.Text     `json:"dosage"`
-	StaffName     pgtype.Text     `json:"staff_name"`
-	OrderDate     pgtype.Date     `json:"order_date"`
-	Flagged       bool            `json:"flagged"`
-	FlagReasons   json.RawMessage `json:"flag_reasons"`
-	Status        string          `json:"status"`
-	EncounterID   pgtype.Text     `json:"encounter_id"`
-	DepartmentID  pgtype.Text     `json:"department_id"`
-	OrderType     pgtype.Text     `json:"order_type"`
+	TenantID      pgtype.UUID  `json:"tenant_id"`
+	EmrOrderID    string       `json:"emr_order_id"`
+	PatientID     string       `json:"patient_id"`
+	PatientName   string       `json:"patient_name"`
+	ProcedureName string       `json:"procedure_name"`
+	Dosage        pgtype.Text  `json:"dosage"`
+	StaffName     pgtype.Text  `json:"staff_name"`
+	OrderDate     pgtype.Date  `json:"order_date"`
+	Flagged       bool         `json:"flagged"`
+	FlagReasons   pgtype.JSONB `json:"flag_reasons"`
+	Status        string       `json:"status"`
+	EncounterID   pgtype.Text  `json:"encounter_id"`
+	DepartmentID  pgtype.Text  `json:"department_id"`
+	OrderType     pgtype.Text  `json:"order_type"`
 }
 
 func (q *Queries) UpsertApprovalItem(ctx context.Context, arg UpsertApprovalItemParams) error {

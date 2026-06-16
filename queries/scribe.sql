@@ -2,11 +2,11 @@
 INSERT INTO scribe_sessions (tenant_id, user_id, patient_id, encounter_id, appointment_id, department_id, label, status)
 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'processing')
 RETURNING id, tenant_id, user_id, patient_id, encounter_id, appointment_id, department_id, label, status,
-          transcript, ai_output, error_message, started_at, stopped_at, completed_at, created_at;
+          created_at;
 
 -- name: GetScribeSession :one
 SELECT id, tenant_id, user_id, patient_id, encounter_id, department_id, status,
-       transcript, ai_output, error_message, started_at, stopped_at, completed_at, created_at,
+       transcript, COALESCE(ai_output, '') AS ai_output, error_message, started_at, stopped_at, completed_at, created_at,
        sent_to_ehr_at, sent_to_ehr_by, rejected_at, rejected_by, appointment_id, label, document_filename
 FROM scribe_sessions
 WHERE id = ?1 AND tenant_id = ?2;

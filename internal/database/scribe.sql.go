@@ -7,7 +7,6 @@ package database
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/jackc/pgtype"
 )
@@ -16,7 +15,7 @@ const createScribeSession = `-- name: CreateScribeSession :one
 INSERT INTO scribe_sessions (tenant_id, user_id, patient_id, encounter_id, appointment_id, department_id, label, status)
 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'processing')
 RETURNING id, tenant_id, user_id, patient_id, encounter_id, appointment_id, department_id, label, status,
-          transcript, ai_output, error_message, started_at, stopped_at, completed_at, created_at
+          created_at
 `
 
 type CreateScribeSessionParams struct {
@@ -39,12 +38,6 @@ type CreateScribeSessionRow struct {
 	DepartmentID  string             `json:"department_id"`
 	Label         string             `json:"label"`
 	Status        string             `json:"status"`
-	Transcript    pgtype.Text        `json:"transcript"`
-	AiOutput      json.RawMessage    `json:"ai_output"`
-	ErrorMessage  pgtype.Text        `json:"error_message"`
-	StartedAt     pgtype.Timestamptz `json:"started_at"`
-	StoppedAt     pgtype.Timestamptz `json:"stopped_at"`
-	CompletedAt   pgtype.Timestamptz `json:"completed_at"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 }
 
@@ -69,12 +62,6 @@ func (q *Queries) CreateScribeSession(ctx context.Context, arg CreateScribeSessi
 		&i.DepartmentID,
 		&i.Label,
 		&i.Status,
-		&i.Transcript,
-		&i.AiOutput,
-		&i.ErrorMessage,
-		&i.StartedAt,
-		&i.StoppedAt,
-		&i.CompletedAt,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -100,7 +87,7 @@ func (q *Queries) DeleteScribeSession(ctx context.Context, arg DeleteScribeSessi
 
 const getScribeSession = `-- name: GetScribeSession :one
 SELECT id, tenant_id, user_id, patient_id, encounter_id, department_id, status,
-       transcript, ai_output, error_message, started_at, stopped_at, completed_at, created_at,
+       transcript, COALESCE(ai_output, '') AS ai_output, error_message, started_at, stopped_at, completed_at, created_at,
        sent_to_ehr_at, sent_to_ehr_by, rejected_at, rejected_by, appointment_id, label, document_filename
 FROM scribe_sessions
 WHERE id = ?1 AND tenant_id = ?2
@@ -313,9 +300,9 @@ WHERE id = ?1 AND tenant_id = ?2
 `
 
 type UpdateScribeSessionCompleteParams struct {
-	ID       pgtype.UUID     `json:"id"`
-	TenantID pgtype.UUID     `json:"tenant_id"`
-	AiOutput json.RawMessage `json:"ai_output"`
+	ID       pgtype.UUID  `json:"id"`
+	TenantID pgtype.UUID  `json:"tenant_id"`
+	AiOutput pgtype.JSONB `json:"ai_output"`
 }
 
 func (q *Queries) UpdateScribeSessionComplete(ctx context.Context, arg UpdateScribeSessionCompleteParams) error {

@@ -7,7 +7,6 @@ package database
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/jackc/pgtype"
 )
@@ -30,23 +29,23 @@ RETURNING id, session_id, event_type, provider, operation, model_id, external_jo
 `
 
 type CreateScribeUsageEventParams struct {
-	SessionID               pgtype.UUID     `json:"session_id"`
-	EventType               string          `json:"event_type"`
-	Provider                string          `json:"provider"`
-	Operation               string          `json:"operation"`
-	ModelID                 pgtype.Text     `json:"model_id"`
-	ExternalJobID           pgtype.Text     `json:"external_job_id"`
-	AudioDurationSeconds    pgtype.Numeric  `json:"audio_duration_seconds"`
-	BillableDurationSeconds pgtype.Int4     `json:"billable_duration_seconds"`
-	InputTokens             pgtype.Int4     `json:"input_tokens"`
-	OutputTokens            pgtype.Int4     `json:"output_tokens"`
-	TotalTokens             pgtype.Int4     `json:"total_tokens"`
-	EstimatedCostMicros     int64           `json:"estimated_cost_micros"`
-	ActualCostMicros        pgtype.Int8     `json:"actual_cost_micros"`
-	Currency                string          `json:"currency"`
-	PricingSource           string          `json:"pricing_source"`
-	RateSnapshot            json.RawMessage `json:"rate_snapshot"`
-	Metadata                json.RawMessage `json:"metadata"`
+	SessionID               pgtype.UUID    `json:"session_id"`
+	EventType               string         `json:"event_type"`
+	Provider                string         `json:"provider"`
+	Operation               string         `json:"operation"`
+	ModelID                 pgtype.Text    `json:"model_id"`
+	ExternalJobID           pgtype.Text    `json:"external_job_id"`
+	AudioDurationSeconds    pgtype.Numeric `json:"audio_duration_seconds"`
+	BillableDurationSeconds pgtype.Int4    `json:"billable_duration_seconds"`
+	InputTokens             pgtype.Int4    `json:"input_tokens"`
+	OutputTokens            pgtype.Int4    `json:"output_tokens"`
+	TotalTokens             pgtype.Int4    `json:"total_tokens"`
+	EstimatedCostMicros     int64          `json:"estimated_cost_micros"`
+	ActualCostMicros        pgtype.Int8    `json:"actual_cost_micros"`
+	Currency                string         `json:"currency"`
+	PricingSource           string         `json:"pricing_source"`
+	RateSnapshot            pgtype.JSONB   `json:"rate_snapshot"`
+	Metadata                pgtype.JSONB   `json:"metadata"`
 }
 
 func (q *Queries) CreateScribeUsageEvent(ctx context.Context, arg CreateScribeUsageEventParams) (ScribeUsageEvent, error) {

@@ -140,20 +140,18 @@ func (q *Queries) GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) 
 }
 
 const getUserByEmailOnly = `-- name: GetUserByEmailOnly :one
-SELECT id, tenant_id, email, password_hash, role, name, created_at, updated_at
+SELECT id, tenant_id, email, password_hash, role, name
 FROM users
 WHERE lower(email) = lower(?1)
 `
 
 type GetUserByEmailOnlyRow struct {
-	ID           pgtype.UUID        `json:"id"`
-	TenantID     pgtype.UUID        `json:"tenant_id"`
-	Email        string             `json:"email"`
-	PasswordHash string             `json:"password_hash"`
-	Role         string             `json:"role"`
-	Name         string             `json:"name"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	ID           pgtype.UUID `json:"id"`
+	TenantID     pgtype.UUID `json:"tenant_id"`
+	Email        string      `json:"email"`
+	PasswordHash string      `json:"password_hash"`
+	Role         string      `json:"role"`
+	Name         string      `json:"name"`
 }
 
 func (q *Queries) GetUserByEmailOnly(ctx context.Context, lower string) (GetUserByEmailOnlyRow, error) {
@@ -166,27 +164,23 @@ func (q *Queries) GetUserByEmailOnly(ctx context.Context, lower string) (GetUser
 		&i.PasswordHash,
 		&i.Role,
 		&i.Name,
-		&i.CreatedAt,
-		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, tenant_id, email, password_hash, role, name, created_at, updated_at
+SELECT id, tenant_id, email, password_hash, role, name
 FROM users
 WHERE id = ?1
 `
 
 type GetUserByIDRow struct {
-	ID           pgtype.UUID        `json:"id"`
-	TenantID     pgtype.UUID        `json:"tenant_id"`
-	Email        string             `json:"email"`
-	PasswordHash string             `json:"password_hash"`
-	Role         string             `json:"role"`
-	Name         string             `json:"name"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	ID           pgtype.UUID `json:"id"`
+	TenantID     pgtype.UUID `json:"tenant_id"`
+	Email        string      `json:"email"`
+	PasswordHash string      `json:"password_hash"`
+	Role         string      `json:"role"`
+	Name         string      `json:"name"`
 }
 
 func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (GetUserByIDRow, error) {
@@ -199,8 +193,6 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (GetUserByIDR
 		&i.PasswordHash,
 		&i.Role,
 		&i.Name,
-		&i.CreatedAt,
-		&i.UpdatedAt,
 	)
 	return i, err
 }
