@@ -136,11 +136,16 @@ func (h *Handler) HandleBatchApprove(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	itemIDsJSON, err := json.Marshal(req.ItemIDs)
+	if err != nil {
+		http.Error(w, "failed to encode item IDs", http.StatusInternalServerError)
+		return
+	}
 
 	// Count flagged items in the batch
 	flaggedCount, err := h.queries.CountFlaggedInBatch(r.Context(), database.CountFlaggedInBatchParams{
 		TenantID: tenantUUID,
-		Column2:  itemUUIDs,
+		JsonEach: string(itemIDsJSON),
 	})
 	if err != nil {
 		http.Error(w, "failed to count flagged items", http.StatusInternalServerError)
@@ -151,8 +156,8 @@ func (h *Handler) HandleBatchApprove(w http.ResponseWriter, r *http.Request) {
 	batch, err := h.queries.CreateApprovalBatch(r.Context(), database.CreateApprovalBatchParams{
 		TenantID:     tenantUUID,
 		ApprovedBy:   userUUID,
-		OrderCount:   int32(len(req.ItemIDs)),
-		FlaggedCount: int32(flaggedCount),
+		OrderCount:   int64(len(req.ItemIDs)),
+		FlaggedCount: flaggedCount,
 	})
 	if err != nil {
 		http.Error(w, "failed to create batch", http.StatusInternalServerError)
@@ -164,7 +169,7 @@ func (h *Handler) HandleBatchApprove(w http.ResponseWriter, r *http.Request) {
 		BatchID:    batch.ID,
 		ReviewedBy: userUUID,
 		TenantID:   tenantUUID,
-		Column4:    itemUUIDs,
+		JsonEach:   string(itemIDsJSON),
 	})
 	if err != nil {
 		http.Error(w, "failed to approve items", http.StatusInternalServerError)

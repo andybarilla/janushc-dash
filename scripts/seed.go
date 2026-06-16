@@ -4,12 +4,14 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func main() {
@@ -17,19 +19,22 @@ func main() {
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://janushc-dash:janushc-dash@localhost:5432/janushc-dash?sslmode=disable"
+		dbURL = "tmp/janushc-dash.db"
 	}
 
-	pool, err := pgxpool.New(context.Background(), dbURL)
+	db, err := sql.Open("sqlite3", sqliteDSN(dbURL))
 	if err != nil {
 		log.Fatalf("connect: %v", err)
 	}
-	defer pool.Close()
+	defer db.Close()
 
 	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
+		log.Fatalf("enable foreign keys: %v", err)
+	}
 
 	var tenantID string
-	err = pool.QueryRow(ctx,
+	err = db.QueryRowContext(ctx,
 		`INSERT INTO tenants (name, athena_practice_id)
 		 VALUES ('Janus Healthcare', '195900')
 		 ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
@@ -52,9 +57,9 @@ func main() {
 	}
 
 	for _, u := range users {
-		_, err = pool.Exec(ctx,
+		_, err = db.ExecContext(ctx,
 			`INSERT INTO users (tenant_id, email, password_hash, role, name)
-			 VALUES ($1, $2, '', $3, $4)
+			 VALUES (?1, ?2, '', ?3, ?4)
 			 ON CONFLICT (tenant_id, email) DO UPDATE SET name = EXCLUDED.name, role = EXCLUDED.role`,
 			tenantID, u.email, u.role, u.name,
 		)
@@ -64,11 +69,11 @@ func main() {
 		fmt.Printf("User: %s (%s) — %s\n", u.name, u.role, u.email)
 	}
 
-	_, err = pool.Exec(ctx,
+	_, err = db.ExecContext(ctx,
 		`INSERT INTO protocols (tenant_id, name, procedure_name, standard_dosage, max_lab_age_days, requires_established_patient)
 		 VALUES
-		   ($1, 'Standard Testosterone Pellet', 'Testosterone Pellet', '200mg', 90, true),
-		   ($1, 'Standard Estradiol Injection', 'Estradiol Injection', '20mg', 90, true)
+		   (?1, 'Standard Testosterone Pellet', 'Testosterone Pellet', '200mg', 90, true),
+		   (?1, 'Standard Estradiol Injection', 'Estradiol Injection', '20mg', 90, true)
 		 ON CONFLICT (tenant_id, name) DO NOTHING`,
 		tenantID,
 	)
@@ -77,4 +82,15 @@ func main() {
 	}
 	fmt.Println("Protocols created")
 	fmt.Println("\nDone. Users can sign in with their @janushc.com Google accounts.")
+}
+
+func sqliteDSN(databaseURL string) string {
+	dsn := strings.TrimPrefix(databaseURL, "sqlite3://")
+	dsn = strings.TrimPrefix(dsn, "sqlite://")
+	if !strings.Contains(dsn, "?") {
+		dsn += "?_foreign_keys=on"
+	} else if !strings.Contains(dsn, "_foreign_keys=") {
+		dsn += "&_foreign_keys=on"
+	}
+	return dsn
 }

@@ -1,4 +1,4 @@
-.PHONY: setup dev dev-all dev-up dev-down dev-nuke dev-servers frontend-dev build up down dc-ps dc-logs dc-exec migrate-up migrate-down migrate-hosted sqlc seed seed-hosted db-copy-to-hosted import-transcripts lint test transcribe-batch transcribe-batch-ensure sync-sample-recordings
+.PHONY: setup dev dev-all dev-up dev-down dev-nuke dev-servers frontend-dev build up down dc-ps dc-logs dc-exec migrate-up migrate-down sqlc seed migrate-supabase import-transcripts lint test transcribe-batch transcribe-batch-ensure sync-sample-recordings
 
 # Load .env if present
 -include .env
@@ -20,22 +20,20 @@ setup:
 	@echo ""
 	@echo "Done. Now run: make dev-all"
 
-# Start postgres for local dev
+# Prepare local SQLite storage for local dev
 dev-up:
-	$(COMPOSE) -f docker-compose.dev.yml up -d
+	@mkdir -p tmp
 
 # Stop local dev infrastructure
 dev-down:
-	$(COMPOSE) -f docker-compose.dev.yml down
+	@true
 
 # Stop local dev infrastructure and remove volumes (full reset)
 dev-nuke:
-	$(COMPOSE) -f docker-compose.dev.yml down -v
+	@rm -f tmp/janushc-dash.db
 
 # Run everything: infra, migrations, Go API, and Vite dev server
 dev-all: dev-up
-	@echo "Waiting for postgres..."
-	@until $(COMPOSE) -f docker-compose.dev.yml exec -T postgres pg_isready -U janushc-dash > /dev/null 2>&1; do sleep 0.5; done
 	@$(MAKE) migrate-up
 	@echo "Starting API server and frontend dev server..."
 	@trap 'kill 0' EXIT; \
@@ -43,7 +41,7 @@ dev-all: dev-up
 		cd frontend && npm run dev & \
 		wait
 
-# Run Go API + Vite frontend (for use inside devcontainer where postgres is already running)
+# Run Go API + Vite frontend
 dev-servers: migrate-up
 	@echo "Starting Go API server and frontend..."
 	@trap 'kill 0' EXIT; \
@@ -69,17 +67,17 @@ DC_COMPOSE = docker compose --project-name $(DC_PROJECT) -f .devcontainer/docker
 dc-ps:
 	$(DC_COMPOSE) ps
 
-# Tail devcontainer logs (usage: make dc-logs or make dc-logs SVC=postgres)
+# Tail devcontainer logs
 dc-logs:
 	$(DC_COMPOSE) logs -f $(SVC)
 
-# Shell into devcontainer app (or other service: make dc-exec SVC=postgres)
+# Shell into devcontainer app
 dc-exec:
 	$(DC_COMPOSE) exec $(or $(SVC),app) bash
 
-# Interactive psql shell
-dc-psql:
-	$(DC_COMPOSE) exec postgres psql -U $${POSTGRES_USER:-janushc-dash} -d $${POSTGRES_DB:-janushc-dash}
+# Interactive SQLite shell inside the app container
+dc-sqlite:
+	$(DC_COMPOSE) exec app sqlite3 $${DATABASE_URL:-tmp/janushc-dash.db}
 
 # Tear down devcontainer and remove volumes (full reset)
 dc-nuke:
@@ -107,19 +105,14 @@ down:
 
 # Run database migrations up
 migrate-up:
-	go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest \
-		-path migrations -database "$${DATABASE_URL}" up
+	@mkdir -p tmp
+	go run -tags 'sqlite3' github.com/golang-migrate/migrate/v4/cmd/migrate@latest \
+		-path migrations -database "$${DATABASE_URL:-sqlite3://tmp/janushc-dash.db}" up
 
 # Roll back last migration
 migrate-down:
-	go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest \
-		-path migrations -database "$${DATABASE_URL}" down 1
-
-# Run migrations against HOSTED_DATABASE_URL (Supabase/Neon/etc.)
-migrate-hosted:
-	@test -n "$${HOSTED_DATABASE_URL}" || (echo "Set HOSTED_DATABASE_URL first" && exit 1)
-	go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest \
-		-path migrations -database "$${HOSTED_DATABASE_URL}" up
+	go run -tags 'sqlite3' github.com/golang-migrate/migrate/v4/cmd/migrate@latest \
+		-path migrations -database "$${DATABASE_URL:-sqlite3://tmp/janushc-dash.db}" down 1
 
 # ---------- Code generation ----------
 
@@ -143,17 +136,11 @@ test:
 seed:
 	go run scripts/seed.go
 
-# Seed hosted database using HOSTED_DATABASE_URL
-seed-hosted:
-	@test -n "$${HOSTED_DATABASE_URL}" || (echo "Set HOSTED_DATABASE_URL first" && exit 1)
-	DATABASE_URL="$${HOSTED_DATABASE_URL}" go run scripts/seed.go
-
-# Copy local database data into a freshly migrated hosted database.
-# Usage: HOSTED_DATABASE_URL='postgres://...' make db-copy-to-hosted
-db-copy-to-hosted:
-	@test -n "$${DATABASE_URL}" || (echo "Set DATABASE_URL first" && exit 1)
-	@test -n "$${HOSTED_DATABASE_URL}" || (echo "Set HOSTED_DATABASE_URL first" && exit 1)
-	pg_dump --data-only --no-owner --no-acl --exclude-table=schema_migrations "$${DATABASE_URL}" | psql "$${HOSTED_DATABASE_URL}"
+# Copy production Supabase/Postgres data into SQLite.
+# Usage: SOURCE_DATABASE_URL='postgres://...' make migrate-supabase
+migrate-supabase:
+	@test -n "$${SOURCE_DATABASE_URL}" || (echo "Set SOURCE_DATABASE_URL first" && exit 1)
+	go run scripts/migrate-supabase-to-sqlite.go -source "$${SOURCE_DATABASE_URL}" -dest "$${SQLITE_DEST:-tmp/janushc-prod.db}" -force
 
 # Import tmp/transcripts/*.txt into scribe_sessions and process with Bedrock
 import-transcripts:

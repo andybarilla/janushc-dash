@@ -46,10 +46,7 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid REFRESH_TOKEN_EXPIRY: %w", err)
 	}
 
-	dbURL, err := requireEnv("DATABASE_URL")
-	if err != nil {
-		return nil, err
-	}
+	dbURL := getEnv("DATABASE_URL", "tmp/janushc-dash.db")
 	jwtSecret, err := requireEnv("JWT_SECRET")
 	if err != nil {
 		return nil, err

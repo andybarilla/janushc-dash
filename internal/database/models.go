@@ -5,7 +5,9 @@
 package database
 
 import (
-	"github.com/jackc/pgx/v5/pgtype"
+	"encoding/json"
+
+	"github.com/jackc/pgtype"
 )
 
 type ApprovalBatch struct {
@@ -13,8 +15,8 @@ type ApprovalBatch struct {
 	TenantID     pgtype.UUID        `json:"tenant_id"`
 	ApprovedBy   pgtype.UUID        `json:"approved_by"`
 	ApprovedAt   pgtype.Timestamptz `json:"approved_at"`
-	OrderCount   int32              `json:"order_count"`
-	FlaggedCount int32              `json:"flagged_count"`
+	OrderCount   int64              `json:"order_count"`
+	FlaggedCount int64              `json:"flagged_count"`
 }
 
 type ApprovalItem struct {
@@ -29,7 +31,7 @@ type ApprovalItem struct {
 	StaffName     pgtype.Text        `json:"staff_name"`
 	OrderDate     pgtype.Date        `json:"order_date"`
 	Flagged       bool               `json:"flagged"`
-	FlagReasons   []byte             `json:"flag_reasons"`
+	FlagReasons   json.RawMessage    `json:"flag_reasons"`
 	Status        string             `json:"status"`
 	ReviewedAt    pgtype.Timestamptz `json:"reviewed_at"`
 	ReviewedBy    pgtype.UUID        `json:"reviewed_by"`
@@ -46,7 +48,7 @@ type AuditLog struct {
 	Action       string             `json:"action"`
 	ResourceType string             `json:"resource_type"`
 	ResourceID   pgtype.Text        `json:"resource_id"`
-	Details      []byte             `json:"details"`
+	Details      json.RawMessage    `json:"details"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
@@ -56,7 +58,7 @@ type Protocol struct {
 	Name                       string             `json:"name"`
 	ProcedureName              string             `json:"procedure_name"`
 	StandardDosage             pgtype.Text        `json:"standard_dosage"`
-	MaxLabAgeDays              int32              `json:"max_lab_age_days"`
+	MaxLabAgeDays              int64              `json:"max_lab_age_days"`
 	RequiresEstablishedPatient bool               `json:"requires_established_patient"`
 	Active                     bool               `json:"active"`
 	CreatedAt                  pgtype.Timestamptz `json:"created_at"`
@@ -94,7 +96,7 @@ type ScribeSectionEdit struct {
 	ID        pgtype.UUID        `json:"id"`
 	SessionID pgtype.UUID        `json:"session_id"`
 	Section   string             `json:"section"`
-	Content   []byte             `json:"content"`
+	Content   json.RawMessage    `json:"content"`
 	EditedBy  pgtype.UUID        `json:"edited_by"`
 	At        pgtype.Timestamptz `json:"at"`
 }
@@ -108,7 +110,7 @@ type ScribeSession struct {
 	DepartmentID     string             `json:"department_id"`
 	Status           string             `json:"status"`
 	Transcript       pgtype.Text        `json:"transcript"`
-	AiOutput         []byte             `json:"ai_output"`
+	AiOutput         json.RawMessage    `json:"ai_output"`
 	ErrorMessage     pgtype.Text        `json:"error_message"`
 	StartedAt        pgtype.Timestamptz `json:"started_at"`
 	StoppedAt        pgtype.Timestamptz `json:"stopped_at"`
@@ -140,8 +142,8 @@ type ScribeUsageEvent struct {
 	ActualCostMicros        pgtype.Int8        `json:"actual_cost_micros"`
 	Currency                string             `json:"currency"`
 	PricingSource           string             `json:"pricing_source"`
-	RateSnapshot            []byte             `json:"rate_snapshot"`
-	Metadata                []byte             `json:"metadata"`
+	RateSnapshot            json.RawMessage    `json:"rate_snapshot"`
+	Metadata                json.RawMessage    `json:"metadata"`
 	CreatedAt               pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
 }

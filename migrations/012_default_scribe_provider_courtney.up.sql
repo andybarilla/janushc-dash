@@ -17,10 +17,17 @@ ON CONFLICT (tenant_id, email) DO UPDATE
 SET role = EXCLUDED.role,
     name = EXCLUDED.name;
 
-UPDATE scribe_sessions s
-SET user_id = u.id
-FROM tenants t
-JOIN users u ON u.tenant_id = t.id AND u.email = 'courtney@janushc.com'
-WHERE s.tenant_id = t.id
-  AND t.name = 'Janus Healthcare'
-  AND s.user_id <> u.id;
+UPDATE scribe_sessions
+SET user_id = (
+  SELECT u.id
+  FROM tenants t
+  JOIN users u ON u.tenant_id = t.id AND u.email = 'courtney@janushc.com'
+  WHERE t.name = 'Janus Healthcare'
+)
+WHERE tenant_id = (SELECT id FROM tenants WHERE name = 'Janus Healthcare')
+  AND user_id <> (
+    SELECT u.id
+    FROM tenants t
+    JOIN users u ON u.tenant_id = t.id AND u.email = 'courtney@janushc.com'
+    WHERE t.name = 'Janus Healthcare'
+  );

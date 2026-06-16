@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/mattn/go-sqlite3"
 
 	"github.com/andybarilla/janushc-dash/internal/auth"
 	"github.com/andybarilla/janushc-dash/internal/database"
@@ -89,7 +90,7 @@ func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.queries.CreateTenantUser(r.Context(), database.CreateTenantUserParams{
 		TenantID: tenantUUID,
-		Lower:    normalizedEmail,
+		LOWER:    normalizedEmail,
 		Role:     role,
 		Name:     trimmedName,
 	})
@@ -156,7 +157,11 @@ func tenantUUIDFromRequest(w http.ResponseWriter, r *http.Request) (pgtype.UUID,
 
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return true
+	}
+	var sqliteErr sqlite3.Error
+	return errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique
 }
 
 func formatTimestamptz(value pgtype.Timestamptz) string {

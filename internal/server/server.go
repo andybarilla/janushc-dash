@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -13,7 +14,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/andybarilla/janushc-dash/internal/approval"
 	"github.com/andybarilla/janushc-dash/internal/auth"
@@ -25,7 +25,7 @@ import (
 
 type Server struct {
 	cfg             *config.Config
-	db              *pgxpool.Pool
+	db              *sql.DB
 	router          chi.Router
 	queries         *database.Queries
 	authHandler     *auth.Handler
@@ -34,7 +34,7 @@ type Server struct {
 	scribeHandler   *scribe.Handler
 }
 
-func New(cfg *config.Config, db *pgxpool.Pool, queries *database.Queries, authHandler *auth.Handler, approvalHandler *approval.Handler, usersHandler *users.Handler, scribeHandler *scribe.Handler) *Server {
+func New(cfg *config.Config, db *sql.DB, queries *database.Queries, authHandler *auth.Handler, approvalHandler *approval.Handler, usersHandler *users.Handler, scribeHandler *scribe.Handler) *Server {
 	s := &Server{
 		cfg:             cfg,
 		db:              db,
@@ -132,7 +132,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 
-	if err := s.db.Ping(ctx); err != nil {
+	if err := s.db.PingContext(ctx); err != nil {
 		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 		return
 	}

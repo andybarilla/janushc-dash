@@ -7,28 +7,34 @@ package database
 
 import (
 	"context"
+	"encoding/json"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgtype"
 )
 
 const getSessionSectionEdits = `-- name: GetSessionSectionEdits :many
-SELECT DISTINCT ON (section)
-    section, content, edited_by, at
-FROM scribe_section_edits
-WHERE session_id = $1
-ORDER BY section, at DESC
+SELECT section, content, edited_by, at
+FROM (
+    SELECT
+        section, content, edited_by, at,
+        row_number() OVER (PARTITION BY section ORDER BY at DESC) AS rn
+    FROM scribe_section_edits
+    WHERE session_id = ?1
+)
+WHERE rn = 1
+ORDER BY section
 `
 
 type GetSessionSectionEditsRow struct {
 	Section  string             `json:"section"`
-	Content  []byte             `json:"content"`
+	Content  json.RawMessage    `json:"content"`
 	EditedBy pgtype.UUID        `json:"edited_by"`
 	At       pgtype.Timestamptz `json:"at"`
 }
 
 // Latest edit per section for one session.
 func (q *Queries) GetSessionSectionEdits(ctx context.Context, sessionID pgtype.UUID) ([]GetSessionSectionEditsRow, error) {
-	rows, err := q.db.Query(ctx, getSessionSectionEdits, sessionID)
+	rows, err := q.db.QueryContext(ctx, getSessionSectionEdits, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -46,6 +52,9 @@ func (q *Queries) GetSessionSectionEdits(ctx context.Context, sessionID pgtype.U
 		}
 		items = append(items, i)
 	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -53,12 +62,17 @@ func (q *Queries) GetSessionSectionEdits(ctx context.Context, sessionID pgtype.U
 }
 
 const getSessionSectionStates = `-- name: GetSessionSectionStates :many
-SELECT DISTINCT ON (a.section)
-    a.section, a.action, a.user_id, a.at, u.name AS user_name
-FROM scribe_section_approvals a
-JOIN users u ON u.id = a.user_id
-WHERE a.session_id = $1
-ORDER BY a.section, a.at DESC
+SELECT section, action, user_id, at, user_name
+FROM (
+    SELECT
+        a.section, a.action, a.user_id, a.at, u.name AS user_name,
+        row_number() OVER (PARTITION BY a.section ORDER BY a.at DESC) AS rn
+    FROM scribe_section_approvals a
+    JOIN users u ON u.id = a.user_id
+    WHERE a.session_id = ?1
+)
+WHERE rn = 1
+ORDER BY section
 `
 
 type GetSessionSectionStatesRow struct {
@@ -71,7 +85,7 @@ type GetSessionSectionStatesRow struct {
 
 // Latest event per section for one session, joined to the actor's display name.
 func (q *Queries) GetSessionSectionStates(ctx context.Context, sessionID pgtype.UUID) ([]GetSessionSectionStatesRow, error) {
-	rows, err := q.db.Query(ctx, getSessionSectionStates, sessionID)
+	rows, err := q.db.QueryContext(ctx, getSessionSectionStates, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -90,6 +104,9 @@ func (q *Queries) GetSessionSectionStates(ctx context.Context, sessionID pgtype.
 		}
 		items = append(items, i)
 	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -98,7 +115,7 @@ func (q *Queries) GetSessionSectionStates(ctx context.Context, sessionID pgtype.
 
 const recordSectionApproval = `-- name: RecordSectionApproval :exec
 INSERT INTO scribe_section_approvals (session_id, section, action, user_id)
-VALUES ($1, $2, $3, $4)
+VALUES (?1, ?2, ?3, ?4)
 `
 
 type RecordSectionApprovalParams struct {
@@ -109,7 +126,7 @@ type RecordSectionApprovalParams struct {
 }
 
 func (q *Queries) RecordSectionApproval(ctx context.Context, arg RecordSectionApprovalParams) error {
-	_, err := q.db.Exec(ctx, recordSectionApproval,
+	_, err := q.db.ExecContext(ctx, recordSectionApproval,
 		arg.SessionID,
 		arg.Section,
 		arg.Action,
@@ -120,18 +137,18 @@ func (q *Queries) RecordSectionApproval(ctx context.Context, arg RecordSectionAp
 
 const recordSectionEdit = `-- name: RecordSectionEdit :exec
 INSERT INTO scribe_section_edits (session_id, section, content, edited_by)
-VALUES ($1, $2, $3, $4)
+VALUES (?1, ?2, ?3, ?4)
 `
 
 type RecordSectionEditParams struct {
-	SessionID pgtype.UUID `json:"session_id"`
-	Section   string      `json:"section"`
-	Content   []byte      `json:"content"`
-	EditedBy  pgtype.UUID `json:"edited_by"`
+	SessionID pgtype.UUID     `json:"session_id"`
+	Section   string          `json:"section"`
+	Content   json.RawMessage `json:"content"`
+	EditedBy  pgtype.UUID     `json:"edited_by"`
 }
 
 func (q *Queries) RecordSectionEdit(ctx context.Context, arg RecordSectionEditParams) error {
-	_, err := q.db.Exec(ctx, recordSectionEdit,
+	_, err := q.db.ExecContext(ctx, recordSectionEdit,
 		arg.SessionID,
 		arg.Section,
 		arg.Content,

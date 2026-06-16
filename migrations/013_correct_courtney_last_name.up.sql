@@ -1,7 +1,5 @@
 -- Correct Courtney's display name for existing databases.
-UPDATE users u
+UPDATE users
 SET name = 'Courtney Crance'
-FROM tenants t
-WHERE u.tenant_id = t.id
-  AND t.name = 'Janus Healthcare'
-  AND u.email = 'courtney@janushc.com';
+WHERE tenant_id = (SELECT id FROM tenants WHERE name = 'Janus Healthcare')
+  AND email = 'courtney@janushc.com';

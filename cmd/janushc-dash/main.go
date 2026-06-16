@@ -2,15 +2,18 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/database/sqlite3"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
-	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/andybarilla/janushc-dash/internal/approval"
 	"github.com/andybarilla/janushc-dash/internal/auth"
@@ -30,59 +33,6 @@ type duplicateNormalizedEmail struct {
 	userCount       int
 }
 
-func preflightDuplicateNormalizedEmails(databaseURL string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	pool, err := pgxpool.New(ctx, databaseURL)
-	if err != nil {
-		return fmt.Errorf("connect to database: %w", err)
-	}
-	defer pool.Close()
-
-	if err := pool.Ping(ctx); err != nil {
-		return fmt.Errorf("ping database: %w", err)
-	}
-
-	var usersTableExists bool
-	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.users') IS NOT NULL").Scan(&usersTableExists); err != nil {
-		return fmt.Errorf("check users table existence: %w", err)
-	}
-	if !usersTableExists {
-		return nil
-	}
-
-	rows, err := pool.Query(ctx, `
-		SELECT lower(email) AS normalized_email, COUNT(*)::int AS user_count
-		FROM public.users
-		GROUP BY lower(email)
-		HAVING COUNT(*) > 1
-		ORDER BY lower(email)
-	`)
-	if err != nil {
-		return fmt.Errorf("check duplicate normalized emails: %w", err)
-	}
-	defer rows.Close()
-
-	duplicates := []duplicateNormalizedEmail{}
-	for rows.Next() {
-		var duplicate duplicateNormalizedEmail
-		if err := rows.Scan(&duplicate.normalizedEmail, &duplicate.userCount); err != nil {
-			return fmt.Errorf("scan duplicate normalized email: %w", err)
-		}
-		duplicates = append(duplicates, duplicate)
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("read duplicate normalized emails: %w", err)
-	}
-
-	if len(duplicates) > 0 {
-		return fmt.Errorf("duplicate normalized user emails found: %s; resolve duplicates before applying migration 014", formatDuplicateNormalizedEmails(duplicates))
-	}
-
-	return nil
-}
-
 func formatDuplicateNormalizedEmails(duplicates []duplicateNormalizedEmail) string {
 	parts := make([]string, 0, len(duplicates))
 	for _, duplicate := range duplicates {
@@ -91,23 +41,53 @@ func formatDuplicateNormalizedEmails(duplicates []duplicateNormalizedEmail) stri
 	return strings.Join(parts, ", ")
 }
 
+func sqliteDSN(databaseURL string) string {
+	dsn := strings.TrimPrefix(databaseURL, "sqlite3://")
+	dsn = strings.TrimPrefix(dsn, "sqlite://")
+	if !strings.Contains(dsn, "?") {
+		dsn += "?_foreign_keys=on"
+	} else if !strings.Contains(dsn, "_foreign_keys=") {
+		dsn += "&_foreign_keys=on"
+	}
+	return dsn
+}
+
+func sqliteMigrateURL(databaseURL string) string {
+	dsn := strings.TrimPrefix(databaseURL, "sqlite3://")
+	dsn = strings.TrimPrefix(dsn, "sqlite://")
+	if idx := strings.IndexByte(dsn, '?'); idx >= 0 {
+		dsn = dsn[:idx]
+	}
+	return "sqlite3://" + dsn
+}
+
+func ensureSQLiteDir(databaseURL string) error {
+	dsn := strings.TrimPrefix(databaseURL, "sqlite3://")
+	dsn = strings.TrimPrefix(dsn, "sqlite://")
+	if idx := strings.IndexByte(dsn, '?'); idx >= 0 {
+		dsn = dsn[:idx]
+	}
+	if dsn == "" || dsn == ":memory:" || strings.HasPrefix(dsn, "file:") {
+		return nil
+	}
+	return os.MkdirAll(filepath.Dir(dsn), 0o755)
+}
+
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
-	// Run migrations
-	migrateURL := cfg.DatabaseURL
-	if strings.HasPrefix(migrateURL, "pgx://") {
-		migrateURL = strings.Replace(migrateURL, "pgx://", "postgres://", 1)
+	if err := ensureSQLiteDir(cfg.DatabaseURL); err != nil {
+		log.Fatalf("failed to create database directory: %v", err)
 	}
+
+	// Run migrations
+	migrateURL := sqliteMigrateURL(cfg.DatabaseURL)
 	m, err := migrate.New("file://migrations", migrateURL)
 	if err != nil {
 		log.Fatalf("failed to create migrator: %v", err)
-	}
-	if err := preflightDuplicateNormalizedEmails(cfg.DatabaseURL); err != nil {
-		log.Fatalf("failed migration preflight: %v", err)
 	}
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		log.Fatalf("failed to run migrations: %v", err)
@@ -115,14 +95,20 @@ func main() {
 	log.Println("migrations complete")
 
 	// Connect to database
-	pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
+	db, err := sql.Open("sqlite3", sqliteDSN(cfg.DatabaseURL))
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
-	defer pool.Close()
+	defer db.Close()
+	if _, err := db.ExecContext(context.Background(), "PRAGMA foreign_keys = ON"); err != nil {
+		log.Fatalf("failed to enable sqlite foreign keys: %v", err)
+	}
+	if err := db.PingContext(context.Background()); err != nil {
+		log.Fatalf("failed to ping database: %v", err)
+	}
 
 	// Create dependencies
-	queries := database.New(pool)
+	queries := database.New(db)
 	googleVerifier := auth.NewGoogleVerifier(cfg.GoogleClientID, cfg.GoogleAllowedDomain)
 	authHandler := auth.NewHandler(queries, googleVerifier, cfg.JWTSecret, cfg.JWTExpiry)
 	athenaClient := athena.NewClient(cfg.AthenaBaseURL, cfg.AthenaClientID, cfg.AthenaClientSecret)
@@ -170,6 +156,6 @@ func main() {
 	scribeHandler := scribe.NewHandler(queries, scribeProcessor, cfg, transcribeBatchClient, athenaClient, ocrClient)
 
 	// Start server
-	srv := server.New(cfg, pool, queries, authHandler, approvalHandler, usersHandler, scribeHandler)
+	srv := server.New(cfg, db, queries, authHandler, approvalHandler, usersHandler, scribeHandler)
 	log.Fatal(srv.Start())
 }
