@@ -209,6 +209,20 @@ func importOne(parent context.Context, db *sql.DB, queries *database.Queries, pr
 	return nil
 }
 
+func labelFromFirstDialog(transcript string) string {
+	for _, line := range strings.Split(transcript, "\n") {
+		withoutSpeaker := speakerPrefix.ReplaceAllString(line, "")
+		label := strings.Trim(strings.TrimSpace(withoutSpeaker), " \t\n\r\"'“”‘’")
+		if label == "" {
+			continue
+		}
+
+		return label
+	}
+
+	return ""
+}
+
 func aiOutputJSON(result scribe.ProcessResult) ([]byte, error) {
 	return json.Marshal(result.Output)
 }
@@ -278,7 +292,10 @@ func transcriptFiles(input string) ([]string, error) {
 	return files, nil
 }
 
-var nonSlugChars = regexp.MustCompile(`[^a-z0-9]+`)
+var (
+	speakerPrefix = regexp.MustCompile(`^\s*Speaker\s+\d+\s*:`)
+	nonSlugChars  = regexp.MustCompile(`[^a-z0-9]+`)
+)
 
 func slugify(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
