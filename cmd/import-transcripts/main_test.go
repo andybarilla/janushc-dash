@@ -7,6 +7,58 @@ import (
 	"github.com/andybarilla/janushc-dash/internal/scribe"
 )
 
+func TestLabelFromFirstDialog(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		transcript string
+		want       string
+	}{
+		{
+			name:       "diarized label",
+			transcript: "Speaker 0: Jane Smith\nSpeaker 1: Hello",
+			want:       "Jane Smith",
+		},
+		{
+			name:       "empty diarization then next line",
+			transcript: "Speaker 0:\nJane Smith",
+			want:       "Jane Smith",
+		},
+		{
+			name:       "plain transcript",
+			transcript: "Jane Smith\nFollow-up discussion",
+			want:       "Jane Smith",
+		},
+		{
+			name:       "blank and quote only returns empty",
+			transcript: "\n\t\n\"\"\n‘’\n  ”  ",
+			want:       "",
+		},
+		{
+			name:       "punctuation outside quote trim set remains",
+			transcript: "---Jane Smith…",
+			want:       "---Jane Smith…",
+		},
+		{
+			name:       "whitespace around lines prefix and label",
+			transcript: "  \n \t Speaker 12: \t “Jane Smith” \t \nSpeaker 1: ignored",
+			want:       "Jane Smith",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := labelFromFirstDialog(tt.transcript)
+			if got != tt.want {
+				t.Fatalf("labelFromFirstDialog() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAIOutputJSONStoresScribeOutputFieldsAtTopLevel(t *testing.T) {
 	processResult := scribe.ProcessResult{
 		Output: scribe.ScribeOutput{
