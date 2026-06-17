@@ -195,7 +195,7 @@ func importOne(parent context.Context, db *sql.DB, queries *database.Queries, pr
 		})
 		return fmt.Errorf("process transcript: %w", err)
 	}
-	outputJSON, err := json.Marshal(output)
+	outputJSON, err := aiOutputJSON(output)
 	if err != nil {
 		return fmt.Errorf("marshal AI output: %w", err)
 	}
@@ -207,6 +207,10 @@ func importOne(parent context.Context, db *sql.DB, queries *database.Queries, pr
 		return fmt.Errorf("store AI output: %w", err)
 	}
 	return nil
+}
+
+func aiOutputJSON(result scribe.ProcessResult) ([]byte, error) {
+	return json.Marshal(result.Output)
 }
 
 func resolveTenantUser(ctx context.Context, db *sql.DB, tenantName, userEmail string) (pgtype.UUID, pgtype.UUID, error) {
