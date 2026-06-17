@@ -144,6 +144,7 @@ func importOne(parent context.Context, db *sql.DB, queries *database.Queries, pr
 	if transcript == "" {
 		return errors.New("empty transcript")
 	}
+	label := labelFromFirstDialog(transcript)
 
 	existingID, err := existingSessionID(parent, db, tenantID, plan.encounterID)
 	if err != nil {
@@ -165,6 +166,7 @@ func importOne(parent context.Context, db *sql.DB, queries *database.Queries, pr
 		PatientID:    plan.patientID,
 		EncounterID:  plan.encounterID,
 		DepartmentID: plan.departmentID,
+		Label:        label,
 	})
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
