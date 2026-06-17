@@ -144,6 +144,7 @@ func importOne(parent context.Context, db *sql.DB, queries *database.Queries, pr
 	if transcript == "" {
 		return errors.New("empty transcript")
 	}
+	label := labelFromFirstDialog(transcript)
 
 	existingID, err := existingSessionID(parent, db, tenantID, plan.encounterID)
 	if err != nil {
@@ -165,6 +166,7 @@ func importOne(parent context.Context, db *sql.DB, queries *database.Queries, pr
 		PatientID:    plan.patientID,
 		EncounterID:  plan.encounterID,
 		DepartmentID: plan.departmentID,
+		Label:        label,
 	})
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
@@ -207,6 +209,20 @@ func importOne(parent context.Context, db *sql.DB, queries *database.Queries, pr
 		return fmt.Errorf("store AI output: %w", err)
 	}
 	return nil
+}
+
+func labelFromFirstDialog(transcript string) string {
+	for _, line := range strings.Split(transcript, "\n") {
+		withoutSpeaker := speakerPrefix.ReplaceAllString(line, "")
+		label := strings.Trim(strings.TrimSpace(withoutSpeaker), " \t\n\r\"'“”‘’")
+		if label == "" {
+			continue
+		}
+
+		return label
+	}
+
+	return ""
 }
 
 func aiOutputJSON(result scribe.ProcessResult) ([]byte, error) {
@@ -278,7 +294,10 @@ func transcriptFiles(input string) ([]string, error) {
 	return files, nil
 }
 
-var nonSlugChars = regexp.MustCompile(`[^a-z0-9]+`)
+var (
+	speakerPrefix = regexp.MustCompile(`^\s*Speaker\s+\d+\s*:`)
+	nonSlugChars  = regexp.MustCompile(`[^a-z0-9]+`)
+)
 
 func slugify(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
