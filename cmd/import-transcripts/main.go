@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgtype"
 	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
 
@@ -24,18 +24,16 @@ import (
 	"github.com/andybarilla/janushc-dash/internal/database"
 	"github.com/andybarilla/janushc-dash/internal/emr/athena"
 	"github.com/andybarilla/janushc-dash/internal/scribe"
+	"github.com/andybarilla/janushc-dash/internal/transcriptimport"
 )
 
 type options struct {
-	input         string
-	tenantName    string
-	userEmail     string
-	patientPrefix string
-	departmentID  string
-	process       bool
-	overwrite     bool
-	dryRun        bool
-	timeout       time.Duration
+	input, tenantName, userEmail, patientPrefix, departmentID string
+	process, overwrite, dryRun                                bool
+	timeout                                                   time.Duration
+	inferenceClient                                           transcriptimport.CompletionClient
+	parseRecorderTimestamp                                    func(filename string, now time.Time) (time.Time, bool, error)
+	now                                                       func() time.Time
 }
 
 func main() {
@@ -93,12 +91,15 @@ func main() {
 	}
 
 	queries := database.New(db)
+	bedrockClient, err := bedrock.NewClient(ctx, cfg.AWSRegion, cfg.BedrockModelID)
+	if err != nil {
+		log.Fatalf("create bedrock client: %v", err)
+	}
+	opts.inferenceClient = bedrockClient
+	opts.parseRecorderTimestamp = transcriptimport.ParseGoogleRecorderTimestamp
+
 	var processor *scribe.Processor
 	if opts.process {
-		bedrockClient, err := bedrock.NewClient(ctx, cfg.AWSRegion, cfg.BedrockModelID)
-		if err != nil {
-			log.Fatalf("create bedrock client: %v", err)
-		}
 		athenaClient := athena.NewClient(cfg.AthenaBaseURL, cfg.AthenaClientID, cfg.AthenaClientSecret)
 		processor = scribe.NewProcessor(bedrockClient, athenaClient)
 	}
@@ -124,6 +125,10 @@ type importPlan struct {
 	departmentID string
 }
 
+type transcriptProcessor interface {
+	Process(ctx context.Context, practiceID, patientID, transcript string) (scribe.ProcessResult, error)
+}
+
 func buildImportPlan(path string, index int, opts options) importPlan {
 	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	slug := slugify(name)
@@ -135,7 +140,7 @@ func buildImportPlan(path string, index int, opts options) importPlan {
 	}
 }
 
-func importOne(parent context.Context, db *sql.DB, queries *database.Queries, processor *scribe.Processor, cfg *config.Config, tenantID, userID pgtype.UUID, plan importPlan, opts options) error {
+func importOne(parent context.Context, db *sql.DB, queries *database.Queries, processor transcriptProcessor, cfg *config.Config, tenantID, userID pgtype.UUID, plan importPlan, opts options) error {
 	transcriptBytes, err := os.ReadFile(plan.path)
 	if err != nil {
 		return fmt.Errorf("read transcript: %w", err)
@@ -159,17 +164,21 @@ func importOne(parent context.Context, db *sql.DB, queries *database.Queries, pr
 			return fmt.Errorf("delete existing session: %w", err)
 		}
 	}
+	selectedPatientID := inferSelectedPatientID(parent, transcript, plan.patientID, opts.inferenceClient)
 
 	session, err := queries.CreateScribeSession(parent, database.CreateScribeSessionParams{
 		TenantID:     tenantID,
 		UserID:       userID,
-		PatientID:    plan.patientID,
+		PatientID:    selectedPatientID,
 		EncounterID:  plan.encounterID,
 		DepartmentID: plan.departmentID,
 		Label:        label,
 	})
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
+	}
+	if err := updateImportedSessionCreatedAt(parent, queries, tenantID, session.ID, plan.path, opts); err != nil {
+		return err
 	}
 	if err := queries.UpdateScribeSessionProcessing(parent, database.UpdateScribeSessionProcessingParams{
 		ID:         session.ID,
@@ -185,10 +194,13 @@ func importOne(parent context.Context, db *sql.DB, queries *database.Queries, pr
 		}
 		return nil
 	}
+	if processor == nil {
+		return errors.New("process transcript: processor unavailable")
+	}
 
 	ctx, cancel := context.WithTimeout(parent, opts.timeout)
 	defer cancel()
-	output, err := processor.Process(ctx, cfg.AthenaPracticeID, plan.patientID, transcript)
+	output, err := processor.Process(ctx, cfg.AthenaPracticeID, selectedPatientID, transcript)
 	if err != nil {
 		_ = queries.UpdateScribeSessionError(parent, database.UpdateScribeSessionErrorParams{
 			ID:           session.ID,
@@ -207,6 +219,56 @@ func importOne(parent context.Context, db *sql.DB, queries *database.Queries, pr
 		AiOutput: outputJSON,
 	}); err != nil {
 		return fmt.Errorf("store AI output: %w", err)
+	}
+	return nil
+}
+
+func inferSelectedPatientID(ctx context.Context, transcript string, placeholderPatientID string, client transcriptimport.CompletionClient) string {
+	if client == nil {
+		return placeholderPatientID
+	}
+
+	firstLine := transcriptimport.FirstCleanTranscriptLine(transcript)
+	patientName, err := transcriptimport.InferPatientName(ctx, client, firstLine)
+	if err != nil {
+		log.Printf("patient inference failed; using placeholder %s: %v", placeholderPatientID, err)
+		return placeholderPatientID
+	}
+	if patientName == "" {
+		return placeholderPatientID
+	}
+
+	return patientName
+}
+
+func updateImportedSessionCreatedAt(ctx context.Context, queries *database.Queries, tenantID, sessionID pgtype.UUID, transcriptPath string, opts options) error {
+	parseRecorderTimestamp := opts.parseRecorderTimestamp
+	if parseRecorderTimestamp == nil {
+		parseRecorderTimestamp = transcriptimport.ParseGoogleRecorderTimestamp
+	}
+	now := time.Now
+	if opts.now != nil {
+		now = opts.now
+	}
+
+	createdAt, ok, err := parseRecorderTimestamp(filepath.Base(transcriptPath), now())
+	if errors.Is(err, transcriptimport.ErrRecorderTimezoneUnavailable) {
+		return fmt.Errorf("parse recorder timestamp: %w", err)
+	}
+	if err != nil {
+		return fmt.Errorf("parse recorder timestamp: %w", err)
+	}
+	if !ok {
+		log.Printf("no recorder timestamp found in %s; using database created_at", transcriptPath)
+		return nil
+	}
+
+	if err := queries.UpdateScribeSessionCreatedAt(ctx, database.UpdateScribeSessionCreatedAtParams{
+		ID:        sessionID,
+		TenantID:  tenantID,
+		CreatedAt: pgtype.Timestamptz{Time: createdAt, Valid: true},
+	}); err != nil {
+		return fmt.Errorf("update session created_at: %w", err)
 	}
 	return nil
 }

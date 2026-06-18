@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/sqlite3"
@@ -15,9 +17,11 @@ import (
 	"github.com/jackc/pgtype"
 	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/andybarilla/janushc-dash/internal/bedrock"
 	"github.com/andybarilla/janushc-dash/internal/config"
 	"github.com/andybarilla/janushc-dash/internal/database"
 	"github.com/andybarilla/janushc-dash/internal/scribe"
+	"github.com/andybarilla/janushc-dash/internal/transcriptimport"
 )
 
 func TestLabelFromFirstDialog(t *testing.T) {
@@ -108,6 +112,169 @@ func TestImportOneStoresDerivedLabel(t *testing.T) {
 	}
 }
 
+func TestImportOneStoresInferredPatientName(t *testing.T) {
+	ctx := context.Background()
+	db, tenantID, userID := openSeededImportTestDB(t, ctx)
+	defer db.Close()
+
+	plan := importTestPlan(t, "Speaker 0: Jane Smith\nSpeaker 1: Hello")
+	err := importOne(ctx, db, database.New(db), nil, &config.Config{}, tenantID, userID, plan, options{
+		process:         false,
+		inferenceClient: fakeCompletionClient{text: `{"patient_name":"Jane Smith"}`},
+	})
+	if err != nil {
+		t.Fatalf("import transcript: %v", err)
+	}
+
+	assertStoredPatientID(t, ctx, db, plan.encounterID, "Jane Smith")
+}
+
+func TestImportOneKeepsPlaceholderForBlankInference(t *testing.T) {
+	ctx := context.Background()
+	db, tenantID, userID := openSeededImportTestDB(t, ctx)
+	defer db.Close()
+
+	plan := importTestPlan(t, "Speaker 0: Jane Smith\nSpeaker 1: Hello")
+	err := importOne(ctx, db, database.New(db), nil, &config.Config{}, tenantID, userID, plan, options{
+		process:         false,
+		inferenceClient: fakeCompletionClient{text: `{"patient_name":""}`},
+	})
+	if err != nil {
+		t.Fatalf("import transcript: %v", err)
+	}
+
+	assertStoredPatientID(t, ctx, db, plan.encounterID, plan.patientID)
+}
+
+func TestImportOneKeepsPlaceholderForInferenceError(t *testing.T) {
+	ctx := context.Background()
+	db, tenantID, userID := openSeededImportTestDB(t, ctx)
+	defer db.Close()
+
+	plan := importTestPlan(t, "Speaker 0: Jane Smith\nSpeaker 1: Hello")
+	err := importOne(ctx, db, database.New(db), nil, &config.Config{}, tenantID, userID, plan, options{
+		process:         false,
+		inferenceClient: fakeCompletionClient{err: errors.New("bedrock unavailable")},
+	})
+	if err != nil {
+		t.Fatalf("import transcript: %v", err)
+	}
+
+	assertStoredPatientID(t, ctx, db, plan.encounterID, plan.patientID)
+}
+
+func TestImportOneSkipsInferenceWhenClientNil(t *testing.T) {
+	ctx := context.Background()
+	db, tenantID, userID := openSeededImportTestDB(t, ctx)
+	defer db.Close()
+
+	plan := importTestPlan(t, "Speaker 0: Jane Smith\nSpeaker 1: Hello")
+	err := importOne(ctx, db, database.New(db), nil, &config.Config{}, tenantID, userID, plan, options{process: false})
+	if err != nil {
+		t.Fatalf("import transcript: %v", err)
+	}
+
+	assertStoredPatientID(t, ctx, db, plan.encounterID, plan.patientID)
+}
+
+func TestImportOneUpdatesCreatedAtFromGoogleRecorderFilename(t *testing.T) {
+	ctx := context.Background()
+	db, tenantID, userID := openSeededImportTestDB(t, ctx)
+	defer db.Close()
+
+	plan := importTestPlanWithName(t, "May 28 at 3-37 PM.txt", "Speaker 0: Jane Smith\nSpeaker 1: Hello")
+	err := importOne(ctx, db, database.New(db), nil, &config.Config{}, tenantID, userID, plan, options{
+		process: false,
+		now:     func() time.Time { return time.Date(2026, time.June, 18, 0, 0, 0, 0, time.UTC) },
+	})
+	if err != nil {
+		t.Fatalf("import transcript: %v", err)
+	}
+
+	createdAt := storedCreatedAt(t, ctx, db, plan.encounterID)
+	location, err := time.LoadLocation("America/Denver")
+	if err != nil {
+		t.Fatalf("load location: %v", err)
+	}
+	want := time.Date(2026, time.May, 28, 15, 37, 0, 0, location)
+	if !createdAt.Equal(want) {
+		t.Fatalf("created_at = %v, want %v", createdAt, want)
+	}
+}
+
+func TestImportOneKeepsDefaultCreatedAtForSkippedRecorderTimestamps(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+	}{
+		{name: "non-matching filename", filename: "regular-note.txt"},
+		{name: "matching shape with invalid date", filename: "May 99 at 3-37 PM.txt"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			db, tenantID, userID := openSeededImportTestDB(t, ctx)
+			defer db.Close()
+
+			plan := importTestPlanWithName(t, tt.filename, "Speaker 0: Jane Smith\nSpeaker 1: Hello")
+			beforeImport := time.Now().UTC().Add(-2 * time.Second)
+			err := importOne(ctx, db, database.New(db), nil, &config.Config{}, tenantID, userID, plan, options{
+				process: false,
+				now:     func() time.Time { return time.Date(2026, time.June, 18, 0, 0, 0, 0, time.UTC) },
+			})
+			afterImport := time.Now().UTC().Add(2 * time.Second)
+			if err != nil {
+				t.Fatalf("import transcript: %v", err)
+			}
+
+			createdAt := storedCreatedAt(t, ctx, db, plan.encounterID)
+			if createdAt.Before(beforeImport) || createdAt.After(afterImport) {
+				t.Fatalf("created_at = %v, want database default between %v and %v", createdAt, beforeImport, afterImport)
+			}
+		})
+	}
+}
+
+func TestImportOneFailsWhenRecorderTimezoneUnavailable(t *testing.T) {
+	ctx := context.Background()
+	db, tenantID, userID := openSeededImportTestDB(t, ctx)
+	defer db.Close()
+
+	plan := importTestPlan(t, "Speaker 0: Jane Smith\nSpeaker 1: Hello")
+	err := importOne(ctx, db, database.New(db), nil, &config.Config{}, tenantID, userID, plan, options{
+		process: false,
+		parseRecorderTimestamp: func(filename string, now time.Time) (time.Time, bool, error) {
+			return time.Time{}, false, fmt.Errorf("wrapped: %w", transcriptimport.ErrRecorderTimezoneUnavailable)
+		},
+	})
+	if !errors.Is(err, transcriptimport.ErrRecorderTimezoneUnavailable) {
+		t.Fatalf("import transcript error = %v, want ErrRecorderTimezoneUnavailable", err)
+	}
+}
+
+func TestImportOneProcessesSelectedPatientID(t *testing.T) {
+	ctx := context.Background()
+	db, tenantID, userID := openSeededImportTestDB(t, ctx)
+	defer db.Close()
+
+	processor := &fakeProcessor{}
+	plan := importTestPlan(t, "Speaker 0: Jane Smith\nSpeaker 1: Hello")
+	err := importOne(ctx, db, database.New(db), processor, &config.Config{AthenaPracticeID: "practice-1"}, tenantID, userID, plan, options{
+		process:         true,
+		inferenceClient: fakeCompletionClient{text: `{"patient_name":"Jane Smith"}`},
+		timeout:         time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("import transcript: %v", err)
+	}
+
+	storedPatientID := storedPatientID(t, ctx, db, plan.encounterID)
+	if processor.patientID != storedPatientID {
+		t.Fatalf("processor patient ID = %q, want stored patient ID %q", processor.patientID, storedPatientID)
+	}
+}
+
 func openImportTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 
@@ -167,6 +334,96 @@ func importTestUUID(t *testing.T, value string) pgtype.UUID {
 		t.Fatalf("parse uuid %q: %v", value, err)
 	}
 	return id
+}
+
+func openSeededImportTestDB(t *testing.T, ctx context.Context) (*sql.DB, pgtype.UUID, pgtype.UUID) {
+	t.Helper()
+
+	db := openImportTestDB(t)
+	seedImportTestTenantUser(t, ctx, db)
+	return db,
+		importTestUUID(t, "f4909dfe-f082-41fa-9019-63f150cd1c90"),
+		importTestUUID(t, "31d45421-5ba9-4c9f-b47d-8b5f992261c3")
+}
+
+func importTestPlan(t *testing.T, transcript string) importPlan {
+	t.Helper()
+
+	return importTestPlanWithName(t, "transcript.txt", transcript)
+}
+
+func importTestPlanWithName(t *testing.T, filename string, transcript string) importPlan {
+	t.Helper()
+
+	transcriptPath := filepath.Join(t.TempDir(), filename)
+	if err := os.WriteFile(transcriptPath, []byte(transcript), 0600); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	return importPlan{
+		path:         transcriptPath,
+		patientID:    "demo-patient-001",
+		encounterID:  "demo-encounter-" + filename,
+		departmentID: "1",
+	}
+}
+
+func assertStoredPatientID(t *testing.T, ctx context.Context, db *sql.DB, encounterID string, want string) {
+	t.Helper()
+
+	got := storedPatientID(t, ctx, db, encounterID)
+	if got != want {
+		t.Fatalf("stored patient_id = %q, want %q", got, want)
+	}
+}
+
+func storedPatientID(t *testing.T, ctx context.Context, db *sql.DB, encounterID string) string {
+	t.Helper()
+
+	var got string
+	if err := db.QueryRowContext(ctx, `SELECT patient_id FROM scribe_sessions WHERE encounter_id = ?1`, encounterID).Scan(&got); err != nil {
+		t.Fatalf("query patient_id: %v", err)
+	}
+	return got
+}
+
+func storedCreatedAt(t *testing.T, ctx context.Context, db *sql.DB, encounterID string) time.Time {
+	t.Helper()
+
+	var raw string
+	if err := db.QueryRowContext(ctx, `SELECT created_at FROM scribe_sessions WHERE encounter_id = ?1`, encounterID).Scan(&raw); err != nil {
+		t.Fatalf("query created_at: %v", err)
+	}
+
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02 15:04:05-07:00", "2006-01-02 15:04:05Z07:00", "2006-01-02 15:04:05"} {
+		got, err := time.Parse(layout, raw)
+		if err == nil {
+			return got
+		}
+	}
+	t.Fatalf("parse created_at %q", raw)
+	return time.Time{}
+}
+
+type fakeCompletionClient struct {
+	text string
+	err  error
+}
+
+func (f fakeCompletionClient) Complete(context.Context, string, string, int) (bedrock.CompletionResult, error) {
+	if f.err != nil {
+		return bedrock.CompletionResult{}, f.err
+	}
+	return bedrock.CompletionResult{Text: f.text}, nil
+}
+
+type fakeProcessor struct {
+	patientID string
+}
+
+func (f *fakeProcessor) Process(ctx context.Context, practiceID, patientID, transcript string) (scribe.ProcessResult, error) {
+	f.patientID = patientID
+	return scribe.ProcessResult{Output: scribe.ScribeOutput{HPI: "ok"}}, nil
 }
 
 func TestAIOutputJSONStoresScribeOutputFieldsAtTopLevel(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -436,12 +437,6 @@ func TestValidateCreateFeedbackRequest_EmptyBody(t *testing.T) {
 }
 
 // --- HandleSend integration harness ---------------------------------------
-//
-// HandleSend runs against the concrete *database.Queries and a *Processor that
-// delegates to an emr.EMR. The seams are a SQL-dispatching fake DBTX (so the
-// handler's GetScribeSession / GetSessionSectionStates / GetSessionSectionEdits
-// / SetScribeSessionEncounter / MarkScribeSessionSent calls all resolve) and a
-// configurable fake EMR (ResolveEncounterID result + write recorder).
 
 const sendTestTenant = "11111111-1111-1111-1111-111111111111"
 const sendTestUser = "22222222-2222-2222-2222-222222222222"
@@ -772,43 +767,7 @@ func (e *sendFakeEMR) WriteEncounterPhysicalExam(ctx context.Context, practiceID
 	return nil
 }
 
-// sendFakeDB dispatches by SQL text so the multiple distinct queries HandleSend
-// issues each get the right rows, and records Exec calls so the test can assert
-// what was persisted / whether the session was marked sent.
-type sendFakeDB struct {
-	sqlDB       *sql.DB
-	session     database.ScribeSession
-	stateRows   [][]interface{}
-	editRows    [][]interface{}
-	encounterDB string // EncounterID passed to SetScribeSessionEncounter
-	markedSent  bool
-}
-
-func (db *sendFakeDB) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	switch {
-	case strings.Contains(query, "UPDATE scribe_sessions") && strings.Contains(query, "encounter_id"):
-		if len(args) >= 3 {
-			if s, ok := args[2].(string); ok {
-				db.encounterDB = s
-			}
-		}
-	case strings.Contains(query, "sent_to_ehr_at"):
-		db.markedSent = true
-	}
-	return db.sqlDB.ExecContext(ctx, query, args...)
-}
-
-func (db *sendFakeDB) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
-	return db.sqlDB.PrepareContext(ctx, query)
-}
-
-func (db *sendFakeDB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	return db.sqlDB.QueryContext(ctx, query, args...)
-}
-
-func (db *sendFakeDB) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
-	return db.sqlDB.QueryRowContext(ctx, query, args...)
-}
+type sendTestDB struct{ *sql.DB }
 
 func mustScanUUID(t *testing.T, s string) pgtype.UUID {
 	t.Helper()
@@ -819,93 +778,132 @@ func mustScanUUID(t *testing.T, s string) pgtype.UUID {
 	return u
 }
 
-// approvedStateRows builds GetSessionSectionStates rows (section, action,
-// user_id, at, user_name) for the given sections, all approved "now".
-func approvedStateRows(sections ...string) [][]interface{} {
-	now := time.Now()
-	var rows [][]interface{}
-	for _, s := range sections {
-		rows = append(rows, []interface{}{s, "approved", sendTestUser, now})
-	}
-	return rows
-}
-
-func newSendHandler(t *testing.T, db *sendFakeDB, emrClient *sendFakeEMR) *Handler {
+func newSendHandler(t *testing.T, db *sendTestDB, emrClient *sendFakeEMR) *Handler {
 	t.Helper()
 
-	sqlDB, err := sql.Open("sqlite3", ":memory:")
-	if err != nil {
-		t.Fatalf("open send test db: %v", err)
-	}
-	t.Cleanup(func() { sqlDB.Close() })
+	return NewHandler(database.New(db), &Processor{emr: emrClient}, &config.Config{}, nil, emrClient, nil)
+}
 
-	_, err = sqlDB.Exec(`
-		CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT NOT NULL);
+func openSendTestDB(t *testing.T, session database.ScribeSession, approvedSections ...string) *sendTestDB {
+	t.Helper()
+
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+
+	_, err = db.Exec(`
+		CREATE TABLE users (
+			id UUID PRIMARY KEY,
+			tenant_id UUID NOT NULL,
+			email TEXT NOT NULL,
+			password_hash TEXT NOT NULL,
+			role TEXT NOT NULL,
+			name TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL
+		);
 		CREATE TABLE scribe_sessions (
-			id TEXT NOT NULL,
-			tenant_id TEXT NOT NULL,
-			user_id TEXT NOT NULL,
+			id UUID PRIMARY KEY,
+			tenant_id UUID NOT NULL,
+			user_id UUID,
 			patient_id TEXT NOT NULL DEFAULT '',
 			encounter_id TEXT NOT NULL DEFAULT '',
+			appointment_id TEXT NOT NULL DEFAULT '',
 			department_id TEXT NOT NULL DEFAULT '',
+			label TEXT NOT NULL DEFAULT '',
 			status TEXT NOT NULL,
 			transcript TEXT,
 			ai_output BLOB,
 			error_message TEXT,
-			started_at TIMESTAMP,
-			stopped_at TIMESTAMP,
-			completed_at TIMESTAMP,
-			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			sent_to_ehr_at TIMESTAMP,
-			sent_to_ehr_by TEXT,
-			rejected_at TIMESTAMP,
-			rejected_by TEXT,
-			appointment_id TEXT NOT NULL DEFAULT '',
-			label TEXT NOT NULL DEFAULT '',
-			document_filename TEXT NOT NULL DEFAULT '',
-			PRIMARY KEY (id, tenant_id)
+			started_at TIMESTAMPTZ,
+			stopped_at TIMESTAMPTZ,
+			completed_at TIMESTAMPTZ,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT '2026-05-14 12:30:00+00:00',
+			sent_to_ehr_at TIMESTAMPTZ,
+			sent_to_ehr_by UUID,
+			rejected_at TIMESTAMPTZ,
+			rejected_by UUID,
+			document_filename TEXT NOT NULL DEFAULT ''
 		);
 		CREATE TABLE scribe_section_approvals (
-			session_id TEXT NOT NULL,
+			id UUID PRIMARY KEY DEFAULT '',
+			session_id UUID NOT NULL,
 			section TEXT NOT NULL,
 			action TEXT NOT NULL,
-			user_id TEXT NOT NULL,
-			at TIMESTAMP NOT NULL
+			user_id UUID NOT NULL,
+			at TIMESTAMPTZ NOT NULL DEFAULT '2026-05-14 12:30:00+00:00'
 		);
 		CREATE TABLE scribe_section_edits (
-			session_id TEXT NOT NULL,
+			id UUID PRIMARY KEY DEFAULT '',
+			session_id UUID NOT NULL,
 			section TEXT NOT NULL,
 			content BLOB NOT NULL,
-			edited_by TEXT NOT NULL,
-			at TIMESTAMP NOT NULL
+			edited_by UUID NOT NULL,
+			at TIMESTAMPTZ NOT NULL DEFAULT '2026-05-14 12:30:00+00:00'
 		);
 	`)
 	if err != nil {
-		t.Fatalf("create send test schema: %v", err)
+		db.Close()
+		t.Fatalf("create sqlite scribe schema: %v", err)
 	}
 
-	s := db.session
-	if _, err := sqlDB.Exec(`INSERT INTO users (id, name) VALUES (?, ?)`, sendTestUser, "Courtney Crance"); err != nil {
-		t.Fatalf("insert send user: %v", err)
-	}
-	_, err = sqlDB.Exec(`
-		INSERT INTO scribe_sessions (
-			id, tenant_id, user_id, patient_id, encounter_id, department_id, status,
-			transcript, ai_output, error_message, started_at, stopped_at, completed_at,
-			created_at, sent_to_ehr_at, sent_to_ehr_by, rejected_at, rejected_by,
-			appointment_id, label, document_filename
-		) VALUES (?, ?, ?, 'patient-original', ?, '', ?, NULL, ?, NULL, NULL, NULL, NULL, ?, NULL, NULL, NULL, NULL, ?, '', '')
-	`, uuidToString(s.ID), uuidToString(s.TenantID), sendTestUser, s.EncounterID, s.Status, []byte(s.AiOutput), time.Now(), s.AppointmentID)
+	seedSendTestSession(t, db, session, approvedSections...)
+	return &sendTestDB{DB: db}
+}
+
+func seedSendTestSession(t *testing.T, db *sql.DB, session database.ScribeSession, approvedSections ...string) {
+	t.Helper()
+
+	_, err := db.ExecContext(context.Background(), `
+		INSERT INTO users (id, tenant_id, email, password_hash, role, name, created_at, updated_at)
+		VALUES (?1, ?2, 'provider@janushc.com', '', 'physician', 'Courtney Crance', '2026-05-14 12:30:00+00:00', '2026-05-14 12:30:00+00:00')
+	`, sendTestUser, sendTestTenant)
 	if err != nil {
-		t.Fatalf("insert send session: %v", err)
+		t.Fatalf("seed sqlite send user: %v", err)
 	}
-	for _, row := range db.stateRows {
-		if _, err := sqlDB.Exec(`INSERT INTO scribe_section_approvals (session_id, section, action, user_id, at) VALUES (?, ?, ?, ?, ?)`, uuidToString(s.ID), row[0], row[1], row[2], row[3]); err != nil {
-			t.Fatalf("insert send approval: %v", err)
+
+	_, err = db.ExecContext(context.Background(), `
+		INSERT INTO scribe_sessions (id, tenant_id, user_id, patient_id, encounter_id, appointment_id, department_id, status, ai_output)
+		VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+	`, uuidString(session.ID), uuidString(session.TenantID), sendTestUser, session.PatientID, session.EncounterID, session.AppointmentID, session.DepartmentID, session.Status, []byte(session.AiOutput))
+	if err != nil {
+		t.Fatalf("seed sqlite send session: %v", err)
+	}
+
+	for _, section := range approvedSections {
+		_, err := db.ExecContext(context.Background(), `
+			INSERT INTO scribe_section_approvals (id, session_id, section, action, user_id, at)
+			VALUES (?1, ?2, ?3, 'approved', ?4, '2026-05-14 12:30:00+00:00')
+		`, "approval-"+section, uuidString(session.ID), section, sendTestUser)
+		if err != nil {
+			t.Fatalf("seed sqlite section approval: %v", err)
 		}
 	}
-	db.sqlDB = sqlDB
-	return NewHandler(database.New(db), &Processor{emr: emrClient}, &config.Config{}, nil, emrClient, nil)
+}
+
+func (db *sendTestDB) encounterID(t *testing.T, sessionID string) string {
+	t.Helper()
+
+	var encounterID string
+	if err := db.QueryRowContext(context.Background(), `SELECT encounter_id FROM scribe_sessions WHERE id = ?1`, sessionID).Scan(&encounterID); err != nil {
+		t.Fatalf("query sqlite encounter id: %v", err)
+	}
+	return encounterID
+}
+
+func (db *sendTestDB) markedSent(t *testing.T, sessionID string) bool {
+	t.Helper()
+
+	var sentToEHR sql.NullString
+	if err := db.QueryRowContext(context.Background(), `SELECT sent_to_ehr_at FROM scribe_sessions WHERE id = ?1`, sessionID).Scan(&sentToEHR); err != nil {
+		t.Fatalf("query sqlite sent marker: %v", err)
+	}
+	return sentToEHR.Valid
+}
+
+func uuidString(value pgtype.UUID) string {
+	return fmt.Sprintf("%x-%x-%x-%x-%x", value.Bytes[0:4], value.Bytes[4:6], value.Bytes[6:8], value.Bytes[8:10], value.Bytes[10:16])
 }
 
 func sendRequest(sessionID string) *http.Request {
@@ -920,17 +918,15 @@ func sendRequest(sessionID string) *http.Request {
 func TestHandleSend_ResolvesEncounterFromAppointment(t *testing.T) {
 	sessionUUID := mustScanUUID(t, "33333333-3333-3333-3333-333333333333")
 	tenantUUID := mustScanUUID(t, sendTestTenant)
-	db := &sendFakeDB{
-		session: database.ScribeSession{
-			ID:            sessionUUID,
-			TenantID:      tenantUUID,
-			EncounterID:   "",
-			AppointmentID: "A1",
-			Status:        "complete",
-			AiOutput:      []byte(`{"hpi":"h","assessment_plan":"a","physical_exam":"p"}`),
-		},
-		stateRows: approvedStateRows("hpi", "plan", "exam"),
-	}
+	db := openSendTestDB(t, database.ScribeSession{
+		ID:            sessionUUID,
+		TenantID:      tenantUUID,
+		EncounterID:   "",
+		AppointmentID: "A1",
+		Status:        "complete",
+		AiOutput:      []byte(`{"hpi":"h","assessment_plan":"a","physical_exam":"p"}`),
+	}, "hpi", "plan", "exam")
+	defer db.Close()
 	emrClient := &sendFakeEMR{resolveResult: "E99"}
 	h := newSendHandler(t, db, emrClient)
 
@@ -949,10 +945,10 @@ func TestHandleSend_ResolvesEncounterFromAppointment(t *testing.T) {
 	if emrClient.writeEncounterID != "E99" {
 		t.Fatalf("expected encounter writes to receive E99, got %q", emrClient.writeEncounterID)
 	}
-	if db.encounterDB != "E99" {
-		t.Fatalf("expected resolved encounter E99 persisted, got %q", db.encounterDB)
+	if got := db.encounterID(t, "33333333-3333-3333-3333-333333333333"); got != "E99" {
+		t.Fatalf("expected resolved encounter E99 persisted, got %q", got)
 	}
-	if !db.markedSent {
+	if !db.markedSent(t, "33333333-3333-3333-3333-333333333333") {
 		t.Fatal("expected session to be marked sent")
 	}
 }
@@ -960,17 +956,15 @@ func TestHandleSend_ResolvesEncounterFromAppointment(t *testing.T) {
 func TestHandleSend_UnresolvedEncounterBlocksSend(t *testing.T) {
 	sessionUUID := mustScanUUID(t, "33333333-3333-3333-3333-333333333333")
 	tenantUUID := mustScanUUID(t, sendTestTenant)
-	db := &sendFakeDB{
-		session: database.ScribeSession{
-			ID:            sessionUUID,
-			TenantID:      tenantUUID,
-			EncounterID:   "",
-			AppointmentID: "A1",
-			Status:        "complete",
-			AiOutput:      []byte(`{"hpi":"h","assessment_plan":"a","physical_exam":"p"}`),
-		},
-		stateRows: approvedStateRows("hpi", "plan", "exam"),
-	}
+	db := openSendTestDB(t, database.ScribeSession{
+		ID:            sessionUUID,
+		TenantID:      tenantUUID,
+		EncounterID:   "",
+		AppointmentID: "A1",
+		Status:        "complete",
+		AiOutput:      []byte(`{"hpi":"h","assessment_plan":"a","physical_exam":"p"}`),
+	}, "hpi", "plan", "exam")
+	defer db.Close()
 	emrClient := &sendFakeEMR{resolveResult: ""}
 	h := newSendHandler(t, db, emrClient)
 
@@ -983,7 +977,7 @@ func TestHandleSend_UnresolvedEncounterBlocksSend(t *testing.T) {
 	if emrClient.writeCalled {
 		t.Fatal("expected no encounter writes when encounter unresolved")
 	}
-	if db.markedSent {
+	if db.markedSent(t, "33333333-3333-3333-3333-333333333333") {
 		t.Fatal("expected session NOT to be marked sent when encounter unresolved")
 	}
 }
