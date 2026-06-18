@@ -47,7 +47,7 @@ func ParseInferredPatientName(raw string) string {
 	var parsed struct {
 		PatientName string `json:"patient_name"`
 	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &parsed); err != nil {
+	if err := json.Unmarshal([]byte(stripMarkdownJSONFence(raw)), &parsed); err != nil {
 		return ""
 	}
 
@@ -60,6 +60,22 @@ func ParseInferredPatientName(raw string) string {
 	}
 
 	return patientName
+}
+
+func stripMarkdownJSONFence(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if !strings.HasPrefix(trimmed, "```") || !strings.HasSuffix(trimmed, "```") {
+		return trimmed
+	}
+
+	withoutOpeningFence := strings.TrimPrefix(trimmed, "```")
+	withoutClosingFence := strings.TrimSuffix(withoutOpeningFence, "```")
+	withoutLanguage := strings.TrimSpace(withoutClosingFence)
+	if strings.HasPrefix(strings.ToLower(withoutLanguage), "json") {
+		return strings.TrimSpace(withoutLanguage[len("json"):])
+	}
+
+	return withoutLanguage
 }
 
 func isUncertainPatientName(patientName string) bool {

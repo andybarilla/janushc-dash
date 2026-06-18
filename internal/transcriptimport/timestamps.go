@@ -43,8 +43,9 @@ func ParseGoogleRecorderTimestampSlug(encounterID string, prefix string, now tim
 }
 
 func parseRecorderTimestampParts(month, day, hour, minute, ampm string, now time.Time) (time.Time, bool, error) {
-	parsed, err := time.Parse("January 2 3-04 PM 2006", fmt.Sprintf("%s %s %s-%s %s %d", month, day, hour, minute, ampm, now.Year()))
-	if err != nil {
+	text := fmt.Sprintf("%s %s %s-%s %s %d", month, day, hour, minute, ampm, now.Year())
+	parsed, ok := parseRecorderTimestampText(text)
+	if !ok {
 		return time.Time{}, false, nil
 	}
 
@@ -54,4 +55,15 @@ func parseRecorderTimestampParts(month, day, hour, minute, ampm string, now time
 	}
 
 	return time.Date(parsed.Year(), parsed.Month(), parsed.Day(), parsed.Hour(), parsed.Minute(), 0, 0, location), true, nil
+}
+
+func parseRecorderTimestampText(text string) (time.Time, bool) {
+	for _, layout := range []string{"January 2 3-04 PM 2006", "Jan 2 3-04 PM 2006"} {
+		parsed, err := time.Parse(layout, text)
+		if err == nil {
+			return parsed, true
+		}
+	}
+
+	return time.Time{}, false
 }

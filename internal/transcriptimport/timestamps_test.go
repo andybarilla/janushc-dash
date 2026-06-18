@@ -75,21 +75,50 @@ func TestParseGoogleRecorderTimestampTimezoneUnavailable(t *testing.T) {
 }
 
 func TestParseGoogleRecorderTimestampSlug(t *testing.T) {
-	now := time.Date(2026, time.June, 18, 12, 0, 0, 0, time.UTC)
-	got, ok, err := ParseGoogleRecorderTimestampSlug("demo-encounter-may-28-at-3-37-pm", "demo-encounter-", now)
-	if err != nil {
-		t.Fatalf("ParseGoogleRecorderTimestampSlug() error = %v", err)
-	}
-	if !ok {
-		t.Fatal("ParseGoogleRecorderTimestampSlug() ok = false, want true")
-	}
 	loc, err := time.LoadLocation("America/Denver")
 	if err != nil {
 		t.Fatalf("load America/Denver: %v", err)
 	}
-	want := time.Date(2026, time.May, 28, 15, 37, 0, 0, loc)
-	if !got.Equal(want) {
-		t.Fatalf("ParseGoogleRecorderTimestampSlug() = %v, want %v", got, want)
+
+	tests := []struct {
+		name        string
+		encounterID string
+		now         time.Time
+		want        time.Time
+	}{
+		{
+			name:        "may slug",
+			encounterID: "demo-encounter-may-28-at-3-37-pm",
+			now:         time.Date(2026, time.June, 18, 12, 0, 0, 0, time.UTC),
+			want:        time.Date(2026, time.May, 28, 15, 37, 0, 0, loc),
+		},
+		{
+			name:        "april abbreviation slug",
+			encounterID: "demo-encounter-apr-14-at-1-26-pm",
+			now:         time.Date(2026, time.June, 18, 12, 0, 0, 0, time.UTC),
+			want:        time.Date(2026, time.April, 14, 13, 26, 0, 0, loc),
+		},
+		{
+			name:        "june abbreviation slug",
+			encounterID: "demo-encounter-jun-1-at-2-04-pm",
+			now:         time.Date(2026, time.June, 18, 12, 0, 0, 0, time.UTC),
+			want:        time.Date(2026, time.June, 1, 14, 4, 0, 0, loc),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok, err := ParseGoogleRecorderTimestampSlug(tt.encounterID, "demo-encounter-", tt.now)
+			if err != nil {
+				t.Fatalf("ParseGoogleRecorderTimestampSlug() error = %v", err)
+			}
+			if !ok {
+				t.Fatal("ParseGoogleRecorderTimestampSlug() ok = false, want true")
+			}
+			if !got.Equal(tt.want) {
+				t.Fatalf("ParseGoogleRecorderTimestampSlug() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
