@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ArrowLeft,
   Check,
@@ -42,11 +42,6 @@ export function ReviewTopBar({
     updatingPatientId ||
     !trimmedPatientId ||
     trimmedPatientId === session.patient_id;
-
-  useEffect(() => {
-    if (editingPatientId) return;
-    setDraftPatientId(session.patient_id);
-  }, [editingPatientId, session.patient_id]);
 
   const startPatientIdEdit = () => {
     if (patientIdLocked || updatingPatientId) return;

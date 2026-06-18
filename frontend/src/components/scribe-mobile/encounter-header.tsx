@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Building2, Check, Clock, FileText, Pencil, UserRound, X } from "lucide-react";
 import type { ScribeSessionDetail } from "@/lib/scribe-queries";
 import { STATUS, wordCount } from "@/components/scribe/status";
@@ -34,15 +34,16 @@ export function MEncounterHeader({
   const canSavePatientId =
     trimmedPatientId.length > 0 && trimmedPatientId !== session.patient_id;
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Keep the draft synced while the visible input is closed.
-    if (!editingPatientId) setPatientIdDraft(session.patient_id);
-  }, [editingPatientId, session.patient_id]);
-
   const savePatientId = () => {
     if (!canSavePatientId || updatingPatientId) return;
     onUpdatePatientId(trimmedPatientId);
     setEditingPatientId(false);
+  };
+
+  const startPatientIdEdit = () => {
+    if (patientIdLocked || updatingPatientId) return;
+    setPatientIdDraft(session.patient_id);
+    setEditingPatientId(true);
   };
 
   const cancelPatientIdEdit = () => {
@@ -94,7 +95,7 @@ export function MEncounterHeader({
                 className="m-icon-btn m-patient-id-edit"
                 aria-label="Edit patient ID"
                 disabled={patientIdLocked || updatingPatientId}
-                onClick={() => setEditingPatientId(true)}
+                onClick={startPatientIdEdit}
               >
                 <Pencil />
               </button>
