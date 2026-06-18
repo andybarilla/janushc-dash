@@ -12,6 +12,7 @@ import {
   useScribeSession,
   useScribeSessions,
   useSessionFeedback,
+  useUpdateScribePatientId,
 } from "@/lib/scribe-queries";
 import { useAuth } from "@/lib/auth";
 import { useIsMobile } from "@/lib/use-is-mobile";
@@ -72,6 +73,7 @@ function DesktopScribe() {
   const deleteMut = useDeleteScribeSession();
   const editMut = useEditSection();
   const addFeedbackMut = useAddFeedback();
+  const updatePatientIdMut = useUpdateScribePatientId();
 
   const sessionMatch = useMatch("/scribe/sessions/:sessionId");
   const selectedId = sessionMatch?.params.sessionId ?? null;
@@ -176,6 +178,11 @@ function DesktopScribe() {
     editMut.mutate({ sessionId: selectedId, section, content });
   };
 
+  const handleUpdatePatientId = (patientId: string) => {
+    if (!selectedId) return;
+    updatePatientIdMut.mutate({ sessionId: selectedId, patientId });
+  };
+
   const handleReject = () => {
     if (!selectedId || !canApprove) return;
     if (
@@ -251,6 +258,8 @@ function DesktopScribe() {
             if (selectedId) sendMut.mutate({ sessionId: selectedId });
           }}
           onSaveSection={handleSaveSection}
+          onUpdatePatientId={handleUpdatePatientId}
+          updatingPatientId={updatePatientIdMut.isPending}
           onRetry={() => {
             window.alert("Retry is not yet implemented.");
           }}

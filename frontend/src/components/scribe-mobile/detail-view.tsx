@@ -37,6 +37,8 @@ interface Props {
   onApprove: (section: SectionKey) => void;
   onApproveAll: () => void;
   onSend: () => void;
+  onUpdatePatientId: (patientId: string) => void;
+  updatingPatientId: boolean;
   onOpenNotes: () => void;
   onAddNoteForSection: (section: SectionKey) => void;
   onRetry: () => void;
@@ -60,6 +62,8 @@ export function MDetailView({
   onApprove,
   onApproveAll,
   onSend,
+  onUpdatePatientId,
+  updatingPatientId,
   onOpenNotes,
   onAddNoteForSection,
   onRetry,
@@ -101,7 +105,12 @@ export function MDetailView({
     <>
       <MDetailTopBar title={session.patient_id} onBack={onBack} onDelete={onDelete} />
       <div className="m-body">
-        <MEncounterHeader session={session} statusId={statusId} />
+        <MEncounterHeader
+          session={session}
+          statusId={statusId}
+          onUpdatePatientId={onUpdatePatientId}
+          updatingPatientId={updatingPatientId}
+        />
 
         {hasSections || session.audio_available ? (
           <MAudioStrip sessionId={session.id} available={session.audio_available} />

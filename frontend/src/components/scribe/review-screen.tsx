@@ -48,6 +48,8 @@ interface Props {
   onDelete: () => void;
   onSend: () => void;
   onSaveSection: (section: SectionKey, content: SectionContent) => void;
+  onUpdatePatientId: (patientId: string) => void;
+  updatingPatientId: boolean;
   onOpenNotes: () => void;
   onAddNoteForSection: (section: SectionKey) => void;
   onRetry: () => void;
@@ -74,6 +76,8 @@ export function ReviewScreen({
   onDelete,
   onSend,
   onSaveSection,
+  onUpdatePatientId,
+  updatingPatientId,
   onOpenNotes,
   onAddNoteForSection,
   onRetry,
@@ -157,6 +161,8 @@ export function ReviewScreen({
         onPrev={onPrev}
         onNext={onNext}
         onDelete={onDelete}
+        onUpdatePatientId={onUpdatePatientId}
+        updatingPatientId={updatingPatientId}
       />
       <ReviewMetaBar
         session={session}

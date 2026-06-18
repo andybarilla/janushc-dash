@@ -2242,6 +2242,41 @@
   flex-direction: column;
   min-width: 0;
 }
+.janus-patient-id-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.janus-patient-id-row h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.janus-patient-id-edit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.janus-patient-id-input {
+  width: min(280px, 32vw);
+  height: 32px;
+  padding: 0 10px;
+  border: 2px solid var(--janus-border);
+  border-radius: var(--janus-radius-input);
+  background: var(--janus-bg-light);
+  color: var(--janus-text-dark);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  transition: border-color var(--janus-motion-fast), background var(--janus-motion-fast);
+}
+.janus-patient-id-input:focus {
+  outline: none;
+  border-color: var(--janus-primary);
+  background: var(--janus-white);
+}
 .janus-review-identity h2 {
   margin: 0;
   font-size: 18px;

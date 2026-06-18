@@ -318,6 +318,8 @@ func openBackfillTestDB(t *testing.T, ctx context.Context) *sql.DB {
 			id UUID PRIMARY KEY,
 			tenant_id UUID NOT NULL,
 			patient_id TEXT NOT NULL,
+			sent_to_ehr_at TIMESTAMPTZ,
+			rejected_at TIMESTAMPTZ,
 			created_at TIMESTAMPTZ NOT NULL
 		);
 	`)

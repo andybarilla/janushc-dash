@@ -164,12 +164,16 @@ func isGeneratedPatientID(patientID, prefix string) bool {
 
 func applyBackfillPlan(ctx context.Context, queries *database.Queries, plan backfillPlan) error {
 	if plan.UpdatePatientID {
-		if err := queries.UpdateScribeSessionPatientID(ctx, database.UpdateScribeSessionPatientIDParams{
+		updatedRows, err := queries.UpdateScribeSessionPatientID(ctx, database.UpdateScribeSessionPatientIDParams{
 			ID:        plan.SessionID,
 			TenantID:  plan.TenantID,
 			PatientID: plan.NewPatientID,
-		}); err != nil {
+		})
+		if err != nil {
 			return fmt.Errorf("update patient_id for session %s: %w", plan.SessionID.String(), err)
+		}
+		if updatedRows == 0 {
+			return fmt.Errorf("update patient_id for session %s: session was already sent, rejected, or missing", plan.SessionID.String())
 		}
 	}
 	if plan.UpdateCreatedAt {

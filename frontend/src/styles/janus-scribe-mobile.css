@@ -16,6 +16,17 @@
 
 .m-app *, .m-app *::before, .m-app *::after { box-sizing: border-box; }
 .m-app [data-lucide] { width: 1em; height: 1em; flex-shrink: 0; }
+.m-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 /* Full-bleed overlay over the desktop AppShell while on a mobile viewport.
    inset:0 handles the full viewport; using width:100vw would include
@@ -332,6 +343,35 @@
   letter-spacing: -0.015em;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
+}
+.m-patient-id-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.m-patient-id-edit {
+  width: 30px;
+  height: 30px;
+  color: var(--janus-primary);
+  font-size: 14px;
+}
+.m-patient-id-input {
+  min-width: 0;
+  width: min(180px, 52vw);
+  height: 32px;
+  border: 1.5px solid var(--janus-border);
+  border-radius: 10px;
+  color: var(--janus-primary);
+  font: inherit;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 4px 8px;
+}
+.m-patient-id-input:focus {
+  border-color: var(--janus-primary);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(44, 95, 125, 0.12);
 }
 .m-patient-sub {
   font-size: 12px;
@@ -1642,4 +1682,3 @@
   color: var(--janus-error-text);
   border-color: var(--janus-error-border);
 }
-

@@ -103,6 +103,11 @@ interface CreateSessionRequest {
   department_id: string;
 }
 
+interface UpdateScribePatientIdRequest {
+  sessionId: string;
+  patientId: string;
+}
+
 export function useScribeSessions() {
   return useQuery({
     queryKey: ["scribeSessions"],
@@ -146,6 +151,24 @@ export function useCreateScribeSession() {
         body: JSON.stringify(req),
       }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["scribeSessions"] });
+    },
+  });
+}
+
+export function useUpdateScribePatientId() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sessionId, patientId }: UpdateScribePatientIdRequest) =>
+      api.fetch<Record<string, never>>(
+        `/api/scribe/sessions/${sessionId}/patient-id`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ patient_id: patientId.trim() }),
+        },
+      ),
+    onSuccess: (_data, { sessionId }) => {
+      queryClient.invalidateQueries({ queryKey: ["scribeSessions", sessionId] });
       queryClient.invalidateQueries({ queryKey: ["scribeSessions"] });
     },
   });
