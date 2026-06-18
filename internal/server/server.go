@@ -102,6 +102,7 @@ func (s *Server) routes() {
 		r.Get("/api/scribe/appointments", s.scribeHandler.HandleListAppointments)
 		r.Get("/api/scribe/sessions/{id}", s.scribeHandler.HandleGet)
 		r.Delete("/api/scribe/sessions/{id}", s.scribeHandler.HandleDelete)
+		r.Put("/api/scribe/sessions/{id}/patient-id", s.scribeHandler.HandleUpdatePatientID)
 		r.Get("/api/scribe/sessions/{id}/audio", s.scribeHandler.HandleAudio)
 		r.Post("/api/scribe/sessions/{id}/process", s.scribeHandler.HandleProcess)
 		r.With(middleware.Timeout(5*time.Minute)).Post("/api/scribe/sessions/{id}/upload", s.scribeHandler.HandleUpload)

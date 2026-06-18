@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -17,8 +16,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/andybarilla/janushc-dash/internal/auth"
@@ -737,6 +734,7 @@ func (e *sendFakeEMR) WriteEncounterPhysicalExam(ctx context.Context, practiceID
 // issues each get the right rows, and records Exec calls so the test can assert
 // what was persisted / whether the session was marked sent.
 type sendFakeDB struct {
+	sqlDB       *sql.DB
 	session     database.ScribeSession
 	stateRows   [][]interface{}
 	editRows    [][]interface{}
@@ -744,115 +742,30 @@ type sendFakeDB struct {
 	markedSent  bool
 }
 
-func (db *sendFakeDB) Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
+func (db *sendFakeDB) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	switch {
-	case strings.Contains(sql, "UPDATE scribe_sessions") && strings.Contains(sql, "encounter_id"):
+	case strings.Contains(query, "UPDATE scribe_sessions") && strings.Contains(query, "encounter_id"):
 		if len(args) >= 3 {
 			if s, ok := args[2].(string); ok {
 				db.encounterDB = s
 			}
 		}
-	case strings.Contains(sql, "sent_to_ehr_at"):
+	case strings.Contains(query, "sent_to_ehr_at"):
 		db.markedSent = true
 	}
-	return pgconn.CommandTag{}, nil
-}
-
-func (db *sendFakeDB) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
-	if strings.Contains(sql, "scribe_section_approvals") {
-		return newSendRows(db.stateRows), nil
-	}
-	return newSendRows(db.editRows), nil
-}
-
-func (db *sendFakeDB) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
-	s := db.session
-	return &sendRow{values: []interface{}{
-		s.ID, s.TenantID, s.UserID, s.PatientID, s.EncounterID, s.DepartmentID,
-		s.Status, s.Transcript, s.AiOutput, s.ErrorMessage, s.StartedAt, s.StoppedAt,
-		s.CompletedAt, s.CreatedAt, s.SentToEhrAt, s.SentToEhrBy, s.RejectedAt,
-		s.RejectedBy, s.AppointmentID, s.Label, s.DocumentFilename,
-	}}
-}
-
-type fakeSQLResult struct{}
-
-func (fakeSQLResult) LastInsertId() (int64, error) { return 0, nil }
-func (fakeSQLResult) RowsAffected() (int64, error) { return 0, nil }
-
-func (db *sendFakeDB) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	_, err := db.Exec(ctx, query, args...)
-	return fakeSQLResult{}, err
+	return db.sqlDB.ExecContext(ctx, query, args...)
 }
 
 func (db *sendFakeDB) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
-	return nil, fmt.Errorf("sendFakeDB does not support prepared statements")
+	return db.sqlDB.PrepareContext(ctx, query)
 }
 
 func (db *sendFakeDB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	return nil, fmt.Errorf("sendFakeDB QueryContext is unavailable in compile-only patient ID tests")
+	return db.sqlDB.QueryContext(ctx, query, args...)
 }
 
 func (db *sendFakeDB) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
-	return nil
-}
-
-type sendRow struct {
-	values []interface{}
-	err    error
-}
-
-func (r *sendRow) Scan(dest ...interface{}) error {
-	if r.err != nil {
-		return r.err
-	}
-	return sendScan(dest, r.values)
-}
-
-type sendRows struct {
-	values [][]interface{}
-	index  int
-}
-
-func newSendRows(values [][]interface{}) *sendRows { return &sendRows{values: values, index: -1} }
-
-func (rows *sendRows) Close()                                       {}
-func (rows *sendRows) Err() error                                   { return nil }
-func (rows *sendRows) CommandTag() pgconn.CommandTag                { return pgconn.CommandTag{} }
-func (rows *sendRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
-func (rows *sendRows) Values() ([]interface{}, error)               { return rows.values[rows.index], nil }
-func (rows *sendRows) RawValues() [][]byte                          { return nil }
-func (rows *sendRows) Conn() *pgx.Conn                              { return nil }
-func (rows *sendRows) Next() bool {
-	if rows.index+1 >= len(rows.values) {
-		return false
-	}
-	rows.index++
-	return true
-}
-func (rows *sendRows) Scan(dest ...interface{}) error { return sendScan(dest, rows.values[rows.index]) }
-
-func sendScan(dest, values []interface{}) error {
-	if len(dest) != len(values) {
-		return fmt.Errorf("scan destination count mismatch: %d != %d", len(dest), len(values))
-	}
-	for i := range dest {
-		switch target := dest[i].(type) {
-		case *pgtype.UUID:
-			target.Bytes, target.Valid = values[i].(pgtype.UUID).Bytes, values[i].(pgtype.UUID).Valid
-		case *pgtype.Timestamptz:
-			*target = values[i].(pgtype.Timestamptz)
-		case *pgtype.Text:
-			*target = values[i].(pgtype.Text)
-		case *string:
-			*target = values[i].(string)
-		case *[]byte:
-			*target = values[i].([]byte)
-		default:
-			return fmt.Errorf("unsupported scan destination %T", dest[i])
-		}
-	}
-	return nil
+	return db.sqlDB.QueryRowContext(ctx, query, args...)
 }
 
 func mustScanUUID(t *testing.T, s string) pgtype.UUID {
@@ -867,15 +780,89 @@ func mustScanUUID(t *testing.T, s string) pgtype.UUID {
 // approvedStateRows builds GetSessionSectionStates rows (section, action,
 // user_id, at, user_name) for the given sections, all approved "now".
 func approvedStateRows(sections ...string) [][]interface{} {
-	now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
+	now := time.Now()
 	var rows [][]interface{}
 	for _, s := range sections {
-		rows = append(rows, []interface{}{s, "approved", pgtype.UUID{}, now, "Courtney Crance"})
+		rows = append(rows, []interface{}{s, "approved", sendTestUser, now})
 	}
 	return rows
 }
 
-func newSendHandler(db *sendFakeDB, emrClient *sendFakeEMR) *Handler {
+func newSendHandler(t *testing.T, db *sendFakeDB, emrClient *sendFakeEMR) *Handler {
+	t.Helper()
+
+	sqlDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open send test db: %v", err)
+	}
+	t.Cleanup(func() { sqlDB.Close() })
+
+	_, err = sqlDB.Exec(`
+		CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT NOT NULL);
+		CREATE TABLE scribe_sessions (
+			id TEXT NOT NULL,
+			tenant_id TEXT NOT NULL,
+			user_id TEXT NOT NULL,
+			patient_id TEXT NOT NULL DEFAULT '',
+			encounter_id TEXT NOT NULL DEFAULT '',
+			department_id TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL,
+			transcript TEXT,
+			ai_output BLOB,
+			error_message TEXT,
+			started_at TIMESTAMP,
+			stopped_at TIMESTAMP,
+			completed_at TIMESTAMP,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			sent_to_ehr_at TIMESTAMP,
+			sent_to_ehr_by TEXT,
+			rejected_at TIMESTAMP,
+			rejected_by TEXT,
+			appointment_id TEXT NOT NULL DEFAULT '',
+			label TEXT NOT NULL DEFAULT '',
+			document_filename TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (id, tenant_id)
+		);
+		CREATE TABLE scribe_section_approvals (
+			session_id TEXT NOT NULL,
+			section TEXT NOT NULL,
+			action TEXT NOT NULL,
+			user_id TEXT NOT NULL,
+			at TIMESTAMP NOT NULL
+		);
+		CREATE TABLE scribe_section_edits (
+			session_id TEXT NOT NULL,
+			section TEXT NOT NULL,
+			content BLOB NOT NULL,
+			edited_by TEXT NOT NULL,
+			at TIMESTAMP NOT NULL
+		);
+	`)
+	if err != nil {
+		t.Fatalf("create send test schema: %v", err)
+	}
+
+	s := db.session
+	if _, err := sqlDB.Exec(`INSERT INTO users (id, name) VALUES (?, ?)`, sendTestUser, "Courtney Crance"); err != nil {
+		t.Fatalf("insert send user: %v", err)
+	}
+	_, err = sqlDB.Exec(`
+		INSERT INTO scribe_sessions (
+			id, tenant_id, user_id, patient_id, encounter_id, department_id, status,
+			transcript, ai_output, error_message, started_at, stopped_at, completed_at,
+			created_at, sent_to_ehr_at, sent_to_ehr_by, rejected_at, rejected_by,
+			appointment_id, label, document_filename
+		) VALUES (?, ?, ?, 'patient-original', ?, '', ?, NULL, ?, NULL, NULL, NULL, NULL, ?, NULL, NULL, NULL, NULL, ?, '', '')
+	`, uuidToString(s.ID), uuidToString(s.TenantID), sendTestUser, s.EncounterID, s.Status, []byte(s.AiOutput), time.Now(), s.AppointmentID)
+	if err != nil {
+		t.Fatalf("insert send session: %v", err)
+	}
+	for _, row := range db.stateRows {
+		if _, err := sqlDB.Exec(`INSERT INTO scribe_section_approvals (session_id, section, action, user_id, at) VALUES (?, ?, ?, ?, ?)`, uuidToString(s.ID), row[0], row[1], row[2], row[3]); err != nil {
+			t.Fatalf("insert send approval: %v", err)
+		}
+	}
+	db.sqlDB = sqlDB
 	return NewHandler(database.New(db), &Processor{emr: emrClient}, &config.Config{}, nil, emrClient, nil)
 }
 
@@ -903,7 +890,7 @@ func TestHandleSend_ResolvesEncounterFromAppointment(t *testing.T) {
 		stateRows: approvedStateRows("hpi", "plan", "exam"),
 	}
 	emrClient := &sendFakeEMR{resolveResult: "E99"}
-	h := newSendHandler(db, emrClient)
+	h := newSendHandler(t, db, emrClient)
 
 	w := httptest.NewRecorder()
 	h.HandleSend(w, sendRequest("33333333-3333-3333-3333-333333333333"))
@@ -943,7 +930,7 @@ func TestHandleSend_UnresolvedEncounterBlocksSend(t *testing.T) {
 		stateRows: approvedStateRows("hpi", "plan", "exam"),
 	}
 	emrClient := &sendFakeEMR{resolveResult: ""}
-	h := newSendHandler(db, emrClient)
+	h := newSendHandler(t, db, emrClient)
 
 	w := httptest.NewRecorder()
 	h.HandleSend(w, sendRequest("33333333-3333-3333-3333-333333333333"))
