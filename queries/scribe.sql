@@ -84,3 +84,20 @@ WHERE id = ?1 AND tenant_id = ?2;
 UPDATE scribe_sessions
 SET document_filename = ?3
 WHERE id = ?1 AND tenant_id = ?2;
+
+-- name: UpdateScribeSessionPatientID :exec
+UPDATE scribe_sessions
+SET patient_id = ?3
+WHERE id = ?1 AND tenant_id = ?2;
+
+-- name: UpdateScribeSessionCreatedAt :exec
+UPDATE scribe_sessions
+SET created_at = ?3
+WHERE id = ?1 AND tenant_id = ?2;
+
+-- name: ListImportedScribeSessionBackfillCandidates :many
+SELECT id, tenant_id, patient_id, encounter_id, transcript, created_at
+FROM scribe_sessions
+WHERE tenant_id = ?1
+  AND encounter_id LIKE ?2
+ORDER BY created_at ASC;

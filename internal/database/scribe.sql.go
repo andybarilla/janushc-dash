@@ -127,6 +127,58 @@ func (q *Queries) GetScribeSession(ctx context.Context, arg GetScribeSessionPara
 	return i, err
 }
 
+const listImportedScribeSessionBackfillCandidates = `-- name: ListImportedScribeSessionBackfillCandidates :many
+SELECT id, tenant_id, patient_id, encounter_id, transcript, created_at
+FROM scribe_sessions
+WHERE tenant_id = ?1
+  AND encounter_id LIKE ?2
+ORDER BY created_at ASC
+`
+
+type ListImportedScribeSessionBackfillCandidatesParams struct {
+	TenantID    pgtype.UUID `json:"tenant_id"`
+	EncounterID string      `json:"encounter_id"`
+}
+
+type ListImportedScribeSessionBackfillCandidatesRow struct {
+	ID          pgtype.UUID        `json:"id"`
+	TenantID    pgtype.UUID        `json:"tenant_id"`
+	PatientID   string             `json:"patient_id"`
+	EncounterID string             `json:"encounter_id"`
+	Transcript  pgtype.Text        `json:"transcript"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) ListImportedScribeSessionBackfillCandidates(ctx context.Context, arg ListImportedScribeSessionBackfillCandidatesParams) ([]ListImportedScribeSessionBackfillCandidatesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listImportedScribeSessionBackfillCandidates, arg.TenantID, arg.EncounterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListImportedScribeSessionBackfillCandidatesRow{}
+	for rows.Next() {
+		var i ListImportedScribeSessionBackfillCandidatesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.PatientID,
+			&i.EncounterID,
+			&i.Transcript,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listScribeSessions = `-- name: ListScribeSessions :many
 WITH latest_per_section AS (
     SELECT session_id, section, action
@@ -310,6 +362,23 @@ func (q *Queries) UpdateScribeSessionComplete(ctx context.Context, arg UpdateScr
 	return err
 }
 
+const updateScribeSessionCreatedAt = `-- name: UpdateScribeSessionCreatedAt :exec
+UPDATE scribe_sessions
+SET created_at = ?3
+WHERE id = ?1 AND tenant_id = ?2
+`
+
+type UpdateScribeSessionCreatedAtParams struct {
+	ID        pgtype.UUID        `json:"id"`
+	TenantID  pgtype.UUID        `json:"tenant_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) UpdateScribeSessionCreatedAt(ctx context.Context, arg UpdateScribeSessionCreatedAtParams) error {
+	_, err := q.db.ExecContext(ctx, updateScribeSessionCreatedAt, arg.ID, arg.TenantID, arg.CreatedAt)
+	return err
+}
+
 const updateScribeSessionError = `-- name: UpdateScribeSessionError :exec
 UPDATE scribe_sessions
 SET status = 'error', error_message = ?3
@@ -324,6 +393,23 @@ type UpdateScribeSessionErrorParams struct {
 
 func (q *Queries) UpdateScribeSessionError(ctx context.Context, arg UpdateScribeSessionErrorParams) error {
 	_, err := q.db.ExecContext(ctx, updateScribeSessionError, arg.ID, arg.TenantID, arg.ErrorMessage)
+	return err
+}
+
+const updateScribeSessionPatientID = `-- name: UpdateScribeSessionPatientID :exec
+UPDATE scribe_sessions
+SET patient_id = ?3
+WHERE id = ?1 AND tenant_id = ?2
+`
+
+type UpdateScribeSessionPatientIDParams struct {
+	ID        pgtype.UUID `json:"id"`
+	TenantID  pgtype.UUID `json:"tenant_id"`
+	PatientID string      `json:"patient_id"`
+}
+
+func (q *Queries) UpdateScribeSessionPatientID(ctx context.Context, arg UpdateScribeSessionPatientIDParams) error {
+	_, err := q.db.ExecContext(ctx, updateScribeSessionPatientID, arg.ID, arg.TenantID, arg.PatientID)
 	return err
 }
 
