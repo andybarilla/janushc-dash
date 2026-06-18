@@ -51,6 +51,7 @@ func TestParseInferredPatientName(t *testing.T) {
 		want string
 	}{
 		{name: "clear JSON", raw: `{"patient_name":" Jane Smith "}`, want: "Jane Smith"},
+		{name: "fenced JSON", raw: "```json\n{\"patient_name\":\"Michelle Williamson\"}\n```", want: "Michelle Williamson"},
 		{name: "blank field", raw: `{"patient_name":""}`, want: ""},
 		{name: "missing field", raw: `{"other":"Jane"}`, want: ""},
 		{name: "invalid JSON", raw: `Jane Smith`, want: ""},
