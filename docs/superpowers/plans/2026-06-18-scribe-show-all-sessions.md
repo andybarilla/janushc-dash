@@ -132,14 +132,15 @@ Expected output:
 
 - [ ] **Step 1: Inspect the current header and row rendering**
 
-Run: `rg -n "Patient / Transcript|entry\.session\.label \|\| entry\.session\.patient_id|awaitingReview" frontend/src/components/scribe/inbox-table.tsx frontend/src/pages/scribe.tsx`
+Run: `rg -n "Patient / Transcript|entry\.session\.label \|\| entry\.session\.patient_id|let awaitingReview = 0|statusId === \"ready\"" frontend/src/components/scribe/inbox-table.tsx frontend/src/pages/scribe.tsx`
 
 Expected output:
 
 ```text
+frontend/src/pages/scribe.tsx:107:    let awaitingReview = 0;
+frontend/src/pages/scribe.tsx:113:      if (e.statusId === "ready") awaitingReview++;
 frontend/src/components/scribe/inbox-table.tsx:110:              <th>Patient / Transcript</th>
 frontend/src/components/scribe/inbox-table.tsx:146:                    {entry.session.label || entry.session.patient_id}
-frontend/src/pages/scribe.tsx:<line>:    awaitingReview: entries.filter((entry) => entry.statusId === "ready").length,
 ```
 
 - [ ] **Step 2: Update the table header**
@@ -174,12 +175,14 @@ with:
 
 - [ ] **Step 4: Confirm stats still derive from the full list**
 
-Run: `rg -n "awaitingReview: entries\.filter\(\(entry\) => entry\.statusId === \"ready\"\)\.length" frontend/src/pages/scribe.tsx`
+Run: `rg -n "let awaitingReview = 0|statusId === \"ready\"|awaitingReview," frontend/src/pages/scribe.tsx`
 
 Expected output:
 
 ```text
-frontend/src/pages/scribe.tsx:<line>:    awaitingReview: entries.filter((entry) => entry.statusId === "ready").length,
+107:    let awaitingReview = 0;
+113:      if (e.statusId === "ready") awaitingReview++;
+120:      awaitingReview,
 ```
 
 No change is needed in `frontend/src/pages/scribe.tsx` because the backend now supplies the complete list.
