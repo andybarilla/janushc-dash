@@ -107,7 +107,7 @@ export function InboxTable({
         <table className="janus-inbox-table">
           <thead>
             <tr>
-              <th>Patient / Transcript</th>
+              <th>Patient</th>
               <th>Encounter</th>
               <th>Dept</th>
               <th>Status</th>
@@ -142,9 +142,7 @@ export function InboxTable({
                     }
                   }}
                 >
-                  <td className="janus-inbox-patient">
-                    {entry.session.label || entry.session.patient_id}
-                  </td>
+                  <td className="janus-inbox-patient">{entry.session.patient_id}</td>
                   <td>{entry.session.encounter_id}</td>
                   <td>{entry.session.department_id || "—"}</td>
                   <td>

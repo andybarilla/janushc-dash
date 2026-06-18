@@ -205,7 +205,6 @@ FROM scribe_sessions s
 LEFT JOIN approved_counts ac ON ac.session_id = s.id
 WHERE s.tenant_id = ?1
 ORDER BY s.created_at DESC
-LIMIT 50
 `
 
 type ListScribeSessionsRow struct {
