@@ -488,6 +488,27 @@ func newPatientIDUpdateHandler(t *testing.T) (*Handler, *sql.DB) {
 	return NewHandler(database.New(db), nil, &config.Config{}, nil, nil, nil), db
 }
 
+type lockOnPatientIDUpdateDB struct {
+	*sql.DB
+	sessionID string
+	tenantID  string
+}
+
+func (db lockOnPatientIDUpdateDB) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	if strings.Contains(query, "SET patient_id = ?3") {
+		_, err := db.DB.ExecContext(ctx, `
+			UPDATE scribe_sessions
+			SET sent_to_ehr_at = CURRENT_TIMESTAMP
+			WHERE id = ? AND tenant_id = ?
+		`, db.sessionID, db.tenantID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return db.DB.ExecContext(ctx, query, args...)
+}
+
 type patientIDUpdateSession struct {
 	id            string
 	tenantID      string
@@ -655,6 +676,27 @@ func TestHandleUpdatePatientID_RejectsRejectedSession(t *testing.T) {
 	patientID, _, _, _, _ := fetchPatientIDUpdateFields(t, db, sessionID, sendTestTenant)
 	if patientID != "patient-original" {
 		t.Fatalf("expected rejected session not to update row, got %q", patientID)
+	}
+}
+
+func TestHandleUpdatePatientID_RejectsConcurrentSentSession(t *testing.T) {
+	_, db := newPatientIDUpdateHandler(t)
+	sessionID := "33333333-3333-3333-3333-333333333333"
+	insertPatientIDUpdateSession(t, db, patientIDUpdateSession{id: sessionID})
+	h := NewHandler(database.New(lockOnPatientIDUpdateDB{DB: db, sessionID: sessionID, tenantID: sendTestTenant}), nil, &config.Config{}, nil, nil, nil)
+
+	w := httptest.NewRecorder()
+	h.HandleUpdatePatientID(w, patientIDUpdateRequest(sessionID, `{ "patient_id": "patient-corrected" }`, &auth.Claims{UserID: sendTestUser, TenantID: sendTestTenant}))
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "sent or rejected sessions cannot be edited") {
+		t.Fatalf("expected lock error, got %q", w.Body.String())
+	}
+	patientID, _, _, _, _ := fetchPatientIDUpdateFields(t, db, sessionID, sendTestTenant)
+	if patientID != "patient-original" {
+		t.Fatalf("expected concurrently sent session not to update row, got %q", patientID)
 	}
 }
 

@@ -1478,12 +1478,17 @@ func (h *Handler) HandleUpdatePatientID(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := h.queries.UpdateScribeSessionPatientID(r.Context(), database.UpdateScribeSessionPatientIDParams{
+	updatedRows, err := h.queries.UpdateScribeSessionPatientID(r.Context(), database.UpdateScribeSessionPatientIDParams{
 		ID:        sessionUUID,
 		TenantID:  tenantUUID,
 		PatientID: patientID,
-	}); err != nil {
+	})
+	if err != nil {
 		http.Error(w, "failed to update patient ID", http.StatusInternalServerError)
+		return
+	}
+	if updatedRows == 0 {
+		http.Error(w, "sent or rejected sessions cannot be edited", http.StatusBadRequest)
 		return
 	}
 
