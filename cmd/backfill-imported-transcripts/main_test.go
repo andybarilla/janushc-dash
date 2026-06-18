@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/andybarilla/janushc-dash/internal/bedrock"
 	"github.com/andybarilla/janushc-dash/internal/database"
+	"github.com/andybarilla/janushc-dash/internal/transcriptimport"
 )
 
 func TestIsGeneratedPatientID(t *testing.T) {
@@ -103,7 +106,10 @@ func TestBuildBackfillPlan(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			plan := buildBackfillPlan(context.Background(), tt.client, tt.row, options{patientPrefix: "demo-patient", encounterPrefix: "demo-encounter-"}, now)
+			plan, err := buildBackfillPlan(context.Background(), tt.client, tt.row, options{patientPrefix: "demo-patient", encounterPrefix: "demo-encounter-"}, now)
+			if err != nil {
+				t.Fatalf("buildBackfillPlan() error = %v", err)
+			}
 			if plan.NewPatientID != tt.wantPatientID {
 				t.Fatalf("NewPatientID = %q, want %q", plan.NewPatientID, tt.wantPatientID)
 			}
@@ -117,6 +123,26 @@ func TestBuildBackfillPlan(t *testing.T) {
 				t.Fatal("SkipReason = blank, want non-empty")
 			}
 		})
+	}
+}
+
+func TestBuildBackfillPlanFailsWhenRecorderTimezoneUnavailable(t *testing.T) {
+	originalParser := parseGoogleRecorderTimestampSlug
+	t.Cleanup(func() { parseGoogleRecorderTimestampSlug = originalParser })
+	parseGoogleRecorderTimestampSlug = func(string, string, time.Time) (time.Time, bool, error) {
+		return time.Time{}, false, fmt.Errorf("wrapped: %w", transcriptimport.ErrRecorderTimezoneUnavailable)
+	}
+
+	sessionID := testUUID(t, "11111111-1111-1111-1111-111111111111")
+	tenantID := testUUID(t, "22222222-2222-2222-2222-222222222222")
+	row := testBackfillRow(sessionID, tenantID, "demo-patient-001", "demo-encounter-may-28-at-3-37-pm", "Speaker 0: Jane Smith is here", testTimestamp(time.Date(2026, time.June, 1, 9, 0, 0, 0, time.UTC)))
+
+	plan, err := buildBackfillPlan(context.Background(), fakeCompletionClient{text: `{"patient_name":"Jane Smith"}`}, row, options{patientPrefix: "demo-patient", encounterPrefix: "demo-encounter-"}, time.Date(2026, time.June, 18, 12, 0, 0, 0, time.UTC))
+	if !errors.Is(err, transcriptimport.ErrRecorderTimezoneUnavailable) {
+		t.Fatalf("buildBackfillPlan() error = %v, want ErrRecorderTimezoneUnavailable", err)
+	}
+	if plan.SkipReason != "" {
+		t.Fatalf("SkipReason = %q, want blank because timezone failure is fatal", plan.SkipReason)
 	}
 }
 

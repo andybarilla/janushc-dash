@@ -45,6 +45,8 @@ type backfillPlan struct {
 	SkipReason      string
 }
 
+var parseGoogleRecorderTimestampSlug = transcriptimport.ParseGoogleRecorderTimestampSlug
+
 func main() {
 	_ = godotenv.Load()
 
@@ -98,7 +100,10 @@ func run(parent context.Context, opts options, output io.Writer) error {
 	queries := database.New(db)
 	now := time.Now()
 	for _, row := range candidates {
-		plan := buildBackfillPlan(ctx, client, row, opts, now)
+		plan, err := buildBackfillPlan(ctx, client, row, opts, now)
+		if err != nil {
+			return err
+		}
 		printBackfillPlan(output, plan)
 		if !opts.apply {
 			continue
@@ -110,7 +115,7 @@ func run(parent context.Context, opts options, output io.Writer) error {
 	return nil
 }
 
-func buildBackfillPlan(ctx context.Context, client transcriptimport.CompletionClient, row database.ListImportedScribeSessionBackfillCandidatesRow, opts options, now time.Time) backfillPlan {
+func buildBackfillPlan(ctx context.Context, client transcriptimport.CompletionClient, row database.ListImportedScribeSessionBackfillCandidatesRow, opts options, now time.Time) (backfillPlan, error) {
 	plan := backfillPlan{
 		SessionID:    row.ID,
 		TenantID:     row.TenantID,
@@ -135,8 +140,11 @@ func buildBackfillPlan(ctx context.Context, client transcriptimport.CompletionCl
 		}
 	}
 
-	createdAt, ok, err := transcriptimport.ParseGoogleRecorderTimestampSlug(row.EncounterID, opts.encounterPrefix, now)
+	createdAt, ok, err := parseGoogleRecorderTimestampSlug(row.EncounterID, opts.encounterPrefix, now)
 	if err != nil {
+		if errors.Is(err, transcriptimport.ErrRecorderTimezoneUnavailable) {
+			return plan, fmt.Errorf("infer timestamp for session %s: %w", row.ID.String(), err)
+		}
 		skipReasons = append(skipReasons, fmt.Sprintf("timestamp inference failed: %v", err))
 	} else if !ok {
 		skipReasons = append(skipReasons, "timestamp slug is not a valid Google Recorder timestamp")
@@ -146,7 +154,7 @@ func buildBackfillPlan(ctx context.Context, client transcriptimport.CompletionCl
 	}
 
 	plan.SkipReason = strings.Join(skipReasons, "; ")
-	return plan
+	return plan, nil
 }
 
 func isGeneratedPatientID(patientID, prefix string) bool {
