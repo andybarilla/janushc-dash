@@ -10,6 +10,7 @@ import {
   useScribeSessions,
   useSendToEHR,
   useSessionFeedback,
+  useUpdateScribePatientId,
 } from "@/lib/scribe-queries";
 import type {
   Approvals,
@@ -84,6 +85,7 @@ export function MobileScribe() {
   const sendMut = useSendToEHR();
   const deleteMut = useDeleteScribeSession();
   const addFeedbackMut = useAddFeedback();
+  const updatePatientIdMut = useUpdateScribePatientId();
 
   const approvals: Approvals = useMemo(() => {
     const s = selectedDetail?.sections;
@@ -114,6 +116,11 @@ export function MobileScribe() {
   const handleSend = () => {
     if (!selectedId || !canApprove) return;
     sendMut.mutate({ sessionId: selectedId });
+  };
+
+  const handleUpdatePatientId = (patientId: string) => {
+    if (!selectedId) return;
+    updatePatientIdMut.mutate({ sessionId: selectedId, patientId });
   };
 
   const handleDelete = () => {
@@ -202,6 +209,8 @@ export function MobileScribe() {
           onApprove={handleApprove}
           onApproveAll={handleApproveAll}
           onSend={handleSend}
+          onUpdatePatientId={handleUpdatePatientId}
+          updatingPatientId={updatePatientIdMut.isPending}
           onOpenNotes={() => {
             setSheetTarget(null);
             setSheetOpen(true);
