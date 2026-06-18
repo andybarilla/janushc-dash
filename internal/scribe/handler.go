@@ -91,6 +91,10 @@ type processRequest struct {
 	Transcript string `json:"transcript"`
 }
 
+type updatePatientIDRequest struct {
+	PatientID string `json:"patient_id"`
+}
+
 func shouldAutoTranscribe(r *http.Request) bool {
 	value := strings.TrimSpace(strings.ToLower(r.FormValue("auto_transcribe")))
 	if value == "" {
@@ -1421,6 +1425,70 @@ func (h *Handler) HandleEditSection(w http.ResponseWriter, r *http.Request) {
 		EditedBy:  userUUID,
 	}); err != nil {
 		http.Error(w, "failed to record edit", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte("{}"))
+}
+
+func (h *Handler) HandleUpdatePatientID(w http.ResponseWriter, r *http.Request) {
+	claims := auth.ClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	sessionUUID := pgtype.UUID{}
+	if err := sessionUUID.Scan(chi.URLParam(r, "id")); err != nil {
+		http.Error(w, "invalid session ID", http.StatusBadRequest)
+		return
+	}
+	tenantUUID := pgtype.UUID{}
+	if err := tenantUUID.Scan(claims.TenantID); err != nil {
+		http.Error(w, "invalid tenant context", http.StatusBadRequest)
+		return
+	}
+
+	var body updatePatientIDRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	patientID := strings.TrimSpace(body.PatientID)
+	if patientID == "" {
+		http.Error(w, "patient_id required", http.StatusBadRequest)
+		return
+	}
+
+	session, err := h.queries.GetScribeSession(r.Context(), database.GetScribeSessionParams{
+		ID:       sessionUUID,
+		TenantID: tenantUUID,
+	})
+	if err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if session.SentToEhrAt.Valid {
+		http.Error(w, "sent sessions cannot be edited", http.StatusBadRequest)
+		return
+	}
+	if session.RejectedAt.Valid {
+		http.Error(w, "rejected sessions cannot be edited", http.StatusBadRequest)
+		return
+	}
+
+	updatedRows, err := h.queries.UpdateScribeSessionPatientID(r.Context(), database.UpdateScribeSessionPatientIDParams{
+		ID:        sessionUUID,
+		TenantID:  tenantUUID,
+		PatientID: patientID,
+	})
+	if err != nil {
+		http.Error(w, "failed to update patient ID", http.StatusInternalServerError)
+		return
+	}
+	if updatedRows == 0 {
+		http.Error(w, "sent or rejected sessions cannot be edited", http.StatusBadRequest)
 		return
 	}
 

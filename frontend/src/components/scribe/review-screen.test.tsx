@@ -52,6 +52,8 @@ function baseProps() {
     onDelete: noop,
     onSend: noop,
     onSaveSection: noop,
+    onUpdatePatientId: noop,
+    updatingPatientId: false,
     onOpenNotes: noop,
     onAddNoteForSection: noop,
     onRetry: noop,
@@ -66,6 +68,47 @@ describe("ReviewScreen", () => {
     expect(screen.getByText("patient-a")).toBeInTheDocument();
     expect(screen.getByText("HPI")).toBeInTheDocument();
     expect(screen.getByText("HPI body text")).toBeInTheDocument();
+  });
+
+  it("saves a trimmed patient ID from the desktop header", () => {
+    const onUpdatePatientId = vi.fn();
+    render(<ReviewScreen {...baseProps()} onUpdatePatientId={onUpdatePatientId} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit patient ID" }));
+    fireEvent.change(screen.getByLabelText("Patient ID"), {
+      target: { value: "  patient-b  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save patient ID" }));
+
+    expect(onUpdatePatientId).toHaveBeenCalledWith("patient-b");
+  });
+
+  it("cancels desktop patient ID editing without saving", () => {
+    const onUpdatePatientId = vi.fn();
+    render(<ReviewScreen {...baseProps()} onUpdatePatientId={onUpdatePatientId} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit patient ID" }));
+    fireEvent.change(screen.getByLabelText("Patient ID"), {
+      target: { value: "patient-b" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel patient ID edit" }));
+
+    expect(onUpdatePatientId).not.toHaveBeenCalled();
+    expect(screen.getByText("patient-a")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["sent", { sent_to_ehr_at: "2026-05-21T11:00:00Z" }],
+    ["rejected", { rejected_at: "2026-05-21T11:00:00Z" }],
+  ])("disables desktop patient ID editing for %s sessions", (_state, sessionPatch) => {
+    render(
+      <ReviewScreen
+        {...baseProps()}
+        session={{ ...makeSession(), ...sessionPatch }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Edit patient ID" })).toBeDisabled();
   });
 
   it("disables Prev when onPrev is null", () => {

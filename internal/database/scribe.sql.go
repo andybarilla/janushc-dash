@@ -327,6 +327,28 @@ func (q *Queries) UpdateScribeSessionError(ctx context.Context, arg UpdateScribe
 	return err
 }
 
+const updateScribeSessionPatientID = `-- name: UpdateScribeSessionPatientID :execrows
+UPDATE scribe_sessions
+SET patient_id = ?3
+WHERE id = ?1 AND tenant_id = ?2
+  AND sent_to_ehr_at IS NULL
+  AND rejected_at IS NULL
+`
+
+type UpdateScribeSessionPatientIDParams struct {
+	ID        pgtype.UUID `json:"id"`
+	TenantID  pgtype.UUID `json:"tenant_id"`
+	PatientID string      `json:"patient_id"`
+}
+
+func (q *Queries) UpdateScribeSessionPatientID(ctx context.Context, arg UpdateScribeSessionPatientIDParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateScribeSessionPatientID, arg.ID, arg.TenantID, arg.PatientID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const updateScribeSessionProcessing = `-- name: UpdateScribeSessionProcessing :exec
 UPDATE scribe_sessions
 SET status = 'processing', transcript = ?3
