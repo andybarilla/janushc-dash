@@ -13,6 +13,7 @@ services:
       SCRIBE_AUDIO_DIR: "/app/tmp/scribe-audio"
     volumes:
       - ./data:/app/data
+      - ./recordings:/app/recordings
       - scribe_audio:/app/tmp/scribe-audio
     restart: unless-stopped
 
