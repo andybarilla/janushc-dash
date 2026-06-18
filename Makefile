@@ -1,4 +1,4 @@
-.PHONY: setup dev dev-all dev-up dev-down dev-nuke dev-servers frontend-dev build up down dc-ps dc-logs dc-exec migrate-up migrate-down sqlc seed migrate-supabase import-transcripts lint test transcribe-batch transcribe-batch-ensure sync-sample-recordings
+.PHONY: setup dev dev-all dev-up dev-down dev-nuke dev-servers frontend-dev build up down dc-ps dc-logs dc-exec migrate-up migrate-down sqlc seed migrate-supabase import-transcripts backfill-imported-transcripts lint test transcribe-batch transcribe-batch-ensure sync-sample-recordings
 
 # Load .env if present
 -include .env
@@ -145,6 +145,9 @@ migrate-supabase:
 # Import tmp/transcripts/*.txt into scribe_sessions and process with Bedrock
 import-transcripts:
 	go run ./cmd/import-transcripts $(ARGS)
+
+backfill-imported-transcripts:
+	go run ./cmd/backfill-imported-transcripts $(ARGS)
 
 # Batch transcribe local recordings via AWS Transcribe Medical + S3
 transcribe-batch:
