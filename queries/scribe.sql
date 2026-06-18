@@ -84,3 +84,8 @@ WHERE id = ?1 AND tenant_id = ?2;
 UPDATE scribe_sessions
 SET document_filename = ?3
 WHERE id = ?1 AND tenant_id = ?2;
+
+-- name: UpdateScribeSessionPatientID :exec
+UPDATE scribe_sessions
+SET patient_id = ?3
+WHERE id = ?1 AND tenant_id = ?2;
