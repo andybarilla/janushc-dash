@@ -586,3 +586,4 @@ backfill-imported-transcripts:
 ## SDD ledger
 
 - 2026-06-18 Task 2.1 review fix: added invalid matching-shape Recorder filename coverage for `May 99 at 3-37 PM.txt`; verified `go test -count=1 ./cmd/import-transcripts` passes.
+- 2026-06-18 verification fix: replaced stale pgx-shaped handler test DB fakes with SQLite-backed `database.DBTX` fixtures in `internal/users` and `internal/scribe`; verified `go test ./internal/users`, `go test ./internal/scribe`, `go test -count=1 ./internal/users`, `go test -count=1 ./internal/scribe`, `go test ./...`, and `make test` pass.

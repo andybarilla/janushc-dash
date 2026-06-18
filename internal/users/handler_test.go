@@ -2,17 +2,15 @@ package users
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/andybarilla/janushc-dash/internal/auth"
 	"github.com/andybarilla/janushc-dash/internal/database"
@@ -22,139 +20,26 @@ const testTenantID = "11111111-1111-1111-1111-111111111111"
 const testUserID = "22222222-2222-2222-2222-222222222222"
 const createdUserID = "33333333-3333-3333-3333-333333333333"
 
-type fakeDB struct {
+type recordingDB struct {
+	*sql.DB
 	queryArgs    []interface{}
 	queryRowArgs []interface{}
-	row          pgx.Row
-	rows         pgx.Rows
-	queryErr     error
 }
 
-func (db *fakeDB) Exec(context.Context, string, ...interface{}) (pgconn.CommandTag, error) {
-	return pgconn.CommandTag{}, nil
-}
-
-func (db *fakeDB) Query(ctx context.Context, query string, args ...interface{}) (pgx.Rows, error) {
+func (db *recordingDB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 	db.queryArgs = args
-	if db.queryErr != nil {
-		return nil, db.queryErr
-	}
-	return db.rows, nil
+	return db.DB.QueryContext(ctx, query, args...)
 }
 
-func (db *fakeDB) QueryRow(ctx context.Context, query string, args ...interface{}) pgx.Row {
+func (db *recordingDB) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
 	db.queryRowArgs = args
-	return db.row
-}
-
-type fakeRow struct {
-	values []interface{}
-	err    error
-}
-
-func (row *fakeRow) Scan(dest ...interface{}) error {
-	if row.err != nil {
-		return row.err
-	}
-	return scanValues(dest, row.values)
-}
-
-type fakeRows struct {
-	values [][]interface{}
-	index  int
-	err    error
-	closed bool
-}
-
-func newFakeRows(values [][]interface{}) *fakeRows {
-	return &fakeRows{values: values, index: -1}
-}
-
-func (rows *fakeRows) Close() {
-	rows.closed = true
-}
-
-func (rows *fakeRows) Err() error {
-	return rows.err
-}
-
-func (rows *fakeRows) CommandTag() pgconn.CommandTag {
-	return pgconn.CommandTag{}
-}
-
-func (rows *fakeRows) FieldDescriptions() []pgconn.FieldDescription {
-	return nil
-}
-
-func (rows *fakeRows) Next() bool {
-	if rows.index+1 >= len(rows.values) {
-		rows.closed = true
-		return false
-	}
-	rows.index++
-	return true
-}
-
-func (rows *fakeRows) Scan(dest ...interface{}) error {
-	return scanValues(dest, rows.values[rows.index])
-}
-
-func (rows *fakeRows) Values() ([]interface{}, error) {
-	return rows.values[rows.index], nil
-}
-
-func (rows *fakeRows) RawValues() [][]byte {
-	return nil
-}
-
-func (rows *fakeRows) Conn() *pgx.Conn {
-	return nil
-}
-
-func scanValues(dest []interface{}, values []interface{}) error {
-	if len(dest) != len(values) {
-		return errors.New("scan destination count mismatch")
-	}
-	for i := range dest {
-		switch target := dest[i].(type) {
-		case *pgtype.UUID:
-			value, ok := values[i].(pgtype.UUID)
-			if !ok {
-				return errors.New("expected pgtype.UUID")
-			}
-			*target = value
-		case *pgtype.Timestamptz:
-			value, ok := values[i].(pgtype.Timestamptz)
-			if !ok {
-				return errors.New("expected pgtype.Timestamptz")
-			}
-			*target = value
-		case *string:
-			value, ok := values[i].(string)
-			if !ok {
-				return errors.New("expected string")
-			}
-			*target = value
-		default:
-			return errors.New("unsupported scan destination")
-		}
-	}
-	return nil
+	return db.DB.QueryRowContext(ctx, query, args...)
 }
 
 func TestHandleCreateValidRequestNormalizesEmailAndTrimsName(t *testing.T) {
 	tenantUUID := mustUUID(t, testTenantID)
-	createdUUID := mustUUID(t, createdUserID)
-	createdAt := pgtype.Timestamptz{Time: time.Date(2026, 5, 14, 12, 30, 0, 0, time.UTC), Valid: true}
-	db := &fakeDB{row: &fakeRow{values: []interface{}{
-		createdUUID,
-		tenantUUID,
-		"jane@janushc.com",
-		"staff",
-		"Jane User",
-		createdAt,
-		createdAt,
-	}}}
+	db := openUsersHandlerTestDB(t)
+	defer db.Close()
 	handler := NewHandler(database.New(db), "JANUSHC.COM ")
 
 	body := `{"email":"  JANE@JANUSHC.COM  ","name":"  Jane User  ","role":"staff","tenant_id":"99999999-9999-9999-9999-999999999999"}`
@@ -245,7 +130,9 @@ func TestHandleCreateRejectsEmptyEmail(t *testing.T) {
 }
 
 func TestHandleCreateDuplicateEmailReturnsConflict(t *testing.T) {
-	db := &fakeDB{row: &fakeRow{err: &pgconn.PgError{Code: "23505"}}}
+	db := openUsersHandlerTestDB(t)
+	defer db.Close()
+	seedHandlerTestUser(t, db, "jane@janushc.com")
 	handler := NewHandler(database.New(db), "janushc.com")
 	response := httptest.NewRecorder()
 
@@ -258,7 +145,8 @@ func TestHandleCreateDuplicateEmailReturnsConflict(t *testing.T) {
 }
 
 func TestHandleCreateRejectsNilClaims(t *testing.T) {
-	db := &fakeDB{}
+	db := openUsersHandlerTestDB(t)
+	defer db.Close()
 	handler := NewHandler(database.New(db), "janushc.com")
 	response := httptest.NewRecorder()
 
@@ -269,7 +157,8 @@ func TestHandleCreateRejectsNilClaims(t *testing.T) {
 }
 
 func TestHandleCreateRejectsInvalidTenantContext(t *testing.T) {
-	db := &fakeDB{}
+	db := openUsersHandlerTestDB(t)
+	defer db.Close()
 	handler := NewHandler(database.New(db), "janushc.com")
 	response := httptest.NewRecorder()
 	claims := &auth.Claims{UserID: testUserID, TenantID: "not-a-uuid", Role: "admin"}
@@ -281,7 +170,8 @@ func TestHandleCreateRejectsInvalidTenantContext(t *testing.T) {
 }
 
 func TestHandleListRejectsNilClaims(t *testing.T) {
-	db := &fakeDB{}
+	db := openUsersHandlerTestDB(t)
+	defer db.Close()
 	handler := NewHandler(database.New(db), "janushc.com")
 	response := httptest.NewRecorder()
 
@@ -292,7 +182,8 @@ func TestHandleListRejectsNilClaims(t *testing.T) {
 }
 
 func TestHandleListRejectsInvalidTenantContext(t *testing.T) {
-	db := &fakeDB{}
+	db := openUsersHandlerTestDB(t)
+	defer db.Close()
 	handler := NewHandler(database.New(db), "janushc.com")
 	response := httptest.NewRecorder()
 	claims := &auth.Claims{UserID: testUserID, TenantID: "not-a-uuid", Role: "admin"}
@@ -305,10 +196,9 @@ func TestHandleListRejectsInvalidTenantContext(t *testing.T) {
 
 func TestHandleListReturnsOnlySafeUserFields(t *testing.T) {
 	tenantUUID := mustUUID(t, testTenantID)
-	createdAt := pgtype.Timestamptz{Time: time.Date(2026, 5, 14, 12, 30, 0, 0, time.UTC), Valid: true}
-	db := &fakeDB{rows: newFakeRows([][]interface{}{
-		{mustUUID(t, createdUserID), tenantUUID, "jane@janushc.com", "staff", "Jane User", createdAt, createdAt},
-	})}
+	db := openUsersHandlerTestDB(t)
+	defer db.Close()
+	seedHandlerTestUser(t, db, "jane@janushc.com")
 	handler := NewHandler(database.New(db), "janushc.com")
 	response := httptest.NewRecorder()
 
@@ -331,24 +221,54 @@ func TestHandleListReturnsOnlySafeUserFields(t *testing.T) {
 	}
 }
 
-func performCreate(t *testing.T, allowedDomain string, body string) (*httptest.ResponseRecorder, *fakeDB) {
+func performCreate(t *testing.T, allowedDomain string, body string) (*httptest.ResponseRecorder, *recordingDB) {
 	t.Helper()
-	tenantUUID := mustUUID(t, testTenantID)
-	createdUUID := mustUUID(t, createdUserID)
-	createdAt := pgtype.Timestamptz{Time: time.Date(2026, 5, 14, 12, 30, 0, 0, time.UTC), Valid: true}
-	db := &fakeDB{row: &fakeRow{values: []interface{}{
-		createdUUID,
-		tenantUUID,
-		"jane@janushc.com",
-		"staff",
-		"Jane User",
-		createdAt,
-		createdAt,
-	}}}
+	db := openUsersHandlerTestDB(t)
+	t.Cleanup(func() { db.Close() })
 	handler := NewHandler(database.New(db), allowedDomain)
 	response := httptest.NewRecorder()
 	handler.HandleCreate(response, requestWithClaims(http.MethodPost, "/api/users", body))
 	return response, db
+}
+
+func openUsersHandlerTestDB(t *testing.T) *recordingDB {
+	t.Helper()
+
+	sqlDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+
+	_, err = sqlDB.Exec(`
+		CREATE TABLE users (
+			id UUID PRIMARY KEY DEFAULT '33333333-3333-3333-3333-333333333333',
+			tenant_id UUID NOT NULL,
+			email TEXT NOT NULL UNIQUE,
+			password_hash TEXT NOT NULL DEFAULT '',
+			role TEXT NOT NULL,
+			name TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT '2026-05-14 12:30:00+00:00',
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT '2026-05-14 12:30:00+00:00'
+		);
+	`)
+	if err != nil {
+		sqlDB.Close()
+		t.Fatalf("create sqlite users schema: %v", err)
+	}
+
+	return &recordingDB{DB: sqlDB}
+}
+
+func seedHandlerTestUser(t *testing.T, db *recordingDB, email string) {
+	t.Helper()
+
+	_, err := db.ExecContext(context.Background(), `
+		INSERT INTO users (id, tenant_id, email, password_hash, role, name, created_at, updated_at)
+		VALUES (?1, ?2, ?3, '', 'staff', 'Jane User', '2026-05-14 12:30:00+00:00', '2026-05-14 12:30:00+00:00')
+	`, createdUserID, testTenantID, email)
+	if err != nil {
+		t.Fatalf("seed sqlite user: %v", err)
+	}
 }
 
 func requestWithClaims(method string, target string, body string) *http.Request {
@@ -377,14 +297,14 @@ func assertStatus(t *testing.T, response *httptest.ResponseRecorder, want int) {
 	}
 }
 
-func assertCreateNotCalled(t *testing.T, db *fakeDB) {
+func assertCreateNotCalled(t *testing.T, db *recordingDB) {
 	t.Helper()
 	if len(db.queryRowArgs) != 0 {
 		t.Fatalf("expected create not to be called, got args %#v", db.queryRowArgs)
 	}
 }
 
-func assertListNotCalled(t *testing.T, db *fakeDB) {
+func assertListNotCalled(t *testing.T, db *recordingDB) {
 	t.Helper()
 	if len(db.queryArgs) != 0 {
 		t.Fatalf("expected list not to be called, got args %#v", db.queryArgs)
