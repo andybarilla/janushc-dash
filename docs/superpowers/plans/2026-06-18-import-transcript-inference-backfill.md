@@ -582,3 +582,7 @@ backfill-imported-transcripts:
   git add Makefile
   git commit -m "chore: add imported transcript backfill target"
   ```
+
+## SDD ledger
+
+- 2026-06-18 Task 2.1 review fix: added invalid matching-shape Recorder filename coverage for `May 99 at 3-37 PM.txt`; verified `go test -count=1 ./cmd/import-transcripts` passes.
