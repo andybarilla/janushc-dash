@@ -543,18 +543,18 @@ func patientIDUpdateRequest(sessionID string, body string, claims *auth.Claims) 
 	return req.WithContext(ctx)
 }
 
-func fetchPatientIDUpdateFields(t *testing.T, db *sql.DB, sessionID string, tenantID string) (patientID, appointmentID, departmentID, encounterID string) {
+func fetchPatientIDUpdateFields(t *testing.T, db *sql.DB, sessionID string, tenantID string) (patientID, appointmentID, departmentID, encounterID, label string) {
 	t.Helper()
 
 	err := db.QueryRow(`
-		SELECT patient_id, appointment_id, department_id, encounter_id
+		SELECT patient_id, appointment_id, department_id, encounter_id, label
 		FROM scribe_sessions
 		WHERE id = ? AND tenant_id = ?
-	`, sessionID, tenantID).Scan(&patientID, &appointmentID, &departmentID, &encounterID)
+	`, sessionID, tenantID).Scan(&patientID, &appointmentID, &departmentID, &encounterID, &label)
 	if err != nil {
 		t.Fatalf("fetch scribe session fields: %v", err)
 	}
-	return patientID, appointmentID, departmentID, encounterID
+	return patientID, appointmentID, departmentID, encounterID, label
 }
 
 func TestHandleUpdatePatientID_TrimsAndPersistsOnlyPatientID(t *testing.T) {
@@ -567,7 +567,7 @@ func TestHandleUpdatePatientID_TrimsAndPersistsOnlyPatientID(t *testing.T) {
 		encounterID:   "encounter-original",
 	})
 
-	_, appointmentBefore, departmentBefore, encounterBefore := fetchPatientIDUpdateFields(t, db, sessionID, sendTestTenant)
+	_, appointmentBefore, departmentBefore, encounterBefore, labelBefore := fetchPatientIDUpdateFields(t, db, sessionID, sendTestTenant)
 	w := httptest.NewRecorder()
 	h.HandleUpdatePatientID(w, patientIDUpdateRequest(sessionID, `{ "patient_id": "  patient-corrected  " }`, &auth.Claims{UserID: sendTestUser, TenantID: sendTestTenant}))
 
@@ -577,12 +577,12 @@ func TestHandleUpdatePatientID_TrimsAndPersistsOnlyPatientID(t *testing.T) {
 	if body := strings.TrimSpace(w.Body.String()); body != "{}" {
 		t.Fatalf("expected body {}, got %s", body)
 	}
-	patientID, appointmentID, departmentID, encounterID := fetchPatientIDUpdateFields(t, db, sessionID, sendTestTenant)
+	patientID, appointmentID, departmentID, encounterID, label := fetchPatientIDUpdateFields(t, db, sessionID, sendTestTenant)
 	if patientID != "patient-corrected" {
 		t.Fatalf("expected trimmed patient ID persisted, got %q", patientID)
 	}
-	if appointmentID != appointmentBefore || departmentID != departmentBefore || encounterID != encounterBefore {
-		t.Fatalf("expected only patient ID to change; got appointment=%q department=%q encounter=%q", appointmentID, departmentID, encounterID)
+	if appointmentID != appointmentBefore || departmentID != departmentBefore || encounterID != encounterBefore || label != labelBefore {
+		t.Fatalf("expected only patient ID to change; got appointment=%q department=%q encounter=%q label=%q", appointmentID, departmentID, encounterID, label)
 	}
 }
 
@@ -598,7 +598,7 @@ func TestHandleUpdatePatientID_OtherTenantDoesNotUpdate(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
-	patientID, _, _, _ := fetchPatientIDUpdateFields(t, db, sessionID, otherTenantID)
+	patientID, _, _, _, _ := fetchPatientIDUpdateFields(t, db, sessionID, otherTenantID)
 	if patientID != "patient-original" {
 		t.Fatalf("expected other tenant row unchanged, got patient_id %q", patientID)
 	}
@@ -615,7 +615,7 @@ func TestHandleUpdatePatientID_RejectsBlankPatientID(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
-	patientID, _, _, _ := fetchPatientIDUpdateFields(t, db, sessionID, sendTestTenant)
+	patientID, _, _, _, _ := fetchPatientIDUpdateFields(t, db, sessionID, sendTestTenant)
 	if patientID != "patient-original" {
 		t.Fatalf("expected blank patient ID not to update row, got %q", patientID)
 	}
@@ -635,6 +635,10 @@ func TestHandleUpdatePatientID_RejectsSentSession(t *testing.T) {
 	if !strings.Contains(w.Body.String(), "sent sessions cannot be edited") {
 		t.Fatalf("expected sent session error, got %q", w.Body.String())
 	}
+	patientID, _, _, _, _ := fetchPatientIDUpdateFields(t, db, sessionID, sendTestTenant)
+	if patientID != "patient-original" {
+		t.Fatalf("expected sent session not to update row, got %q", patientID)
+	}
 }
 
 func TestHandleUpdatePatientID_RejectsRejectedSession(t *testing.T) {
@@ -650,6 +654,10 @@ func TestHandleUpdatePatientID_RejectsRejectedSession(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "rejected sessions cannot be edited") {
 		t.Fatalf("expected rejected session error, got %q", w.Body.String())
+	}
+	patientID, _, _, _, _ := fetchPatientIDUpdateFields(t, db, sessionID, sendTestTenant)
+	if patientID != "patient-original" {
+		t.Fatalf("expected rejected session not to update row, got %q", patientID)
 	}
 }
 
@@ -667,7 +675,7 @@ func TestHandleUpdatePatientID_AllowsProcessingSession(t *testing.T) {
 	if body := strings.TrimSpace(w.Body.String()); body != "{}" {
 		t.Fatalf("expected body {}, got %s", body)
 	}
-	patientID, _, _, _ := fetchPatientIDUpdateFields(t, db, sessionID, sendTestTenant)
+	patientID, _, _, _, _ := fetchPatientIDUpdateFields(t, db, sessionID, sendTestTenant)
 	if patientID != "patient-processing" {
 		t.Fatalf("expected processing session update, got %q", patientID)
 	}
