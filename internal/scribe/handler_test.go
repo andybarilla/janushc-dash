@@ -3,6 +3,7 @@ package scribe
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -18,6 +19,7 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/andybarilla/janushc-dash/internal/auth"
 	"github.com/andybarilla/janushc-dash/internal/config"
@@ -447,6 +449,230 @@ func TestValidateCreateFeedbackRequest_EmptyBody(t *testing.T) {
 const sendTestTenant = "11111111-1111-1111-1111-111111111111"
 const sendTestUser = "22222222-2222-2222-2222-222222222222"
 
+func newPatientIDUpdateHandler(t *testing.T) (*Handler, *sql.DB) {
+	t.Helper()
+
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite db: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	_, err = db.Exec(`
+		CREATE TABLE scribe_sessions (
+			id TEXT NOT NULL,
+			tenant_id TEXT NOT NULL,
+			user_id TEXT NOT NULL,
+			patient_id TEXT NOT NULL,
+			encounter_id TEXT NOT NULL DEFAULT '',
+			department_id TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL,
+			transcript TEXT,
+			ai_output TEXT,
+			error_message TEXT,
+			started_at TIMESTAMP,
+			stopped_at TIMESTAMP,
+			completed_at TIMESTAMP,
+			created_at TIMESTAMP NOT NULL,
+			sent_to_ehr_at TIMESTAMP,
+			sent_to_ehr_by TEXT,
+			rejected_at TIMESTAMP,
+			rejected_by TEXT,
+			appointment_id TEXT NOT NULL DEFAULT '',
+			label TEXT NOT NULL DEFAULT '',
+			document_filename TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (id, tenant_id)
+		);
+	`)
+	if err != nil {
+		t.Fatalf("create scribe_sessions: %v", err)
+	}
+
+	return NewHandler(database.New(db), nil, &config.Config{}, nil, nil, nil), db
+}
+
+type patientIDUpdateSession struct {
+	id            string
+	tenantID      string
+	userID        string
+	patientID     string
+	appointmentID string
+	departmentID  string
+	encounterID   string
+	status        string
+	sentAt        any
+	rejectedAt    any
+}
+
+func insertPatientIDUpdateSession(t *testing.T, db *sql.DB, session patientIDUpdateSession) {
+	t.Helper()
+
+	if session.tenantID == "" {
+		session.tenantID = sendTestTenant
+	}
+	if session.userID == "" {
+		session.userID = sendTestUser
+	}
+	if session.patientID == "" {
+		session.patientID = "patient-original"
+	}
+	if session.status == "" {
+		session.status = "complete"
+	}
+
+	_, err := db.Exec(`
+		INSERT INTO scribe_sessions (
+			id, tenant_id, user_id, patient_id, encounter_id, department_id, status,
+			transcript, ai_output, error_message, started_at, stopped_at, completed_at,
+			created_at, sent_to_ehr_at, sent_to_ehr_by, rejected_at, rejected_by,
+			appointment_id, label, document_filename
+		) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, '{}', NULL, NULL, NULL, NULL, ?, ?, NULL, ?, NULL, ?, 'Original Label', '')
+	`, session.id, session.tenantID, session.userID, session.patientID, session.encounterID,
+		session.departmentID, session.status, time.Now(), session.sentAt, session.rejectedAt, session.appointmentID)
+	if err != nil {
+		t.Fatalf("insert scribe session: %v", err)
+	}
+}
+
+func patientIDUpdateRequest(sessionID string, body string, claims *auth.Claims) *http.Request {
+	req := httptest.NewRequest(http.MethodPut, "/api/scribe/sessions/"+sessionID+"/patient-id", strings.NewReader(body))
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", sessionID)
+	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
+	ctx = auth.NewContext(ctx, claims)
+	return req.WithContext(ctx)
+}
+
+func fetchPatientIDUpdateFields(t *testing.T, db *sql.DB, sessionID string, tenantID string) (patientID, appointmentID, departmentID, encounterID string) {
+	t.Helper()
+
+	err := db.QueryRow(`
+		SELECT patient_id, appointment_id, department_id, encounter_id
+		FROM scribe_sessions
+		WHERE id = ? AND tenant_id = ?
+	`, sessionID, tenantID).Scan(&patientID, &appointmentID, &departmentID, &encounterID)
+	if err != nil {
+		t.Fatalf("fetch scribe session fields: %v", err)
+	}
+	return patientID, appointmentID, departmentID, encounterID
+}
+
+func TestHandleUpdatePatientID_TrimsAndPersistsOnlyPatientID(t *testing.T) {
+	h, db := newPatientIDUpdateHandler(t)
+	sessionID := "33333333-3333-3333-3333-333333333333"
+	insertPatientIDUpdateSession(t, db, patientIDUpdateSession{
+		id:            sessionID,
+		appointmentID: "appointment-original",
+		departmentID:  "department-original",
+		encounterID:   "encounter-original",
+	})
+
+	_, appointmentBefore, departmentBefore, encounterBefore := fetchPatientIDUpdateFields(t, db, sessionID, sendTestTenant)
+	w := httptest.NewRecorder()
+	h.HandleUpdatePatientID(w, patientIDUpdateRequest(sessionID, `{ "patient_id": "  patient-corrected  " }`, &auth.Claims{UserID: sendTestUser, TenantID: sendTestTenant}))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if body := strings.TrimSpace(w.Body.String()); body != "{}" {
+		t.Fatalf("expected body {}, got %s", body)
+	}
+	patientID, appointmentID, departmentID, encounterID := fetchPatientIDUpdateFields(t, db, sessionID, sendTestTenant)
+	if patientID != "patient-corrected" {
+		t.Fatalf("expected trimmed patient ID persisted, got %q", patientID)
+	}
+	if appointmentID != appointmentBefore || departmentID != departmentBefore || encounterID != encounterBefore {
+		t.Fatalf("expected only patient ID to change; got appointment=%q department=%q encounter=%q", appointmentID, departmentID, encounterID)
+	}
+}
+
+func TestHandleUpdatePatientID_OtherTenantDoesNotUpdate(t *testing.T) {
+	h, db := newPatientIDUpdateHandler(t)
+	sessionID := "33333333-3333-3333-3333-333333333333"
+	otherTenantID := "44444444-4444-4444-4444-444444444444"
+	insertPatientIDUpdateSession(t, db, patientIDUpdateSession{id: sessionID, tenantID: otherTenantID})
+
+	w := httptest.NewRecorder()
+	h.HandleUpdatePatientID(w, patientIDUpdateRequest(sessionID, `{ "patient_id": "patient-corrected" }`, &auth.Claims{UserID: sendTestUser, TenantID: sendTestTenant}))
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+	patientID, _, _, _ := fetchPatientIDUpdateFields(t, db, sessionID, otherTenantID)
+	if patientID != "patient-original" {
+		t.Fatalf("expected other tenant row unchanged, got patient_id %q", patientID)
+	}
+}
+
+func TestHandleUpdatePatientID_RejectsBlankPatientID(t *testing.T) {
+	h, db := newPatientIDUpdateHandler(t)
+	sessionID := "33333333-3333-3333-3333-333333333333"
+	insertPatientIDUpdateSession(t, db, patientIDUpdateSession{id: sessionID})
+
+	w := httptest.NewRecorder()
+	h.HandleUpdatePatientID(w, patientIDUpdateRequest(sessionID, `{ "patient_id": "   " }`, &auth.Claims{UserID: sendTestUser, TenantID: sendTestTenant}))
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	patientID, _, _, _ := fetchPatientIDUpdateFields(t, db, sessionID, sendTestTenant)
+	if patientID != "patient-original" {
+		t.Fatalf("expected blank patient ID not to update row, got %q", patientID)
+	}
+}
+
+func TestHandleUpdatePatientID_RejectsSentSession(t *testing.T) {
+	h, db := newPatientIDUpdateHandler(t)
+	sessionID := "33333333-3333-3333-3333-333333333333"
+	insertPatientIDUpdateSession(t, db, patientIDUpdateSession{id: sessionID, sentAt: time.Now()})
+
+	w := httptest.NewRecorder()
+	h.HandleUpdatePatientID(w, patientIDUpdateRequest(sessionID, `{ "patient_id": "patient-corrected" }`, &auth.Claims{UserID: sendTestUser, TenantID: sendTestTenant}))
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "sent sessions cannot be edited") {
+		t.Fatalf("expected sent session error, got %q", w.Body.String())
+	}
+}
+
+func TestHandleUpdatePatientID_RejectsRejectedSession(t *testing.T) {
+	h, db := newPatientIDUpdateHandler(t)
+	sessionID := "33333333-3333-3333-3333-333333333333"
+	insertPatientIDUpdateSession(t, db, patientIDUpdateSession{id: sessionID, rejectedAt: time.Now()})
+
+	w := httptest.NewRecorder()
+	h.HandleUpdatePatientID(w, patientIDUpdateRequest(sessionID, `{ "patient_id": "patient-corrected" }`, &auth.Claims{UserID: sendTestUser, TenantID: sendTestTenant}))
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "rejected sessions cannot be edited") {
+		t.Fatalf("expected rejected session error, got %q", w.Body.String())
+	}
+}
+
+func TestHandleUpdatePatientID_AllowsProcessingSession(t *testing.T) {
+	h, db := newPatientIDUpdateHandler(t)
+	sessionID := "33333333-3333-3333-3333-333333333333"
+	insertPatientIDUpdateSession(t, db, patientIDUpdateSession{id: sessionID, status: "processing"})
+
+	w := httptest.NewRecorder()
+	h.HandleUpdatePatientID(w, patientIDUpdateRequest(sessionID, `{ "patient_id": "  patient-processing  " }`, &auth.Claims{UserID: sendTestUser, TenantID: sendTestTenant}))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if body := strings.TrimSpace(w.Body.String()); body != "{}" {
+		t.Fatalf("expected body {}, got %s", body)
+	}
+	patientID, _, _, _ := fetchPatientIDUpdateFields(t, db, sessionID, sendTestTenant)
+	if patientID != "patient-processing" {
+		t.Fatalf("expected processing session update, got %q", patientID)
+	}
+}
+
 // sendFakeEMR is a configurable, pointer-based emr.EMR for HandleSend tests.
 // It is distinct from the value-typed fakeProcessorEMR used by processor tests.
 type sendFakeEMR struct {
@@ -539,6 +765,28 @@ func (db *sendFakeDB) QueryRow(ctx context.Context, sql string, args ...interfac
 		s.CompletedAt, s.CreatedAt, s.SentToEhrAt, s.SentToEhrBy, s.RejectedAt,
 		s.RejectedBy, s.AppointmentID, s.Label, s.DocumentFilename,
 	}}
+}
+
+type fakeSQLResult struct{}
+
+func (fakeSQLResult) LastInsertId() (int64, error) { return 0, nil }
+func (fakeSQLResult) RowsAffected() (int64, error) { return 0, nil }
+
+func (db *sendFakeDB) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	_, err := db.Exec(ctx, query, args...)
+	return fakeSQLResult{}, err
+}
+
+func (db *sendFakeDB) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
+	return nil, fmt.Errorf("sendFakeDB does not support prepared statements")
+}
+
+func (db *sendFakeDB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	return nil, fmt.Errorf("sendFakeDB QueryContext is unavailable in compile-only patient ID tests")
+}
+
+func (db *sendFakeDB) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
+	return nil
 }
 
 type sendRow struct {
