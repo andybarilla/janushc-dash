@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { FileText, Mic, RotateCcw, Square, X } from "lucide-react";
+import { useAuth } from "@/lib/auth";
+import {
+  RECORDING_CHUNK_MS,
+  createRecordingDraft,
+  deleteRecordingDraft,
+  saveRecordingDraftChunk,
+  updateRecordingDraftMetadata,
+} from "@/lib/recording-drafts";
 import {
   useCreateScribeSession,
   useScribeDepartments,
@@ -27,6 +35,8 @@ interface Props {
   initialDepartmentId?: string;
   initialAppointmentId?: string;
   initialAutoTranscribe?: boolean;
+  initialRecordingDraftId?: string | null;
+  onLocalRecordingsChanged?: () => void;
   extraAppointment?: ScribeAppointment;
 }
 
@@ -71,6 +81,8 @@ export function UploadModal({
   initialDepartmentId,
   initialAppointmentId,
   initialAutoTranscribe,
+  initialRecordingDraftId = null,
+  onLocalRecordingsChanged,
   extraAppointment,
 }: Props) {
   const [departmentId, setDepartmentId] = useState("");
@@ -83,17 +95,30 @@ export function UploadModal({
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
   const [autoTranscribe, setAutoTranscribe] = useState(true);
   const [recordingError, setRecordingError] = useState<string | null>(null);
+  const [localRecordingDraftId, setLocalRecordingDraftId] = useState<string | null>(initialRecordingDraftId);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const documentInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const nextChunkIndexRef = useRef(0);
+  const pendingDraftWritesRef = useRef<Set<Promise<void>>>(new Set());
 
   const createSession = useCreateScribeSession();
   const uploadAudio = useUploadScribeAudio();
   const uploadDocument = useUploadScribeDocument();
   const departmentsQuery = useScribeDepartments();
   const appointmentsQuery = useTodayAppointments(departmentId);
+  const { user } = useAuth();
+  const currentUserId = user?.id ?? null;
+  const fetchedAppointments = appointmentsQuery.data ?? [];
+  const appointments =
+    extraAppointment &&
+    !fetchedAppointments.some((a) => a.appointment_id === extraAppointment.appointment_id)
+      ? [extraAppointment, ...fetchedAppointments]
+      : fetchedAppointments;
+  const selectedAppointment = appointments.find((a) => a.appointment_id === appointmentId);
+  const patientId = selectedAppointment?.patient_id ?? "";
 
   useEffect(() => {
     if (open) setEncounterSource(initialSource);
@@ -108,8 +133,9 @@ export function UploadModal({
     if (initialDepartmentId) setDepartmentId(initialDepartmentId);
     if (initialAppointmentId) setAppointmentId(initialAppointmentId);
     if (typeof initialAutoTranscribe === "boolean") setAutoTranscribe(initialAutoTranscribe);
+    setLocalRecordingDraftId(initialRecordingDraftId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, initialAudioFile]);
+  }, [open, initialAudioFile, initialRecordingDraftId]);
 
   useEffect(() => {
     if (!open) return;
@@ -132,6 +158,7 @@ export function UploadModal({
     setRecordingSeconds(0);
     setRecordingState("idle");
     setRecordingError(null);
+    setLocalRecordingDraftId(null);
   }, [open]);
 
   useEffect(() => {
@@ -143,6 +170,25 @@ export function UploadModal({
   }, [recordingState]);
 
   useEffect(() => {
+    if (recordingState !== "recording" || !localRecordingDraftId) return;
+    const writePromise = updateRecordingDraftMetadata(localRecordingDraftId, {
+      elapsedSeconds: recordingSeconds,
+      patientId,
+      appointmentId,
+      patientName: selectedAppointment?.patient_name,
+      appointmentTime: selectedAppointment?.time,
+      departmentId,
+      autoTranscribe,
+      nextChunkIndex: nextChunkIndexRef.current,
+    })
+      .catch(() => setRecordingError("Recording is continuing, but local recovery storage is unavailable."))
+      .finally(() => {
+        pendingDraftWritesRef.current.delete(writePromise);
+      });
+    pendingDraftWritesRef.current.add(writePromise);
+  }, [appointmentId, autoTranscribe, departmentId, localRecordingDraftId, patientId, recordingSeconds, recordingState, selectedAppointment]);
+
+  useEffect(() => {
     const first = departmentsQuery.data?.[0];
     if (!departmentId && first) {
       setDepartmentId(first.id);
@@ -151,14 +197,6 @@ export function UploadModal({
 
   if (!open) return null;
 
-  const fetchedAppointments = appointmentsQuery.data ?? [];
-  const appointments =
-    extraAppointment &&
-    !fetchedAppointments.some((a) => a.appointment_id === extraAppointment.appointment_id)
-      ? [extraAppointment, ...fetchedAppointments]
-      : fetchedAppointments;
-  const selectedAppointment = appointments.find((a) => a.appointment_id === appointmentId);
-  const patientId = selectedAppointment?.patient_id ?? "";
   const busy =
     createSession.isPending ||
     uploadAudio.isPending ||
@@ -175,6 +213,7 @@ export function UploadModal({
     null;
 
   const clearRecording = () => {
+    const draftId = localRecordingDraftId;
     if (recordingUrl) URL.revokeObjectURL(recordingUrl);
     setRecordingUrl(null);
     setRecordingSeconds(0);
@@ -182,6 +221,12 @@ export function UploadModal({
     setRecordingError(null);
     if (encounterSource === "record") {
       setFile(null);
+    }
+    setLocalRecordingDraftId(null);
+    if (draftId) {
+      void Promise.allSettled(Array.from(pendingDraftWritesRef.current))
+        .then(() => deleteRecordingDraft(draftId))
+        .finally(() => onLocalRecordingsChanged?.());
     }
   };
 
@@ -220,14 +265,50 @@ export function UploadModal({
         mimeType ? { mimeType } : undefined,
       );
       chunksRef.current = [];
+      nextChunkIndexRef.current = 0;
       streamRef.current = stream;
       mediaRecorderRef.current = recorder;
+      const type = recorder.mimeType || mimeType || "audio/webm";
+      if (currentUserId) {
+        try {
+          const draft = await createRecordingDraft({
+            ownerUserId: currentUserId,
+            mimeType: type,
+            fileExtension: recordingExtension(type),
+            patientId,
+            appointmentId,
+            patientName: selectedAppointment?.patient_name,
+            appointmentTime: selectedAppointment?.time,
+            departmentId,
+            autoTranscribe,
+            elapsedSeconds: 0,
+          });
+          setLocalRecordingDraftId(draft.draftId);
+          onLocalRecordingsChanged?.();
+        } catch {
+          setRecordingError("Recording is continuing, but local recovery storage is unavailable.");
+        }
+      } else {
+        setRecordingError("Recording is continuing, but local recovery storage is unavailable.");
+      }
 
       recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunksRef.current.push(event.data);
+        if (event.data.size <= 0) return;
+        chunksRef.current.push(event.data);
+        setLocalRecordingDraftId((draftId) => {
+          if (!draftId) return draftId;
+          const chunkIndex = nextChunkIndexRef.current;
+          nextChunkIndexRef.current += 1;
+          const writePromise = saveRecordingDraftChunk(draftId, chunkIndex, event.data)
+            .catch(() => setRecordingError("Recording is continuing, but local recovery storage is unavailable."))
+            .finally(() => {
+              pendingDraftWritesRef.current.delete(writePromise);
+            });
+          pendingDraftWritesRef.current.add(writePromise);
+          return draftId;
+        });
       };
       recorder.onstop = () => {
-        const type = recorder.mimeType || mimeType || "audio/webm";
         const blob = new Blob(chunksRef.current, { type });
         const extension = recordingExtension(type);
         const recordedFile = new File(
@@ -238,11 +319,12 @@ export function UploadModal({
         setFile(recordedFile);
         setRecordingUrl(URL.createObjectURL(blob));
         setRecordingState("recorded");
+        onLocalRecordingsChanged?.();
         stream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
         mediaRecorderRef.current = null;
       };
-      recorder.start();
+      recorder.start(RECORDING_CHUNK_MS);
       setRecordingSeconds(0);
       setRecordingState("recording");
     } catch (err) {
@@ -285,6 +367,11 @@ export function UploadModal({
         department_id: departmentId,
       });
       await uploadAudio.mutateAsync({ id: session.id, file, autoTranscribe });
+      if (localRecordingDraftId) {
+        await Promise.allSettled(Array.from(pendingDraftWritesRef.current));
+        await deleteRecordingDraft(localRecordingDraftId);
+        onLocalRecordingsChanged?.();
+      }
       onCreated?.(session.id);
       reset();
       onClose();

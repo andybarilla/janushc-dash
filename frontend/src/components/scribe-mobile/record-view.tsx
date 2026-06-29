@@ -2,14 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, Check, Mic, UploadCloud } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
-  ACTIVE_RECORDING_DRAFT_ID,
   RECORDING_CHUNK_MS,
-  createActiveRecordingDraft,
+  createRecordingDraft,
   saveRecordingDraftChunk,
-  updateActiveRecordingDraftMetadata,
-  getActiveRecordingDraft,
+  updateRecordingDraftMetadata,
+  listRecordingDrafts,
   buildRecordingDraftBlob,
-  deleteActiveRecordingDraft,
+  deleteRecordingDraft,
   type RecordingDraftMetadata,
 } from "@/lib/recording-drafts";
 import {
@@ -75,9 +74,10 @@ function apiErrorMessage(error: unknown): string | null {
 interface Props {
   onBack: () => void;
   onSaved: (sessionId: string) => void;
+  onLocalRecordingsChanged?: () => void;
 }
 
-export function MRecordView({ onBack, onSaved }: Props) {
+export function MRecordView({ onBack, onSaved, onLocalRecordingsChanged }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [department, setDepartment] = useState("");
   const [appointmentId, setAppointmentId] = useState("");
@@ -173,21 +173,15 @@ export function MRecordView({ onBack, onSaved }: Props) {
     }
 
     setIsCheckingDraft(true);
-    void getActiveRecordingDraft()
-      .then((draft) => {
+    void listRecordingDrafts(currentUserId)
+      .then((drafts) => {
         if (!isCurrent) return;
+        const draft = drafts[0] ?? null;
         if (!draft) {
           setActiveDraft(null);
           return;
         }
-        if (draft.ownerUserId === currentUserId) {
-          setActiveDraft(draft);
-          return;
-        }
-        setActiveDraft(null);
-        void deleteActiveRecordingDraft().catch((deleteError) => {
-          console.warn("Unable to delete recording draft for a different user.", deleteError);
-        });
+        setActiveDraft(draft);
       })
       .catch(() => {
         if (isCurrent) setError("Unable to check for interrupted recordings.");
@@ -228,7 +222,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
   useEffect(() => {
     const draftId = draftIdRef.current;
     if (phase !== "recording" || !draftId) return;
-    const writePromise = updateActiveRecordingDraftMetadata({
+    const writePromise = updateRecordingDraftMetadata(draftId, {
       elapsedSeconds: seconds,
       patientId: patientId.trim(),
       appointmentId,
@@ -304,7 +298,7 @@ export function MRecordView({ onBack, onSaved }: Props) {
       const type = recorder.mimeType || mimeType || "audio/webm";
       if (currentUserId) {
         try {
-          const draft = await createActiveRecordingDraft({
+          const draft = await createRecordingDraft({
             ownerUserId: currentUserId,
             mimeType: type,
             fileExtension: extensionFor(type),
@@ -316,8 +310,9 @@ export function MRecordView({ onBack, onSaved }: Props) {
             autoTranscribe,
             elapsedSeconds: 0,
           });
-          draftIdRef.current = ACTIVE_RECORDING_DRAFT_ID;
+          draftIdRef.current = draft.draftId;
           nextChunkIndexRef.current = draft.nextChunkIndex;
+          onLocalRecordingsChanged?.();
         } catch {
           setStorageWarning("Recording is continuing, but local recovery storage is unavailable.");
         }
@@ -388,9 +383,11 @@ export function MRecordView({ onBack, onSaved }: Props) {
   };
 
   const deleteDraftAfterPendingWrites = async (): Promise<void> => {
+    const draftId = draftIdRef.current;
     draftIdRef.current = null;
     await Promise.allSettled(Array.from(pendingDraftWritesRef.current));
-    await deleteActiveRecordingDraft();
+    if (draftId) await deleteRecordingDraft(draftId);
+    onLocalRecordingsChanged?.();
   };
 
   const reset = () => {
@@ -424,6 +421,8 @@ export function MRecordView({ onBack, onSaved }: Props) {
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
       const url = URL.createObjectURL(blob);
       objectUrlRef.current = url;
+      draftIdRef.current = activeDraft.draftId;
+      nextChunkIndexRef.current = activeDraft.nextChunkIndex;
       setDepartment(activeDraft.departmentId);
       setAppointmentId(activeDraft.appointmentId ?? "");
       if (activeDraft.appointmentId && activeDraft.patientId) {
@@ -945,4 +944,3 @@ function RecordingWave() {
     </svg>
   );
 }
-

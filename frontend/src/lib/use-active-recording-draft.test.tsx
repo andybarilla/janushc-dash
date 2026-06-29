@@ -3,14 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useActiveRecordingDraft } from "./use-active-recording-draft";
 
 const mocks = vi.hoisted(() => ({
-  getActiveRecordingDraft: vi.fn(),
+  listRecordingDrafts: vi.fn(),
 }));
 
 vi.mock("@/lib/recording-drafts", async () => {
   const actual = await vi.importActual<typeof import("@/lib/recording-drafts")>(
     "@/lib/recording-drafts",
   );
-  return { ...actual, getActiveRecordingDraft: mocks.getActiveRecordingDraft };
+  return { ...actual, listRecordingDrafts: mocks.listRecordingDrafts };
 });
 
 const draft = {
@@ -39,28 +39,28 @@ afterEach(() => {
 
 describe("useActiveRecordingDraft", () => {
   it("returns a draft owned by the current user", async () => {
-    mocks.getActiveRecordingDraft.mockResolvedValue(draft);
+    mocks.listRecordingDrafts.mockResolvedValue([draft]);
     const { result } = renderHook(() => useActiveRecordingDraft("user-1"));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.draft).toEqual(draft);
   });
 
-  it("hides a draft owned by another user", async () => {
-    mocks.getActiveRecordingDraft.mockResolvedValue({ ...draft, ownerUserId: "other" });
+  it("returns null when the inbox is empty", async () => {
+    mocks.listRecordingDrafts.mockResolvedValue([]);
     const { result } = renderHook(() => useActiveRecordingDraft("user-1"));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.draft).toBeNull();
   });
 
-  it("returns null when there is no draft", async () => {
-    mocks.getActiveRecordingDraft.mockResolvedValue(null);
-    const { result } = renderHook(() => useActiveRecordingDraft("user-1"));
+  it("returns null when there is no current user", async () => {
+    const { result } = renderHook(() => useActiveRecordingDraft(null));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.draft).toBeNull();
+    expect(mocks.listRecordingDrafts).not.toHaveBeenCalled();
   });
 
   it("re-reads the draft when refresh is called", async () => {
-    mocks.getActiveRecordingDraft.mockResolvedValueOnce(draft).mockResolvedValueOnce(null);
+    mocks.listRecordingDrafts.mockResolvedValueOnce([draft]).mockResolvedValueOnce([]);
     const { result } = renderHook(() => useActiveRecordingDraft("user-1"));
     await waitFor(() => expect(result.current.draft).toEqual(draft));
     act(() => result.current.refresh());

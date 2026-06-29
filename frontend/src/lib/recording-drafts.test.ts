@@ -3,8 +3,11 @@ import {
   ACTIVE_RECORDING_DRAFT_ID,
   buildRecordingDraftBlob,
   createActiveRecordingDraft,
+  createRecordingDraft,
   deleteActiveRecordingDraft,
+  deleteRecordingDraft,
   getActiveRecordingDraft,
+  listRecordingDrafts,
   saveRecordingDraftChunk,
 } from "./recording-drafts";
 
@@ -79,6 +82,12 @@ class FakeObjectStore {
   get(key: string): FakeRequest<unknown> {
     const request = new FakeRequest<unknown>();
     request.succeed(this.stores.metadata.get(key));
+    return request;
+  }
+
+  getAll(): FakeRequest<unknown[]> {
+    const request = new FakeRequest<unknown[]>();
+    request.succeed([...this.stores.metadata.values()]);
     return request;
   }
 
@@ -200,6 +209,62 @@ describe("recording draft storage", () => {
       ownerUserId: "user-1",
       patientId: "patient-1",
     });
+  });
+
+  it("stores multiple recording drafts for the same user", async () => {
+    installFakeIndexedDB();
+
+    const first = await createRecordingDraft({
+      ownerUserId: "user-1",
+      mimeType: "audio/webm",
+      fileExtension: "webm",
+      patientId: "patient-1",
+      departmentId: "department-1",
+      autoTranscribe: true,
+      elapsedSeconds: 12,
+    });
+    const second = await createRecordingDraft({
+      ownerUserId: "user-1",
+      mimeType: "audio/webm",
+      fileExtension: "webm",
+      patientId: "patient-2",
+      departmentId: "department-1",
+      autoTranscribe: false,
+      elapsedSeconds: 20,
+    });
+
+    await expect(listRecordingDrafts("user-1")).resolves.toHaveLength(2);
+    await deleteRecordingDraft(first.draftId);
+    await expect(listRecordingDrafts("user-1")).resolves.toMatchObject([
+      { draftId: second.draftId, patientId: "patient-2" },
+    ]);
+  });
+
+  it("filters drafts by owner", async () => {
+    installFakeIndexedDB();
+
+    await createRecordingDraft({
+      ownerUserId: "user-1",
+      mimeType: "audio/webm",
+      fileExtension: "webm",
+      patientId: "patient-1",
+      departmentId: "department-1",
+      autoTranscribe: true,
+      elapsedSeconds: 12,
+    });
+    await createRecordingDraft({
+      ownerUserId: "user-2",
+      mimeType: "audio/webm",
+      fileExtension: "webm",
+      patientId: "patient-2",
+      departmentId: "department-1",
+      autoTranscribe: true,
+      elapsedSeconds: 12,
+    });
+
+    await expect(listRecordingDrafts("user-1")).resolves.toMatchObject([
+      { ownerUserId: "user-1" },
+    ]);
   });
 
   it("returns null when no active draft exists", async () => {

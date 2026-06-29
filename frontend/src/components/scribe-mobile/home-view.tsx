@@ -22,6 +22,7 @@ import type { MobileFilter } from "./filter-row";
 interface Props {
   sessions: ScribeSession[];
   providerName: string;
+  localRecordingCount: number;
   onRecord: () => void;
   onPaste: () => void;
   onOpenInbox: (filter: MobileFilter) => void;
@@ -67,6 +68,7 @@ function recentIcon(statusId: StatusId) {
 export function MHomeView({
   sessions,
   providerName,
+  localRecordingCount,
   onRecord,
   onPaste,
   onOpenInbox,
@@ -200,6 +202,23 @@ export function MHomeView({
           </button>
         ) : null}
 
+        {localRecordingCount > 0 ? (
+          <button
+            type="button"
+            className="m-shortcut-card alert"
+            onClick={onRecord}
+          >
+            <span className="shortcut-num">{localRecordingCount}</span>
+            <div className="shortcut-body">
+              <span className="shortcut-title">
+                {localRecordingCount === 1 ? "Recording saved on this device" : "Recordings saved on this device"}
+              </span>
+              <span className="shortcut-sub">Review, upload, or discard local audio</span>
+            </div>
+            <ChevronRight className="shortcut-arrow" />
+          </button>
+        ) : null}
+
         <div className="m-section-lbl">Today</div>
         <div className="m-tiles">
           <button
@@ -270,4 +289,3 @@ export function MHomeView({
     </>
   );
 }
-

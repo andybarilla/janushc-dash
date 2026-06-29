@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useLocation, useMatch, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
+import { useRecordingDrafts } from "@/lib/use-active-recording-draft";
 import {
   useAddFeedback,
   useApproveSection,
@@ -53,6 +54,7 @@ export function MobileScribe() {
   const { user } = useAuth();
   const canApprove = user?.role === "physician";
   const { data: sessions = [], isLoading } = useScribeSessions();
+  const { drafts: localRecordingDrafts, refresh: refreshLocalRecordingDrafts } = useRecordingDrafts(user?.id ?? null);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -163,6 +165,7 @@ export function MobileScribe() {
           <MHomeView
             sessions={sessions}
             providerName={providerName}
+            localRecordingCount={localRecordingDrafts.length}
             onRecord={() => navigate("/scribe/record")}
             onPaste={() => navigate("/scribe/paste")}
             onOpenInbox={(f) => {
@@ -176,6 +179,7 @@ export function MobileScribe() {
         <MRecordView
           onBack={() => backTo("/scribe")}
           onSaved={() => navigate("/scribe")}
+          onLocalRecordingsChanged={refreshLocalRecordingDrafts}
         />
       ) : view === "paste" ? (
         <MPasteView
