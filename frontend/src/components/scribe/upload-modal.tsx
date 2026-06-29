@@ -6,6 +6,7 @@ import {
   useTodayAppointments,
   useUploadScribeAudio,
   useUploadScribeDocument,
+  type ScribeAppointment,
 } from "@/lib/scribe-queries";
 
 const ACCEPTED_FORMATS = ".mp3,.m4a,.wav,.webm,.ogg";
@@ -22,6 +23,11 @@ interface Props {
   onClose: () => void;
   onCreated?: (sessionId: string) => void;
   initialSource?: EncounterSource;
+  initialAudioFile?: File | null;
+  initialDepartmentId?: string;
+  initialAppointmentId?: string;
+  initialAutoTranscribe?: boolean;
+  extraAppointment?: ScribeAppointment;
 }
 
 type EncounterSource = "record" | "document";
@@ -56,7 +62,17 @@ function apiErrorMessage(error: unknown) {
   return null;
 }
 
-export function UploadModal({ open, onClose, onCreated, initialSource = "record" }: Props) {
+export function UploadModal({
+  open,
+  onClose,
+  onCreated,
+  initialSource = "record",
+  initialAudioFile = null,
+  initialDepartmentId,
+  initialAppointmentId,
+  initialAutoTranscribe,
+  extraAppointment,
+}: Props) {
   const [departmentId, setDepartmentId] = useState("");
   const [appointmentId, setAppointmentId] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -84,6 +100,18 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
   }, [open, initialSource]);
 
   useEffect(() => {
+    if (!open || !initialAudioFile) return;
+    setEncounterSource("record");
+    setFile(initialAudioFile);
+    setRecordingUrl(URL.createObjectURL(initialAudioFile));
+    setRecordingState("recorded");
+    if (initialDepartmentId) setDepartmentId(initialDepartmentId);
+    if (initialAppointmentId) setAppointmentId(initialAppointmentId);
+    if (typeof initialAutoTranscribe === "boolean") setAutoTranscribe(initialAutoTranscribe);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialAudioFile]);
+
+  useEffect(() => {
     if (!open) return;
     return () => {
       mediaRecorderRef.current?.state === "recording" && mediaRecorderRef.current.stop();
@@ -109,7 +137,12 @@ export function UploadModal({ open, onClose, onCreated, initialSource = "record"
 
   if (!open) return null;
 
-  const appointments = appointmentsQuery.data ?? [];
+  const fetchedAppointments = appointmentsQuery.data ?? [];
+  const appointments =
+    extraAppointment &&
+    !fetchedAppointments.some((a) => a.appointment_id === extraAppointment.appointment_id)
+      ? [extraAppointment, ...fetchedAppointments]
+      : fetchedAppointments;
   const selectedAppointment = appointments.find((a) => a.appointment_id === appointmentId);
   const patientId = selectedAppointment?.patient_id ?? "";
   const busy =
