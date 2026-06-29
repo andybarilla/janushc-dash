@@ -35,6 +35,13 @@ import type {
   SectionContent,
   SectionKey,
 } from "@/components/scribe/types";
+import { useActiveRecordingDraft } from "@/lib/use-active-recording-draft";
+import { RecoveryBanner } from "@/components/scribe/recovery-banner";
+import {
+  buildRecordingDraftBlob,
+  deleteActiveRecordingDraft,
+} from "@/lib/recording-drafts";
+import type { ScribeAppointment } from "@/lib/scribe-queries";
 
 const EMPTY_APPROVALS: Approvals = {
   hpi: false,
@@ -91,6 +98,67 @@ function DesktopScribe() {
     useState<SectionKey | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadSource, setUploadSource] = useState<"record" | "document">("record");
+
+  const {
+    draft: recoveryDraft,
+    refresh: refreshRecoveryDraft,
+  } = useActiveRecordingDraft(user?.id ?? null);
+  const [recoveryFile, setRecoveryFile] = useState<File | null>(null);
+  const [recoveryAppointment, setRecoveryAppointment] = useState<ScribeAppointment | null>(null);
+  const [recoveryDept, setRecoveryDept] = useState("");
+  const [recoveryAppointmentId, setRecoveryAppointmentId] = useState("");
+  const [recoveryAutoTranscribe, setRecoveryAutoTranscribe] = useState(true);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+
+  const handleRecoverDraft = async () => {
+    if (!recoveryDraft) return;
+    setRecoveryError(null);
+    try {
+      const blob = await buildRecordingDraftBlob(recoveryDraft.draftId, recoveryDraft.mimeType);
+      if (blob.size <= 0) {
+        setRecoveryError("No saved audio was found for this interrupted recording.");
+        return;
+      }
+      const file = new File([blob], `recovered-recording.${recoveryDraft.fileExtension}`, {
+        type: recoveryDraft.mimeType,
+      });
+      setRecoveryFile(file);
+      setRecoveryDept(recoveryDraft.departmentId);
+      setRecoveryAppointmentId(recoveryDraft.appointmentId ?? "");
+      setRecoveryAutoTranscribe(recoveryDraft.autoTranscribe);
+      setRecoveryAppointment(
+        recoveryDraft.appointmentId && recoveryDraft.patientId
+          ? {
+              appointment_id: recoveryDraft.appointmentId,
+              patient_id: recoveryDraft.patientId,
+              patient_name: recoveryDraft.patientName ?? recoveryDraft.patientId,
+              time: recoveryDraft.appointmentTime ?? "",
+              department_id: recoveryDraft.departmentId,
+              status: "",
+            }
+          : null,
+      );
+      setUploadOpen(true);
+    } catch {
+      setRecoveryError("Unable to recover the interrupted recording.");
+    }
+  };
+
+  const handleDiscardDraft = async () => {
+    setRecoveryError(null);
+    try {
+      await deleteActiveRecordingDraft();
+    } finally {
+      refreshRecoveryDraft();
+    }
+  };
+
+  const clearRecoveryState = () => {
+    setRecoveryFile(null);
+    setRecoveryAppointment(null);
+    setRecoveryDept("");
+    setRecoveryAppointmentId("");
+  };
 
   const {
     data: selectedDetail,
@@ -299,6 +367,19 @@ function DesktopScribe() {
             </div>
           </div>
 
+          {recoveryDraft ? (
+            <RecoveryBanner
+              draft={recoveryDraft}
+              error={recoveryError}
+              onRecover={() => {
+                void handleRecoverDraft();
+              }}
+              onDiscard={() => {
+                void handleDiscardDraft();
+              }}
+            />
+          ) : null}
+
           <StatsStrip stats={stats} />
 
           <InboxTable
@@ -325,9 +406,25 @@ function DesktopScribe() {
 
       <UploadModal
         open={uploadOpen}
-        onClose={() => setUploadOpen(false)}
-        onCreated={gotoSession}
+        onClose={() => {
+          setUploadOpen(false);
+          clearRecoveryState();
+        }}
+        onCreated={(id) => {
+          if (recoveryFile) {
+            void deleteActiveRecordingDraft().finally(() => {
+              clearRecoveryState();
+              refreshRecoveryDraft();
+            });
+          }
+          gotoSession(id);
+        }}
         initialSource={uploadSource}
+        initialAudioFile={recoveryFile}
+        initialDepartmentId={recoveryDept}
+        initialAppointmentId={recoveryAppointmentId}
+        initialAutoTranscribe={recoveryAutoTranscribe}
+        extraAppointment={recoveryAppointment ?? undefined}
       />
     </div>
   );
