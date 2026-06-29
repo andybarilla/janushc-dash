@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  getActiveRecordingDraft,
+  listRecordingDrafts,
   type RecordingDraftMetadata,
 } from "@/lib/recording-drafts";
 
-export function useActiveRecordingDraft(currentUserId: string | null): {
-  draft: RecordingDraftMetadata | null;
+export function useRecordingDrafts(currentUserId: string | null): {
+  drafts: RecordingDraftMetadata[];
   loading: boolean;
   refresh: () => void;
 } {
-  const [draft, setDraft] = useState<RecordingDraftMetadata | null>(null);
+  const [drafts, setDrafts] = useState<RecordingDraftMetadata[]>([]);
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
 
@@ -17,14 +17,21 @@ export function useActiveRecordingDraft(currentUserId: string | null): {
 
   useEffect(() => {
     let active = true;
+    if (!currentUserId) {
+      setDrafts([]);
+      setLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
     setLoading(true);
-    void getActiveRecordingDraft()
+    void listRecordingDrafts(currentUserId)
       .then((result) => {
-        if (!active) return;
-        setDraft(result && result.ownerUserId === currentUserId ? result : null);
+        if (active) setDrafts(result);
       })
       .catch(() => {
-        if (active) setDraft(null);
+        if (active) setDrafts([]);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -34,5 +41,14 @@ export function useActiveRecordingDraft(currentUserId: string | null): {
     };
   }, [currentUserId, tick]);
 
-  return { draft, loading, refresh };
+  return { drafts, loading, refresh };
+}
+
+export function useActiveRecordingDraft(currentUserId: string | null): {
+  draft: RecordingDraftMetadata | null;
+  loading: boolean;
+  refresh: () => void;
+} {
+  const { drafts, loading, refresh } = useRecordingDrafts(currentUserId);
+  return { draft: drafts[0] ?? null, loading, refresh };
 }

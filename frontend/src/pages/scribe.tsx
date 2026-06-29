@@ -35,11 +35,12 @@ import type {
   SectionContent,
   SectionKey,
 } from "@/components/scribe/types";
-import { useActiveRecordingDraft } from "@/lib/use-active-recording-draft";
-import { RecoveryBanner } from "@/components/scribe/recovery-banner";
+import { useRecordingDrafts } from "@/lib/use-active-recording-draft";
+import { LocalRecordingsInbox } from "@/components/scribe/recovery-banner";
 import {
   buildRecordingDraftBlob,
-  deleteActiveRecordingDraft,
+  deleteRecordingDraft,
+  type RecordingDraftMetadata,
 } from "@/lib/recording-drafts";
 import type { ScribeAppointment } from "@/lib/scribe-queries";
 
@@ -100,40 +101,41 @@ function DesktopScribe() {
   const [uploadSource, setUploadSource] = useState<"record" | "document">("record");
 
   const {
-    draft: recoveryDraft,
+    drafts: recoveryDrafts,
     refresh: refreshRecoveryDraft,
-  } = useActiveRecordingDraft(user?.id ?? null);
+  } = useRecordingDrafts(user?.id ?? null);
   const [recoveryFile, setRecoveryFile] = useState<File | null>(null);
+  const [recoveryDraftId, setRecoveryDraftId] = useState<string | null>(null);
   const [recoveryAppointment, setRecoveryAppointment] = useState<ScribeAppointment | null>(null);
   const [recoveryDept, setRecoveryDept] = useState("");
   const [recoveryAppointmentId, setRecoveryAppointmentId] = useState("");
   const [recoveryAutoTranscribe, setRecoveryAutoTranscribe] = useState(true);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
 
-  const handleRecoverDraft = async () => {
-    if (!recoveryDraft) return;
+  const handleRecoverDraft = async (draft: RecordingDraftMetadata) => {
     setRecoveryError(null);
     try {
-      const blob = await buildRecordingDraftBlob(recoveryDraft.draftId, recoveryDraft.mimeType);
+      const blob = await buildRecordingDraftBlob(draft.draftId, draft.mimeType);
       if (blob.size <= 0) {
         setRecoveryError("No saved audio was found for this interrupted recording.");
         return;
       }
-      const file = new File([blob], `recovered-recording.${recoveryDraft.fileExtension}`, {
-        type: recoveryDraft.mimeType,
+      const file = new File([blob], `recovered-recording.${draft.fileExtension}`, {
+        type: draft.mimeType,
       });
       setRecoveryFile(file);
-      setRecoveryDept(recoveryDraft.departmentId);
-      setRecoveryAppointmentId(recoveryDraft.appointmentId ?? "");
-      setRecoveryAutoTranscribe(recoveryDraft.autoTranscribe);
+      setRecoveryDraftId(draft.draftId);
+      setRecoveryDept(draft.departmentId);
+      setRecoveryAppointmentId(draft.appointmentId ?? "");
+      setRecoveryAutoTranscribe(draft.autoTranscribe);
       setRecoveryAppointment(
-        recoveryDraft.appointmentId && recoveryDraft.patientId
+        draft.appointmentId && draft.patientId
           ? {
-              appointment_id: recoveryDraft.appointmentId,
-              patient_id: recoveryDraft.patientId,
-              patient_name: recoveryDraft.patientName ?? recoveryDraft.patientId,
-              time: recoveryDraft.appointmentTime ?? "",
-              department_id: recoveryDraft.departmentId,
+              appointment_id: draft.appointmentId,
+              patient_id: draft.patientId,
+              patient_name: draft.patientName ?? draft.patientId,
+              time: draft.appointmentTime ?? "",
+              department_id: draft.departmentId,
               status: "",
             }
           : null,
@@ -144,10 +146,10 @@ function DesktopScribe() {
     }
   };
 
-  const handleDiscardDraft = async () => {
+  const handleDiscardDraft = async (draft: RecordingDraftMetadata) => {
     setRecoveryError(null);
     try {
-      await deleteActiveRecordingDraft();
+      await deleteRecordingDraft(draft.draftId);
     } finally {
       refreshRecoveryDraft();
     }
@@ -155,6 +157,7 @@ function DesktopScribe() {
 
   const clearRecoveryState = () => {
     setRecoveryFile(null);
+    setRecoveryDraftId(null);
     setRecoveryAppointment(null);
     setRecoveryDept("");
     setRecoveryAppointmentId("");
@@ -367,15 +370,15 @@ function DesktopScribe() {
             </div>
           </div>
 
-          {recoveryDraft ? (
-            <RecoveryBanner
-              draft={recoveryDraft}
+          {recoveryDrafts.length > 0 ? (
+            <LocalRecordingsInbox
+              drafts={recoveryDrafts}
               error={recoveryError}
-              onRecover={() => {
-                void handleRecoverDraft();
+              onRecover={(draft) => {
+                void handleRecoverDraft(draft);
               }}
-              onDiscard={() => {
-                void handleDiscardDraft();
+              onDiscard={(draft) => {
+                void handleDiscardDraft(draft);
               }}
             />
           ) : null}
@@ -411,8 +414,8 @@ function DesktopScribe() {
           clearRecoveryState();
         }}
         onCreated={(id) => {
-          if (recoveryFile) {
-            void deleteActiveRecordingDraft().finally(() => {
+          if (recoveryDraftId) {
+            void deleteRecordingDraft(recoveryDraftId).finally(() => {
               clearRecoveryState();
               refreshRecoveryDraft();
             });
@@ -424,6 +427,8 @@ function DesktopScribe() {
         initialDepartmentId={recoveryDept}
         initialAppointmentId={recoveryAppointmentId}
         initialAutoTranscribe={recoveryAutoTranscribe}
+        initialRecordingDraftId={recoveryDraftId}
+        onLocalRecordingsChanged={refreshRecoveryDraft}
         extraAppointment={recoveryAppointment ?? undefined}
       />
     </div>

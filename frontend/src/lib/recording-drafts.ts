@@ -57,6 +57,13 @@ function unavailableError(): Error {
   return new Error("IndexedDB is not available");
 }
 
+function createDraftId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `recording-${crypto.randomUUID()}`;
+  }
+  return `recording-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 function openRecordingDraftDatabase(): Promise<IDBDatabase> {
   const indexedDB = getIndexedDB();
   if (!indexedDB) {
@@ -104,19 +111,26 @@ function requestResult<T>(request: IDBRequest<T>): Promise<T> {
 export async function createActiveRecordingDraft(
   input: RecordingDraftMetadataInput,
 ): Promise<RecordingDraftMetadata> {
+  return createRecordingDraft(input, ACTIVE_RECORDING_DRAFT_ID);
+}
+
+export async function createRecordingDraft(
+  input: RecordingDraftMetadataInput,
+  draftId = createDraftId(),
+): Promise<RecordingDraftMetadata> {
   const database = await openRecordingDraftDatabase();
   try {
     const now = new Date().toISOString();
     const metadata: RecordingDraftMetadata = {
       ...input,
-      draftId: ACTIVE_RECORDING_DRAFT_ID,
+      draftId,
       startedAt: now,
       updatedAt: now,
       nextChunkIndex: 0,
     };
     const transaction = database.transaction([METADATA_STORE_NAME, CHUNKS_STORE_NAME], "readwrite");
     transaction.objectStore(CHUNKS_STORE_NAME).index(DRAFT_ID_INDEX_NAME).openKeyCursor(
-      IDBKeyRange.only(ACTIVE_RECORDING_DRAFT_ID),
+      IDBKeyRange.only(draftId),
     ).onsuccess = (event: Event) => {
       const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result;
       if (cursor) {
@@ -149,6 +163,25 @@ export async function getActiveRecordingDraft(): Promise<RecordingDraftMetadata 
   }
 }
 
+export async function listRecordingDrafts(ownerUserId: string): Promise<RecordingDraftMetadata[]> {
+  if (!getIndexedDB()) {
+    return [];
+  }
+
+  const database = await openRecordingDraftDatabase();
+  try {
+    const transaction = database.transaction(METADATA_STORE_NAME, "readonly");
+    const result = await requestResult<RecordingDraftMetadata[]>(
+      transaction.objectStore(METADATA_STORE_NAME).getAll(),
+    );
+    return result
+      .filter((draft) => draft.ownerUserId === ownerUserId)
+      .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime());
+  } finally {
+    database.close();
+  }
+}
+
 export async function saveRecordingDraftChunk(
   draftId: string,
   index: number,
@@ -167,12 +200,19 @@ export async function saveRecordingDraftChunk(
 export async function updateActiveRecordingDraftMetadata(
   patch: RecordingDraftMetadataPatch,
 ): Promise<void> {
+  return updateRecordingDraftMetadata(ACTIVE_RECORDING_DRAFT_ID, patch);
+}
+
+export async function updateRecordingDraftMetadata(
+  draftId: string,
+  patch: RecordingDraftMetadataPatch,
+): Promise<void> {
   const database = await openRecordingDraftDatabase();
   try {
     const transaction = database.transaction(METADATA_STORE_NAME, "readwrite");
     const store = transaction.objectStore(METADATA_STORE_NAME);
     const current = await requestResult<RecordingDraftMetadata | undefined>(
-      store.get(ACTIVE_RECORDING_DRAFT_ID),
+      store.get(draftId),
     );
     if (current) {
       store.put({ ...current, ...patch, updatedAt: new Date().toISOString() });
@@ -202,12 +242,16 @@ export async function buildRecordingDraftBlob(draftId: string, mimeType: string)
 }
 
 export async function deleteActiveRecordingDraft(): Promise<void> {
+  return deleteRecordingDraft(ACTIVE_RECORDING_DRAFT_ID);
+}
+
+export async function deleteRecordingDraft(draftId: string): Promise<void> {
   const database = await openRecordingDraftDatabase();
   try {
     const transaction = database.transaction([METADATA_STORE_NAME, CHUNKS_STORE_NAME], "readwrite");
-    transaction.objectStore(METADATA_STORE_NAME).delete(ACTIVE_RECORDING_DRAFT_ID);
+    transaction.objectStore(METADATA_STORE_NAME).delete(draftId);
     transaction.objectStore(CHUNKS_STORE_NAME).index(DRAFT_ID_INDEX_NAME).openKeyCursor(
-      IDBKeyRange.only(ACTIVE_RECORDING_DRAFT_ID),
+      IDBKeyRange.only(draftId),
     ).onsuccess = (event: Event) => {
       const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result;
       if (cursor) {
