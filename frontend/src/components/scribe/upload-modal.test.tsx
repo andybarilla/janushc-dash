@@ -53,6 +53,53 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
+describe("UploadModal state reset on close", () => {
+  it("clears stale recovered audio when modal is closed and reopened without initialAudioFile", async () => {
+    const recoveredFile = new File([new Blob(["x"])], "recovered-recording.webm", { type: "audio/webm" });
+    const { rerender } = render(
+      <UploadModal
+        open
+        onClose={vi.fn()}
+        initialAudioFile={recoveredFile}
+        initialDepartmentId="dept-1"
+        initialAppointmentId="appt-9"
+        extraAppointment={extraAppointment}
+      />,
+    );
+
+    // Confirm recovered state is shown
+    expect(await screen.findByText("Recording ready to upload")).toBeInTheDocument();
+
+    // Close the modal
+    rerender(
+      <UploadModal
+        open={false}
+        onClose={vi.fn()}
+        initialAudioFile={recoveredFile}
+        initialDepartmentId="dept-1"
+        initialAppointmentId="appt-9"
+        extraAppointment={extraAppointment}
+      />,
+    );
+
+    // Reopen without the recovered file (normal open)
+    rerender(
+      <UploadModal
+        open
+        onClose={vi.fn()}
+        initialAudioFile={null}
+        extraAppointment={extraAppointment}
+      />,
+    );
+
+    // Stale "recorded" state must not be present
+    await waitFor(() => {
+      expect(screen.queryByText("Recording ready to upload")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("Ready to record")).toBeInTheDocument();
+  });
+});
+
 describe("UploadModal recovery pre-fill", () => {
   it("pre-fills recovered audio and saves through createSession + uploadAudio", async () => {
     const recoveredFile = new File([new Blob(["x"])], "recovered-recording.webm", { type: "audio/webm" });

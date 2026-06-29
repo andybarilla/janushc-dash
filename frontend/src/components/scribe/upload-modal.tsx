@@ -120,6 +120,20 @@ export function UploadModal({
     };
   }, [open, recordingUrl]);
 
+  // Reset recording/selection state when the modal closes so stale state
+  // (e.g. a recovered audio file pre-fill) doesn't survive into the next open.
+  // URL revocation is handled by the cleanup effect above; skip it here.
+  useEffect(() => {
+    if (open) return;
+    setFile(null);
+    setDocumentFile(null);
+    setAppointmentId("");
+    setRecordingUrl(null);
+    setRecordingSeconds(0);
+    setRecordingState("idle");
+    setRecordingError(null);
+  }, [open]);
+
   useEffect(() => {
     if (recordingState !== "recording") return;
     const intervalId = window.setInterval(() => {
